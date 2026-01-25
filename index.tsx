@@ -20,8 +20,9 @@ interface ErrorBoundaryState {
 }
 
 // Simples Error Boundary para evitar tela branca total
+// Use the Component type directly from React to ensure proper generic binding
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Fix: Remove redundant manual declarations of props and state that shadow React.Component's internal types
+  // Fix: Use standard constructor to ensure proper initialization of props and state and resolve property access issues
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false };
@@ -30,7 +31,11 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   static getDerivedStateFromError() { return { hasError: true }; }
 
   render() {
-    if (this.state.hasError) {
+    // Explicitly destructure from this to help TS inference if needed
+    const { hasError } = this.state;
+    const { children } = this.props;
+
+    if (hasError) {
       return (
         <div style={{height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif', textAlign: 'center', background: '#f8fafc'}}>
           <h2 style={{color: '#1e293b'}}>Ops! Algo deu errado ao carregar o sistema.</h2>
@@ -39,7 +44,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
         </div>
       );
     }
-    return this.props.children;
+    return children;
   }
 }
 
