@@ -1,10 +1,18 @@
+
 import { GoogleGenAI } from "@google/genai";
 
-// Fix: Initialize GoogleGenAI with a direct reference to process.env.API_KEY as per guidelines
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Função para obter a instância do AI de forma segura, evitando erro de 'process is not defined'
+const getAiInstance = () => {
+  const apiKey = (typeof process !== 'undefined' && process.env?.API_KEY) || '';
+  if (!apiKey) {
+    console.warn("AutoClaims Pro: API_KEY não encontrada no ambiente.");
+  }
+  return new GoogleGenAI({ apiKey });
+};
 
 export const getAIInsight = async (query: string, context: any) => {
   try {
+    const ai = getAiInstance();
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `
@@ -18,7 +26,6 @@ export const getAIInsight = async (query: string, context: any) => {
         thinkingConfig: { thinkingBudget: 0 }
       }
     });
-    // Fix: Access the .text property directly (do not call as a method)
     return response.text;
   } catch (error) {
     console.error("AI Service Error:", error);
@@ -28,6 +35,7 @@ export const getAIInsight = async (query: string, context: any) => {
 
 export const getDailySummary = async (data: any) => {
     try {
+      const ai = getAiInstance();
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: `
@@ -36,9 +44,9 @@ export const getDailySummary = async (data: any) => {
           Destaque: Eventos críticos, economia potencial em cotações abertas, fornecedores com atrasos e sugestões de otimização de SLA.
         `,
       });
-      // Fix: Access the .text property directly
       return response.text;
     } catch (error) {
+      console.error("Daily Summary Error:", error);
       return "Erro ao gerar resumo diário.";
     }
 }
