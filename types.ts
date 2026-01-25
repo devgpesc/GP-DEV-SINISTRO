@@ -45,9 +45,11 @@ export interface Supplier {
   segment: 'Peças' | 'Serviços' | 'Ambos';
   whatsapp: string;
   status: 'Ativo' | 'Inativo' | 'Bloqueado';
+  blockedReason?: string;
   city: string;
   email?: string;
   createdAt: string;
+  ratingHistory?: Array<{ date: string; score: number; comment?: string }>;
 }
 
 export interface PurchaseOrder {
