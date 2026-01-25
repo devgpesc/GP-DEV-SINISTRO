@@ -20,6 +20,51 @@ export enum Priority {
   URGENT = 'Urgente'
 }
 
+export interface CatalogItem {
+  id: string;
+  code: string;
+  name: string;
+  category: string;
+  type: 'Peça' | 'Serviço';
+  unit: string;
+  description?: string;
+}
+
+export interface Supplier {
+  id: string;
+  name: string;
+  cnpj: string;
+  rating: number;
+  segment: 'Peças' | 'Serviços' | 'Ambos';
+  whatsapp: string;
+  status: 'Ativo' | 'Inativo' | 'Bloqueado';
+  city: string;
+}
+
+export interface QuoteCell {
+  price: number;
+  selected: boolean;
+  deadline?: number;
+}
+
+export interface QuoteItem {
+  catalogId: string;
+  name: string;
+  quantity: number;
+  prices: Record<string, QuoteCell>; // supplierId -> cell
+}
+
+export interface Quotation {
+  id: string;
+  protocol: string;
+  eventId: string;
+  items: QuoteItem[];
+  suppliers: string[]; // supplierIds
+  status: 'Aberta' | 'Fechada' | 'Cancelada';
+  createdAt: string;
+}
+
+// Added EventHistoryEntry to fix export error in Events.tsx
 export interface EventHistoryEntry {
   id: string;
   fromStatus: EventStatus;
@@ -27,16 +72,6 @@ export interface EventHistoryEntry {
   comment: string;
   user: string;
   timestamp: string;
-}
-
-export interface EventAttachment {
-  id: string;
-  name: string;
-  url: string;
-  type: string;
-  size: number;
-  uploadedAt: string;
-  uploadedBy: string;
 }
 
 export interface Event {
@@ -51,7 +86,7 @@ export interface Event {
   createdAt: string;
   createdBy: string;
   description: string;
-  attachments: EventAttachment[];
+  attachments: any[];
   history: EventHistoryEntry[];
 }
 
@@ -64,37 +99,5 @@ export interface Vehicle {
   brand: string;
   year: string;
   associateId: string;
-  createdAt: string;
-}
-
-export interface Supplier {
-  id: string;
-  name: string;
-  cnpj: string;
-  rating: number;
-  segment: 'Peças' | 'Serviços' | 'Ambos';
-  whatsapp: string;
-  status: 'Ativo' | 'Inativo' | 'Bloqueado';
-}
-
-export interface QuoteCell {
-  price: number;
-  selected: boolean;
-  deadline?: number;
-}
-
-export interface Quotation {
-  id: string;
-  eventId: string;
-  vehiclePlate: string;
-  responsibleBuyer: string;
-  workshop: string;
-  items: { 
-    id: string; 
-    description: string; 
-    quantity: number; 
-    refPrice?: number;
-    prices: Record<string, QuoteCell>;
-  }[];
   createdAt: string;
 }
