@@ -20,20 +20,23 @@ export enum Priority {
   URGENT = 'Urgente'
 }
 
-export interface Associate {
+export interface EventHistoryEntry {
   id: string;
-  name: string;
-  document: string; // CPF/CNPJ
-  type: 'PF' | 'PJ';
+  fromStatus: EventStatus;
+  toStatus: EventStatus;
+  comment: string;
+  user: string;
+  timestamp: string;
 }
 
-export interface Vehicle {
+export interface EventAttachment {
   id: string;
-  plate: string;
-  model: string;
-  brand: string;
-  year: string;
-  associateId: string;
+  name: string;
+  url: string;
+  type: string;
+  size: number;
+  uploadedAt: string;
+  uploadedBy: string;
 }
 
 export interface Event {
@@ -48,6 +51,20 @@ export interface Event {
   createdAt: string;
   createdBy: string;
   description: string;
+  attachments: EventAttachment[];
+  history: EventHistoryEntry[];
+}
+
+export interface Vehicle {
+  id: string;
+  plate: string;
+  renavam: string;
+  chassi: string;
+  model: string;
+  brand: string;
+  year: string;
+  associateId: string;
+  createdAt: string;
 }
 
 export interface Supplier {
@@ -60,42 +77,24 @@ export interface Supplier {
   status: 'Ativo' | 'Inativo' | 'Bloqueado';
 }
 
-export interface Item {
-  id: string;
-  description: string;
-  category: string;
-  code: string;
-}
-
-export interface QuoteItemValue {
-  supplierId: string;
+export interface QuoteCell {
   price: number;
-  deadline: number; // in days
-  observations?: string;
-  isSelected: boolean;
+  selected: boolean;
+  deadline?: number;
 }
 
 export interface Quotation {
   id: string;
   eventId: string;
-  items: { itemId: string; description: string; values: QuoteItemValue[] }[];
-  status: 'Open' | 'Closed' | 'Approved';
-  approvalHash?: string;
-}
-
-export interface PurchaseOrder {
-  id: string;
-  eventId: string;
-  supplierId: string;
-  total: number;
-  status: 'Pendente' | 'Aprovada' | 'Recusada' | 'Entregue';
-  createdAt: string;
-}
-
-export interface Role {
-  name: 'Admin' | 'Gerente' | 'Usuário';
-  permissions: {
-    module: string;
-    action: 'view' | 'manage';
+  vehiclePlate: string;
+  responsibleBuyer: string;
+  workshop: string;
+  items: { 
+    id: string; 
+    description: string; 
+    quantity: number; 
+    refPrice?: number;
+    prices: Record<string, QuoteCell>;
   }[];
+  createdAt: string;
 }
