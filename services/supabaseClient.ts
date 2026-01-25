@@ -7,17 +7,18 @@ const getSafeEnv = (key: string): string => {
   return env[key] || '';
 };
 
-const supabaseUrl = getSafeEnv('VITE_SUPABASE_URL');
-const supabaseAnonKey = getSafeEnv('VITE_SUPABASE_ANON_KEY');
+export const supabaseUrl = getSafeEnv('VITE_SUPABASE_URL');
+export const supabaseAnonKey = getSafeEnv('VITE_SUPABASE_ANON_KEY');
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey && supabaseUrl.startsWith('http'));
 
-// Cliente real ou placeholder
-export const supabase = isSupabaseConfigured 
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : createClient('https://placeholder-project.supabase.co', 'placeholder-key');
+// Cliente Supabase Oficial
+export const supabase = createClient(
+  isSupabaseConfigured ? supabaseUrl : 'https://placeholder.supabase.co',
+  isSupabaseConfigured ? supabaseAnonKey : 'placeholder'
+);
 
-// Helper para persistência em LocalStorage quando offline
+// Fallback robusto para desenvolvimento sem chaves
 export const mockStorage = {
   get: (key: string) => {
     const data = localStorage.getItem(`autoclaims_${key}`);
@@ -25,11 +26,5 @@ export const mockStorage = {
   },
   set: (key: string, value: any) => {
     localStorage.setItem(`autoclaims_${key}`, JSON.stringify(value));
-  },
-  append: (key: string, item: any) => {
-    const list = mockStorage.get(key) || [];
-    const newList = [item, ...list];
-    mockStorage.set(key, newList);
-    return item;
   }
 };

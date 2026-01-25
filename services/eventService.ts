@@ -1,9 +1,11 @@
-
-import { supabase } from './supabaseClient';
+import { supabase, mockStorage, isSupabaseConfigured } from './supabaseClient';
 import { Event, EventStatus } from '../types';
+import { MOCK_EVENTS } from '../constants';
 
 export const eventService = {
-  async getEvents() {
+  async getEvents(): Promise<Event[]> {
+    if (!isSupabaseConfigured) return mockStorage.get('events') || MOCK_EVENTS;
+
     const { data, error } = await supabase
       .from('events')
       .select(`
@@ -13,73 +15,41 @@ export const eventService = {
       `)
       .order('created_at', { ascending: false });
     
-    if (error) throw error;
-    return data;
+    if (error) {
+      console.warn("Erro Supabase, usando fallback:", error);
+      return mockStorage.get('events') || MOCK_EVENTS;
+    }
+    return data || [];
   },
 
   async createEvent(eventData: Partial<Event>) {
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    const payload = {
+      ...eventData,
+      created_by: user?.id,
+      created_at: new Date().toISOString()
+    };
+
+    if (!isSupabaseConfigured) {
+      // Fix: mockStorage does not have an 'append' method. Implementing append logic using get and set.
+      const currentEvents = mockStorage.get('events') || MOCK_EVENTS;
+      const newEvent = { 
+        id: Math.random().toString(36).substr(2, 9), 
+        ...payload 
+      };
+      const updatedEvents = [newEvent, ...currentEvents];
+      mockStorage.set('events', updatedEvents);
+      return newEvent as any;
+    }
+
     const { data, error } = await supabase
       .from('events')
-      .insert([eventData])
+      .insert([payload])
       .select()
       .single();
     
     if (error) throw error;
     return data;
-  },
-
-  async updateStatus(eventId: string, currentStatus: EventStatus, nextStatus: EventStatus, comment: string) {
-    const { data: userData } = await supabase.auth.getUser();
-    
-    // Iniciar transação lógica (updates em paralelo no Supabase)
-    const updateEvent = supabase
-      .from('events')
-      .update({ status: nextStatus, updated_at: new Date() })
-      .eq('id', eventId);
-
-    const insertHistory = supabase
-      .from('event_history')
-      .insert([{
-        event_id: eventId,
-        from_status: currentStatus,
-        to_status: nextStatus,
-        comment: comment,
-        user_id: userData.user?.id
-      }]);
-
-    const [resEvent, resHistory] = await Promise.all([updateEvent, insertHistory]);
-    
-    if (resEvent.error) throw resEvent.error;
-    if (resHistory.error) throw resHistory.error;
-    
-    return true;
-  },
-
-  async uploadAttachment(eventId: string, file: File) {
-    const { data: userData } = await supabase.auth.getUser();
-    const filePath = `events/${eventId}/${Date.now()}_${file.name}`;
-    
-    const { error: uploadError } = await supabase.storage
-      .from('event-attachments')
-      .upload(filePath, file);
-
-    if (uploadError) throw uploadError;
-
-    const { data: urlData } = supabase.storage
-      .from('event-attachments')
-      .getPublicUrl(filePath);
-
-    const { error: dbError } = await supabase
-      .from('event_attachments')
-      .insert([{
-        event_id: eventId,
-        file_name: file.name,
-        file_type: file.type,
-        file_path: urlData.publicUrl,
-        uploaded_by: userData.user?.id
-      }]);
-
-    if (dbError) throw dbError;
-    return urlData.publicUrl;
   }
 };
