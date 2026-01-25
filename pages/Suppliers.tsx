@@ -18,7 +18,6 @@ const Suppliers: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isLookingUp, setIsLookingUp] = useState(false);
   
-  // Estados de Filtros
   const [filterSegment, setFilterSegment] = useState('Todos');
   const [filterStatus, setFilterStatus] = useState('Todos');
   const [filterCity, setFilterCity] = useState('');
@@ -64,17 +63,27 @@ const Suppliers: React.FC = () => {
   }
 
   const handleCNPJLookup = async () => {
-    if (formData.cnpj.length < 14) return;
+    const cleanCnpj = formData.cnpj.replace(/\D/g, '');
+    if (cleanCnpj.length !== 14) return;
+    
     setIsLookingUp(true);
-    // Simulação de Lookup de CNPJ
-    setTimeout(() => {
-      setFormData(prev => ({
-        ...prev,
-        name: prev.cnpj === '12345678000190' ? 'AUTO PEÇAS EXEMPLO LTDA' : prev.name,
-        city: prev.cnpj === '12345678000190' ? 'SÃO PAULO' : prev.city
-      }));
+    try {
+      // Consulta real via BrasilAPI para automatizar o preenchimento
+      const response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cleanCnpj}`);
+      if (response.ok) {
+        const data = await response.json();
+        setFormData(prev => ({
+          ...prev,
+          name: data.razao_social || data.nome_fantasia || prev.name,
+          city: data.municipio || prev.city,
+          email: data.email || prev.email,
+        }));
+      }
+    } catch (error) {
+      console.error("Erro no lookup de CNPJ:", error);
+    } finally {
       setIsLookingUp(false);
-    }, 1000);
+    }
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -115,7 +124,6 @@ const Suppliers: React.FC = () => {
     });
   }, [suppliers, searchTerm, filterSegment, filterStatus, filterCity]);
 
-  // Mock de histórico de preços para o gráfico
   const priceHistoryData = [
     { name: 'Jan', price: 400 },
     { name: 'Fev', price: 420 },
@@ -126,7 +134,6 @@ const Suppliers: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Barra de Busca e Filtros Avançados */}
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
         <div className="flex flex-col md:flex-row gap-4">
           <div className="relative flex-1">
@@ -296,7 +303,6 @@ const Suppliers: React.FC = () => {
         </div>
       )}
 
-      {/* Modal de Detalhe com Histórico de Preços */}
       {selectedSupplier && !isModalOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setSelectedSupplier(null)}></div>
@@ -313,7 +319,6 @@ const Suppliers: React.FC = () => {
             </div>
             
             <div className="flex-1 overflow-y-auto p-10 space-y-12">
-               {/* Grid de Informações Rápidas */}
                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Avaliação Geral</p>
@@ -334,7 +339,6 @@ const Suppliers: React.FC = () => {
                   </div>
                </div>
 
-               {/* Histórico de Preços */}
                <div className="space-y-6">
                   <div className="flex items-center justify-between">
                      <h3 className="text-lg font-black text-slate-800 flex items-center gap-3">
@@ -362,32 +366,34 @@ const Suppliers: React.FC = () => {
         </div>
       )}
 
-      {/* Modal de Cadastro/Edição */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
           <div className="relative bg-white w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in fade-in duration-200">
-            <div className="p-8 border-b border-slate-100 flex justify-between bg-slate-50/50">
+            <div className="p-8 border-b border-slate-50 flex justify-between">
               <div className="flex items-center gap-4">
-                 <div className="bg-blue-600 p-3 rounded-2xl text-white shadow-lg shadow-blue-600/20"><Plus size={24}/></div>
+                 <div className="bg-blue-600 p-3 rounded-2xl text-white shadow-lg shadow-blue-600/30 flex items-center justify-center w-14 h-14">
+                   <Plus size={32}/>
+                 </div>
                  <div>
-                    <h3 className="text-2xl font-black text-slate-800 tracking-tight">{selectedSupplier ? 'Editar Parceiro' : 'Homologar Parceiro'}</h3>
-                    <p className="text-xs text-slate-500 font-medium tracking-wide">Cadastro oficial de fornecedores do ecossistema.</p>
+                    <h3 className="text-2xl font-black text-slate-800 tracking-tight leading-none">Homologar Parceiro</h3>
+                    <p className="text-xs text-slate-400 font-medium mt-1">Cadastro oficial de fornecedores do ecossistema.</p>
                  </div>
               </div>
-              <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors"><X size={24}/></button>
+              <button onClick={() => setIsModalOpen(false)} className="p-1 text-slate-300 hover:text-slate-500 transition-colors">
+                <X size={28}/>
+              </button>
             </div>
-            <form onSubmit={handleSave} className="p-10 space-y-8">
-              <div className="grid grid-cols-2 gap-8">
+            <form onSubmit={handleSave} className="p-10 space-y-6">
+              <div className="grid grid-cols-2 gap-x-8 gap-y-6">
                 
-                {/* CNPJ com Lookup */}
                 <div className="col-span-2">
                   <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">CNPJ / CPF *</label>
                   <div className="relative">
                     <Shield className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                     <input 
                       required 
-                      className="w-full pl-12 pr-12 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 transition-all text-sm" 
+                      className="w-full pl-12 pr-12 py-4 bg-[#F8FAFC] border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 transition-all text-sm" 
                       value={formData.cnpj} 
                       onChange={e => setFormData({...formData, cnpj: e.target.value.replace(/\D/g, '')})} 
                       onBlur={handleCNPJLookup}
@@ -399,12 +405,12 @@ const Suppliers: React.FC = () => {
 
                 <div className="col-span-2">
                   <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Razão Social / Nome Fantasia *</label>
-                  <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 transition-all text-sm" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                  <input required className="w-full p-4 bg-[#F8FAFC] border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 transition-all text-sm" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
                 </div>
 
                 <div>
                   <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Segmento de Atuação</label>
-                  <select className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 transition-all text-sm" value={formData.segment} onChange={e => setFormData({...formData, segment: e.target.value as any})}>
+                  <select className="w-full p-4 bg-[#F8FAFC] border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 transition-all text-sm appearance-none" value={formData.segment} onChange={e => setFormData({...formData, segment: e.target.value as any})}>
                     <option value="Peças">Peças</option>
                     <option value="Serviços">Serviços</option>
                     <option value="Ambos">Ambos</option>
@@ -413,26 +419,28 @@ const Suppliers: React.FC = () => {
 
                 <div>
                   <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Avaliação (Rating)</label>
-                  <div className="flex items-center gap-1.5 p-3.5 bg-slate-50 border border-slate-100 rounded-2xl">
-                    {[1,2,3,4,5].map(star => (
-                      <button 
-                        key={star} 
-                        type="button" 
-                        onClick={() => setFormData({...formData, rating: star})}
-                        className="transition-transform active:scale-90"
-                      >
-                        <Star size={20} fill={star <= formData.rating ? "#f59e0b" : "none"} className={star <= formData.rating ? "text-amber-500" : "text-slate-300"} />
-                      </button>
-                    ))}
-                    <span className="ml-2 font-black text-slate-800 text-sm">{formData.rating}.0</span>
+                  <div className="flex items-center gap-2 p-4 bg-[#F8FAFC] border border-slate-100 rounded-2xl">
+                    <div className="flex items-center gap-1">
+                      {[1,2,3,4,5].map(star => (
+                        <button 
+                          key={star} 
+                          type="button" 
+                          onClick={() => setFormData({...formData, rating: star})}
+                          className="transition-transform active:scale-90"
+                        >
+                          <Star size={20} fill={star <= formData.rating ? "#f59e0b" : "none"} className={star <= formData.rating ? "text-amber-500" : "text-slate-200"} />
+                        </button>
+                      ))}
+                    </div>
+                    <span className="ml-1 font-black text-slate-700 text-sm">{formData.rating}.0</span>
                   </div>
                 </div>
 
                 <div>
                   <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Status</label>
                   <select 
-                    className={`w-full p-4 rounded-2xl font-black outline-none focus:ring-4 focus:ring-blue-500/5 transition-all text-sm border ${
-                      formData.status === 'Ativo' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'
+                    className={`w-full p-4 rounded-2xl font-black outline-none focus:ring-4 focus:ring-blue-500/5 transition-all text-sm border appearance-none ${
+                      formData.status === 'Ativo' ? 'bg-green-50/50 text-green-700 border-green-100' : 'bg-red-50/50 text-red-700 border-red-100'
                     }`}
                     value={formData.status} 
                     onChange={e => setFormData({...formData, status: e.target.value as any})}
@@ -445,7 +453,7 @@ const Suppliers: React.FC = () => {
 
                 <div>
                   <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Cidade de Operação *</label>
-                  <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 transition-all text-sm" value={formData.city} onChange={e => setFormData({...formData, city: e.target.value.toUpperCase()})} />
+                  <input required className="w-full p-4 bg-[#F8FAFC] border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 transition-all text-sm" value={formData.city} onChange={e => setFormData({...formData, city: e.target.value.toUpperCase()})} />
                 </div>
 
                 {(formData.status === 'Bloqueado' || formData.status === 'Inativo') && (
@@ -462,10 +470,10 @@ const Suppliers: React.FC = () => {
                 )}
               </div>
 
-              <div className="flex justify-end gap-3 pt-8 border-t border-slate-100">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-8 py-3 text-slate-400 font-black uppercase text-[10px] tracking-widest hover:text-slate-600 transition-colors">Cancelar</button>
-                <button type="submit" className="px-12 py-4 bg-blue-600 text-white rounded-[20px] font-black shadow-xl shadow-blue-500/20 uppercase text-xs tracking-widest hover:bg-blue-700 transition-all flex items-center gap-2">
-                   {selectedSupplier ? 'Salvar Edição' : 'Finalizar Cadastro'}
+              <div className="flex justify-end gap-6 pt-6 border-t border-slate-50 items-center">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="text-slate-400 font-black uppercase text-[12px] tracking-widest hover:text-slate-600 transition-colors">CANCELAR</button>
+                <button type="submit" className="px-12 py-4 bg-blue-600 text-white rounded-full font-black shadow-xl shadow-blue-600/30 uppercase text-xs tracking-widest hover:bg-blue-700 transition-all flex items-center gap-2">
+                   {selectedSupplier ? 'SALVAR EDIÇÃO' : 'FINALIZAR CADASTRO'}
                 </button>
               </div>
             </form>

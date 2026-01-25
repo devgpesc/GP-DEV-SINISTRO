@@ -4,7 +4,7 @@ import {
   Plus, Search, MoreVertical, Eye, MessageSquare, FileCheck, X, AlertCircle, 
   Upload, FileText, Image as ImageIcon, Trash2, Download, User as UserIcon, 
   Car as CarIcon, Tag, ChevronRight, History, Settings2, ShieldAlert,
-  Hash, Zap, Edit3, Clock, Paperclip, Filter
+  Hash, Zap, Edit3, Clock, Paperclip, Filter, ExternalLink
 } from 'lucide-react';
 import { MOCK_EVENTS, MOCK_VEHICLES, MOCK_ASSOCIATES } from '../constants';
 import { EventStatus, EventType, Priority, Event, Category } from '../types';
@@ -45,12 +45,14 @@ const PriorityBadge = ({ priority }: { priority: Priority }) => {
 
 const Events: React.FC = () => {
   const [events, setEvents] = useState<Event[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusChange, setStatusChange] = useState<{ eventId: string, current: EventStatus, next: EventStatus } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Categorias solicitadas
+  const PREDEFINED_CATEGORIES = ['Mecânica', 'Elétrica', 'Funilaria', 'Seguro', 'Outros'];
 
   const [formData, setFormData] = useState({
     protocolMode: 'auto' as 'auto' | 'manual',
@@ -61,21 +63,12 @@ const Events: React.FC = () => {
     vehicleId: '',
     associateId: '',
     description: '',
-    attachments: [] as File[]
+    attachments: [] as { name: string, type: string, size: number, data?: string }[]
   });
 
   useEffect(() => {
     const savedEvents = mockStorage.get('events') || MOCK_EVENTS.map(e => ({ ...e, history: [], attachments: [] }));
     setEvents(savedEvents);
-
-    const savedCategories = mockStorage.get('app_categories') || [
-      { id: '1', name: 'Funilaria Pesada', color: 'red' },
-      { id: '2', name: 'Funilaria Leve', color: 'orange' },
-      { id: '3', name: 'Mecânica', color: 'blue' },
-      { id: '4', name: 'Elétrica', color: 'yellow' },
-      { id: '5', name: 'Periféricos / Vidros', color: 'cyan' },
-    ];
-    setCategories(savedCategories);
   }, []);
 
   const nextAutoProtocol = useMemo(() => {
@@ -84,11 +77,25 @@ const Events: React.FC = () => {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      const newFiles = Array.from(e.target.files);
-      setFormData(prev => ({
-        ...prev,
-        attachments: [...prev.attachments, ...newFiles]
-      }));
+      // Explicitly typing newFiles as File[] to resolve 'unknown' property errors when accessing file.name, file.type, etc.
+      const newFiles: File[] = Array.from(e.target.files);
+      
+      newFiles.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          setFormData(prev => ({
+            ...prev,
+            attachments: [...prev.attachments, {
+              name: file.name,
+              type: file.type,
+              size: file.size,
+              data: event.target?.result as string
+            }]
+          }));
+        };
+        // Explicitly ensuring file is treated as Blob
+        reader.readAsDataURL(file);
+      });
     }
   };
 
@@ -109,31 +116,20 @@ const Events: React.FC = () => {
       return;
     }
 
-    if (!formData.category) {
-      alert("A categoria é obrigatória. Selecione uma opção padronizada.");
-      return;
-    }
-
-    const attachmentsMetadata = formData.attachments.map(f => ({
-      name: f.name,
-      type: f.type,
-      size: f.size,
-      lastModified: f.lastModified
-    }));
-
+    // A categoria agora é opcional conforme solicitado
     const newEvent: Event = {
       id: Math.random().toString(36).substr(2, 9),
       protocol: protocol,
       type: formData.type,
       priority: formData.priority,
       status: EventStatus.WAITING,
-      category: formData.category,
+      category: formData.category || 'Não categorizado',
       vehicleId: formData.vehicleId || 'v1',
       associateId: formData.associateId || 'a1',
       createdAt: new Date().toISOString(),
       createdBy: 'Admin Master',
       description: formData.description,
-      attachments: attachmentsMetadata,
+      attachments: formData.attachments,
       history: []
     };
 
@@ -187,7 +183,6 @@ const Events: React.FC = () => {
     const lowSearch = searchTerm.toLowerCase();
     
     return events.filter(e => {
-      // Cruzar dados para filtro avançado
       const associate = MOCK_ASSOCIATES.find(a => a.id === e.associateId);
       const vehicle = MOCK_VEHICLES.find(v => v.id === e.vehicleId);
       
@@ -292,7 +287,6 @@ const Events: React.FC = () => {
             <form onSubmit={handleSave} className="p-8 space-y-6">
               <div className="grid grid-cols-2 gap-6">
                 
-                {/* Protocolo Section */}
                 <div className="col-span-2 p-5 bg-blue-50/50 rounded-3xl border border-blue-100 flex flex-col md:flex-row gap-4">
                   <div className="flex-1">
                     <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Modo de Protocolo</label>
@@ -351,17 +345,16 @@ const Events: React.FC = () => {
                 </div>
 
                 <div className="col-span-2">
-                  <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Categoria Padronizada <span className="text-red-500">*</span></label>
+                  <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Categoria (Opcional)</label>
                   <div className="relative">
                      <Tag className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                      <select 
-                        required
                         className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-blue-500/20 font-black text-slate-800"
                         value={formData.category}
                         onChange={e => setFormData({...formData, category: e.target.value})}
                      >
                         <option value="">Selecione a Categoria...</option>
-                        {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                        {PREDEFINED_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                      </select>
                   </div>
                 </div>
@@ -450,20 +443,46 @@ const Events: React.FC = () => {
                   </div>
                   
                   {selectedEvent.attachments && selectedEvent.attachments.length > 0 && (
-                    <div className="space-y-4">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Documentação Anexa ({selectedEvent.attachments.length})</p>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                        {selectedEvent.attachments.map((att, idx) => (
-                          <div key={idx} className="p-5 bg-white border border-slate-100 rounded-3xl shadow-sm flex items-center gap-4 hover:border-blue-200 transition-all cursor-pointer group">
-                            <div className="p-3 bg-blue-50 text-blue-500 rounded-2xl group-hover:bg-blue-600 group-hover:text-white transition-all">
-                              <Paperclip size={20} />
+                    <div className="space-y-6">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        <Paperclip size={16}/> Documentação e Mídia ({selectedEvent.attachments.length})
+                      </p>
+                      
+                      {/* Visual Gallery */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
+                        {selectedEvent.attachments.map((att, idx) => {
+                          const isImage = att.type.startsWith('image/');
+                          return (
+                            <div key={idx} className="group relative bg-slate-50 rounded-3xl border border-slate-100 overflow-hidden shadow-sm transition-all hover:shadow-md hover:border-blue-200">
+                              {isImage ? (
+                                <div className="aspect-square w-full relative overflow-hidden bg-slate-200">
+                                  <img 
+                                    src={att.data || 'https://images.unsplash.com/photo-1517649763962-0c623066013b?q=80&w=400&h=400&fit=crop'} 
+                                    alt={att.name} 
+                                    className="w-full h-full object-cover transition-transform group-hover:scale-110"
+                                  />
+                                  <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                                    <button className="p-2.5 bg-white text-slate-900 rounded-full shadow-lg hover:bg-blue-600 hover:text-white transition-all"><Eye size={18}/></button>
+                                    <button className="p-2.5 bg-white text-slate-900 rounded-full shadow-lg hover:bg-blue-600 hover:text-white transition-all"><Download size={18}/></button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="aspect-square w-full flex flex-col items-center justify-center p-6 text-center gap-3 bg-white">
+                                   <div className="p-4 bg-blue-50 text-blue-600 rounded-3xl shadow-inner">
+                                      <FileText size={32} />
+                                   </div>
+                                   <div className="space-y-1">
+                                      <p className="text-xs font-black text-slate-800 line-clamp-1 px-2">{att.name}</p>
+                                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{att.type.split('/')[1]}</p>
+                                   </div>
+                                   <button className="mt-2 w-full py-2.5 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-blue-600 transition-colors shadow-lg shadow-slate-900/20">
+                                      <Download size={14}/> Baixar
+                                   </button>
+                                </div>
+                              )}
                             </div>
-                            <div className="overflow-hidden">
-                              <p className="text-sm font-bold text-slate-700 truncate">{att.name}</p>
-                              <p className="text-[10px] text-slate-400 font-black uppercase">Baixar</p>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}

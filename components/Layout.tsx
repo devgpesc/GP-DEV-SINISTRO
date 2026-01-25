@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, FileText, ShoppingCart, Users, Truck, 
-  BarChart3, Settings, Package, Car, Bell, Search, UserCircle, X, ShoppingBag, Clock
+  BarChart3, Settings, Package, Car, Bell, Search, UserCircle, X, ShoppingBag, Clock, Trash2, CheckCheck
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -27,11 +27,19 @@ const NavItem = ({ to, icon: Icon, label, active }: { to: string, icon: any, lab
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
   const [showNotifications, setShowNotifications] = useState(false);
-
-  const notifications = [
+  const [notifications, setNotifications] = useState([
     { id: 1, title: 'Aprovação Pendente', desc: 'OC-2024-001 aguardando sua assinatura.', time: '10 min', icon: ShoppingBag, color: 'blue' },
     { id: 2, title: 'Prazo de Cotação', desc: 'EVT-2024-012 vence em 1 hora.', time: '1h', icon: Clock, color: 'amber' },
-  ];
+    { id: 3, title: 'Entrega Realizada', desc: 'Fornecedor TAURO confirmou entrega.', time: '2h', icon: Truck, color: 'green' },
+  ]);
+
+  const clearAll = () => {
+    setNotifications([]);
+  };
+
+  const removeNotification = (id: number) => {
+    setNotifications(notifications.filter(n => n.id !== id));
+  };
 
   return (
     <div className="flex min-h-screen bg-slate-50">
@@ -67,39 +75,110 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         <header className="flex justify-between items-center mb-8">
           <div><h2 className="text-2xl font-bold text-slate-800">Seja bem-vindo, Gestor</h2><p className="text-slate-500">Operações e Inteligência em tempo real.</p></div>
           <div className="flex items-center gap-4 relative">
-            <button 
-              onClick={() => setShowNotifications(!showNotifications)}
-              className="p-2 text-slate-400 hover:text-blue-600 relative transition-all"
-            >
-              <Bell size={24} />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-            </button>
-            {showNotifications && (
-              <div className="absolute right-0 top-full mt-2 w-80 bg-white border border-slate-200 shadow-2xl rounded-2xl z-50 animate-in fade-in slide-in-from-top-2">
-                 <div className="p-4 border-b border-slate-100 flex justify-between items-center">
-                    <h4 className="font-black text-xs uppercase text-slate-400 tracking-widest">Notificações</h4>
-                    <button onClick={() => setShowNotifications(false)}><X size={16}/></button>
-                 </div>
-                 <div className="max-h-64 overflow-y-auto">
-                    {notifications.map(n => (
-                      <div key={n.id} className="p-4 hover:bg-slate-50 border-b border-slate-50 flex gap-3 transition-all cursor-pointer">
-                         <div className={`p-2 rounded-lg bg-${n.color}-50 text-${n.color}-600`}><n.icon size={18}/></div>
-                         <div>
-                            <p className="text-xs font-bold text-slate-800">{n.title}</p>
-                            <p className="text-[11px] text-slate-500 line-clamp-1">{n.desc}</p>
-                            <p className="text-[10px] text-slate-400 mt-1">{n.time} atrás</p>
-                         </div>
+            <div className="relative">
+              <button 
+                onClick={() => setShowNotifications(!showNotifications)}
+                className={`p-3 rounded-2xl transition-all relative group ${showNotifications ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'bg-white text-slate-400 hover:text-blue-600 border border-slate-200 shadow-sm'}`}
+              >
+                <Bell size={22} className={notifications.length > 0 && !showNotifications ? 'animate-[bell-swing_2s_ease-in-out_infinite]' : ''} />
+                {notifications.length > 0 && (
+                  <>
+                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-black rounded-full border-2 border-white flex items-center justify-center animate-bounce">
+                      {notifications.length}
+                    </span>
+                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full animate-ping opacity-20"></span>
+                  </>
+                )}
+              </button>
+
+              {showNotifications && (
+                <div className="absolute right-0 top-full mt-4 w-96 bg-white border border-slate-200 shadow-2xl rounded-[32px] z-50 overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300">
+                  <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
+                    <div>
+                      <h4 className="font-black text-xs uppercase tracking-[0.2em] text-blue-400">Notificações</h4>
+                      <p className="text-[10px] font-medium text-slate-400 mt-0.5">Você tem {notifications.length} alertas pendentes</p>
+                    </div>
+                    {notifications.length > 0 && (
+                      <button 
+                        onClick={clearAll}
+                        className="text-[10px] font-black uppercase bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg flex items-center gap-2 transition-all"
+                      >
+                        <CheckCheck size={14}/> Limpar Tudo
+                      </button>
+                    )}
+                  </div>
+                  
+                  <div className="max-h-[400px] overflow-y-auto custom-scrollbar bg-slate-50/30">
+                    {notifications.length > 0 ? (
+                      notifications.map(n => (
+                        <div key={n.id} className="p-5 hover:bg-white border-b border-slate-100 flex gap-4 transition-all cursor-pointer group relative">
+                          <div className={`p-3 rounded-2xl bg-${n.color}-50 text-${n.color}-600 border border-${n.color}-100 shadow-sm h-fit`}>
+                            <n.icon size={20}/>
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex justify-between items-start">
+                              <p className="text-xs font-black text-slate-800 tracking-tight">{n.title}</p>
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{n.time} atrás</span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">{n.desc}</p>
+                            <div className="mt-3 flex gap-2">
+                               <button className="text-[9px] font-black uppercase text-blue-600 hover:underline">Ver Detalhes</button>
+                               <span className="text-slate-200 text-[10px]">|</span>
+                               <button onClick={(e) => { e.stopPropagation(); removeNotification(n.id); }} className="text-[9px] font-black uppercase text-slate-400 hover:text-red-500">Ignorar</button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="py-20 text-center flex flex-col items-center gap-4">
+                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center text-slate-300">
+                           <Bell size={24}/>
+                        </div>
+                        <div>
+                          <p className="text-xs font-black text-slate-800 uppercase tracking-widest">Tudo limpo!</p>
+                          <p className="text-[10px] text-slate-400 font-medium mt-1">Nenhuma notificação nova no momento.</p>
+                        </div>
                       </div>
-                    ))}
-                 </div>
-              </div>
-            )}
+                    )}
+                  </div>
+                  
+                  {notifications.length > 0 && (
+                    <div className="p-4 bg-white border-t border-slate-100 text-center">
+                      <button className="text-[10px] font-black uppercase text-slate-400 hover:text-blue-600 tracking-[0.2em] transition-all">Ver Histórico Completo</button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            
             <div className="h-10 w-px bg-slate-200 mx-2"></div>
             <div className="text-right"><p className="text-sm font-medium">15 de Maio, 2024</p><p className="text-xs text-slate-400">Status: Operacional</p></div>
           </div>
         </header>
         {children}
       </main>
+
+      <style>{`
+        @keyframes bell-swing {
+          0%, 100% { transform: rotate(0); }
+          5%, 15% { transform: rotate(10deg); }
+          10%, 20% { transform: rotate(-10deg); }
+          25% { transform: rotate(0); }
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #e2e8f0;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #cbd5e1;
+        }
+      `}</style>
     </div>
   );
 };
