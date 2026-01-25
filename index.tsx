@@ -1,3 +1,4 @@
+
 import React, { Component, ReactNode } from 'react';
 import ReactDOM from 'react-dom/client';
 
@@ -24,9 +25,13 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   // Fix: Explicitly declare state to resolve Property 'state' does not exist error on lines 28 and 35
   public state: ErrorBoundaryState = { hasError: false };
 
+  // Fix: Explicitly declare props to resolve Property 'props' does not exist error on line 37
+  public props: ErrorBoundaryProps;
+
   // Fix: Use standard constructor to ensure proper initialization of props and resolve Property 'props' does not exist error on line 36
   constructor(props: ErrorBoundaryProps) {
     super(props);
+    this.props = props;
   }
 
   static getDerivedStateFromError() { return { hasError: true }; }

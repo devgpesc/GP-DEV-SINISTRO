@@ -3,13 +3,14 @@ import React, { useState } from 'react';
 import { 
   Plus, Search, ChevronRight, ArrowLeft, Send, CheckCircle, 
   FileText, Package, Users, BarChart3, Clock, Trash2, Settings,
-  Zap, Mail, MessageCircle, FileDown, Rocket
+  Zap, Mail, MessageCircle, FileDown, Rocket, LayoutGrid, List
 } from 'lucide-react';
 import { MOCK_SUPPLIERS, MOCK_EVENTS } from '../constants';
 import MatrixTable from '../components/MatrixTable';
 
 const Quotations: React.FC = () => {
   const [step, setStep] = useState(1); // 1: List, 2: Wizard, 3: Matrix
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [wizardStep, setWizardStep] = useState(1); // 1: Event/Items, 2: Suppliers, 3: Send Mode
   
   const [newQuote, setNewQuote] = useState({
@@ -18,6 +19,13 @@ const Quotations: React.FC = () => {
     suppliers: [] as string[],
     sendMode: 'auto' as 'auto' | 'manual'
   });
+
+  // Mock de cotações existentes para a listagem
+  const mockQuotes = [
+    { id: '1', code: 'COT-2024-0001', eventRef: 'EVT-2024-001', status: 'Em Aberto', date: 'Há 2 dias', suppliers: 3 },
+    { id: '2', code: 'COT-2024-0002', eventRef: 'EVT-2024-001', status: 'Finalizada', date: 'Há 2 dias', suppliers: 3 },
+    { id: '3', code: 'COT-2024-0003', eventRef: 'EVT-2024-005', status: 'Em Aberto', date: 'Hoje', suppliers: 2 },
+  ];
 
   // Itens mock do catálogo para o Wizard
   const catalogMock = [
@@ -43,9 +51,9 @@ const Quotations: React.FC = () => {
 
   // Renderizador de Lista de Cotações (Step 1)
   const renderList = () => (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-        <div className="relative flex-1">
+    <div className="space-y-6 animate-in fade-in duration-300">
+      <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+        <div className="relative flex-1 w-full">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
           <input 
             type="text" 
@@ -53,46 +61,114 @@ const Quotations: React.FC = () => {
             className="w-full pl-12 pr-4 py-3 bg-slate-50 rounded-2xl outline-none border border-slate-100 text-sm font-medium focus:ring-2 focus:ring-blue-500/20"
           />
         </div>
-        <button 
-          onClick={() => setStep(2)}
-          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 transition-all shadow-xl shadow-blue-600/20"
-        >
-          <Plus size={20} /> Nova Cotação
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {[1, 2].map(i => (
-          <div key={i} className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200 hover:border-blue-200 transition-all group cursor-pointer" onClick={() => setStep(3)}>
-            <div className="flex justify-between items-start mb-6">
-              <div className="bg-blue-50 text-blue-600 p-4 rounded-3xl shadow-sm">
-                <BarChart3 size={28} />
-              </div>
-              <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] border ${i === 1 ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-green-50 text-green-600 border-green-100'}`}>
-                {i === 1 ? 'Em Aberto' : 'Finalizada'}
-              </span>
-            </div>
-            <h3 className="font-black text-slate-800 text-xl tracking-tight">COT-2024-000{i}</h3>
-            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-6">Ref: EVT-2024-001</p>
-            
-            <div className="flex items-center gap-3 mb-8 p-3 bg-slate-50 rounded-2xl">
-              <Clock size={16} className="text-amber-500" />
-              <span className="text-[10px] text-slate-500 font-black uppercase">Criada há 2 dias</span>
-            </div>
-
-            <div className="flex justify-between items-center pt-6 border-t border-slate-50">
-               <div className="flex -space-x-3">
-                  {[1, 2, 3].map(j => (
-                    <div key={j} className="w-10 h-10 rounded-full border-4 border-white bg-slate-200 flex items-center justify-center text-[10px] font-black shadow-sm">S{j}</div>
-                  ))}
-               </div>
-               <div className="flex items-center gap-2 text-blue-600 font-black text-[10px] uppercase tracking-widest group-hover:translate-x-1 transition-all">
-                 Analisar <ChevronRight size={18} />
-               </div>
-            </div>
+        
+        <div className="flex items-center gap-3">
+          <div className="flex bg-slate-100 p-1 rounded-xl">
+            <button 
+              onClick={() => setViewMode('grid')} 
+              className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+              title="Ver em Cards"
+            >
+              <LayoutGrid size={18}/>
+            </button>
+            <button 
+              onClick={() => setViewMode('list')} 
+              className={`p-2 rounded-lg transition-all ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+              title="Ver em Lista"
+            >
+              <List size={18}/>
+            </button>
           </div>
-        ))}
+
+          <button 
+            onClick={() => { setStep(2); setWizardStep(1); }}
+            className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 transition-all shadow-xl shadow-blue-600/20"
+          >
+            <Plus size={20} /> Nova Cotação
+          </button>
+        </div>
       </div>
+
+      {viewMode === 'grid' ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {mockQuotes.map(quote => (
+            <div key={quote.id} className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200 hover:border-blue-200 transition-all group cursor-pointer" onClick={() => setStep(3)}>
+              <div className="flex justify-between items-start mb-6">
+                <div className="bg-blue-50 text-blue-600 p-4 rounded-3xl shadow-sm">
+                  <BarChart3 size={28} />
+                </div>
+                <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] border ${quote.status === 'Em Aberto' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-green-50 text-green-600 border-green-100'}`}>
+                  {quote.status}
+                </span>
+              </div>
+              <h3 className="font-black text-slate-800 text-xl tracking-tight">{quote.code}</h3>
+              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-6">Ref: {quote.eventRef}</p>
+              
+              <div className="flex items-center gap-3 mb-8 p-3 bg-slate-50 rounded-2xl">
+                <Clock size={16} className="text-amber-500" />
+                <span className="text-[10px] text-slate-500 font-black uppercase">Criada {quote.date}</span>
+              </div>
+
+              <div className="flex justify-between items-center pt-6 border-t border-slate-50">
+                 <div className="flex -space-x-3">
+                    {Array.from({ length: quote.suppliers }).map((_, j) => (
+                      <div key={j} className="w-10 h-10 rounded-full border-4 border-white bg-slate-200 flex items-center justify-center text-[10px] font-black shadow-sm">S{j+1}</div>
+                    ))}
+                 </div>
+                 <div className="flex items-center gap-2 text-blue-600 font-black text-[10px] uppercase tracking-widest group-hover:translate-x-1 transition-all">
+                   Analisar <ChevronRight size={18} />
+                 </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm">
+          <table className="w-full text-left">
+            <thead className="bg-slate-50 border-b border-slate-100">
+              <tr>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Cotação</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Referência Evento</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Data de Criação</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Parceiros</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {mockQuotes.map(quote => (
+                <tr key={quote.id} className="hover:bg-slate-50/50 transition-colors group cursor-pointer" onClick={() => setStep(3)}>
+                  <td className="px-8 py-5">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><BarChart3 size={16}/></div>
+                      <p className="font-black text-slate-800">{quote.code}</p>
+                    </div>
+                  </td>
+                  <td className="px-8 py-5 font-bold text-slate-500 text-sm">{quote.eventRef}</td>
+                  <td className="px-8 py-5">
+                    <p className="text-xs font-bold text-slate-600 flex items-center gap-2"><Clock size={14} className="text-slate-400"/> {quote.date}</p>
+                  </td>
+                  <td className="px-8 py-5">
+                    <div className="flex -space-x-2">
+                       {Array.from({ length: quote.suppliers }).map((_, j) => (
+                         <div key={j} className="w-7 h-7 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-[8px] font-black shadow-sm" title={`Fornecedor ${j+1}`}>S{j+1}</div>
+                       ))}
+                    </div>
+                  </td>
+                  <td className="px-8 py-5">
+                    <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${quote.status === 'Em Aberto' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-green-50 text-green-600 border-green-100'}`}>
+                      {quote.status}
+                    </span>
+                  </td>
+                  <td className="px-8 py-5 text-right">
+                    <button className="p-2.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><ChevronRight size={20}/></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 
