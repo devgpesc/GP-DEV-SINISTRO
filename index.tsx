@@ -1,5 +1,4 @@
-
-import React from 'react';
+import React, { Component, ReactNode } from 'react';
 import ReactDOM from 'react-dom/client';
 
 // SHIM GLOBAL ABSOLUTO - DEVE SER O PRIMEIRO CÓDIGO A EXECUTAR
@@ -12,7 +11,7 @@ import App from './App.tsx';
 
 interface ErrorBoundaryProps {
   // Fix: Make children optional to resolve "Property 'children' is missing" errors in some TS configurations
-  children?: React.ReactNode;
+  children?: ReactNode;
 }
 
 interface ErrorBoundaryState {
@@ -21,17 +20,19 @@ interface ErrorBoundaryState {
 
 // Simples Error Boundary para evitar tela branca total
 // Use the Component type directly from React to ensure proper generic binding
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Fix: Use standard constructor to ensure proper initialization of props and state and resolve property access issues
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Fix: Explicitly declare state to resolve Property 'state' does not exist error on lines 28 and 35
+  public state: ErrorBoundaryState = { hasError: false };
+
+  // Fix: Use standard constructor to ensure proper initialization of props and resolve Property 'props' does not exist error on line 36
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false };
   }
 
   static getDerivedStateFromError() { return { hasError: true }; }
 
   render() {
-    // Explicitly destructure from this to help TS inference if needed
+    // Explicitly destructure from this to help TS inference
     const { hasError } = this.state;
     const { children } = this.props;
 

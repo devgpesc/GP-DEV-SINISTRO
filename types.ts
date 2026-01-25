@@ -20,6 +20,13 @@ export enum Priority {
   URGENT = 'Urgente'
 }
 
+export interface Category {
+  id: string;
+  name: string;
+  color: string;
+  description?: string;
+}
+
 export interface CatalogItem {
   id: string;
   code: string;
@@ -85,6 +92,7 @@ export interface Quotation {
   items: QuoteItem[];
   suppliers: string[];
   status: 'Aberta' | 'Fechada' | 'Cancelada';
+  sendMode: 'auto' | 'manual';
   createdAt: string;
 }
 

@@ -1,16 +1,50 @@
 
-import React, { useState } from 'react';
-// Fix: Added missing MoreVertical and MessageCircle icons to the import list
+import React, { useState, useEffect } from 'react';
 import { 
   Settings as SettingsIcon, Building, Users, Lock, 
   Bell, Palette, Globe, Save, CheckCircle, Database,
   MessageSquare, Target, Mail, ShieldAlert, Key, 
-  CreditCard, Layout, Zap, UserPlus, MoreVertical, MessageCircle
+  CreditCard, Layout, Zap, UserPlus, MoreVertical, MessageCircle,
+  Tag, Plus, Trash2, Edit
 } from 'lucide-react';
+import { mockStorage } from '../services/supabaseClient';
+import { Category } from '../types';
 
 const Settings: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'empresa' | 'usuarios' | 'sistema' | 'templates' | 'metas'>('empresa');
+  const [activeTab, setActiveTab] = useState<'empresa' | 'usuarios' | 'sistema' | 'templates' | 'metas' | 'categorias'>('empresa');
   const [saved, setSaved] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [newCatName, setNewCatName] = useState('');
+
+  useEffect(() => {
+    const savedCats = mockStorage.get('app_categories') || [
+      { id: '1', name: 'Funilaria Pesada', color: 'red' },
+      { id: '2', name: 'Funilaria Leve', color: 'orange' },
+      { id: '3', name: 'Mecânica', color: 'blue' },
+      { id: '4', name: 'Elétrica', color: 'yellow' },
+      { id: '5', name: 'Periféricos / Vidros', color: 'cyan' },
+    ];
+    setCategories(savedCats);
+  }, []);
+
+  const handleAddCategory = () => {
+    if (!newCatName.trim()) return;
+    const newCat: Category = {
+      id: Math.random().toString(36).substr(2, 9),
+      name: newCatName.trim(),
+      color: 'slate'
+    };
+    const updated = [...categories, newCat];
+    setCategories(updated);
+    mockStorage.set('app_categories', updated);
+    setNewCatName('');
+  };
+
+  const handleRemoveCategory = (id: string) => {
+    const updated = categories.filter(c => c.id !== id);
+    setCategories(updated);
+    mockStorage.set('app_categories', updated);
+  };
 
   const handleSave = () => {
     setSaved(true);
@@ -49,6 +83,7 @@ const Settings: React.FC = () => {
         <div className="w-full lg:w-64 space-y-1.5 h-fit sticky top-6">
           <NavButton tab="empresa" icon={Building} label="Dados da Empresa" />
           <NavButton tab="usuarios" icon={Users} label="Usuários & Roles" />
+          <NavButton tab="categorias" icon={Tag} label="Categorias Padronizadas" />
           <NavButton tab="sistema" icon={Database} label="Regras & Auditoria" />
           <NavButton tab="templates" icon={MessageSquare} label="Mensagens" />
           <NavButton tab="metas" icon={Target} label="Metas Financeiras" />
@@ -84,6 +119,55 @@ const Settings: React.FC = () => {
                     <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Endereço da Matriz</label>
                     <textarea className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl h-24 outline-none font-bold text-slate-700" defaultValue="Av. Paulista, 1000, 15º Andar - São Paulo, SP, 01310-100" />
                   </div>
+               </div>
+            </div>
+          )}
+
+          {activeTab === 'categorias' && (
+            <div className="space-y-8 animate-in fade-in duration-300">
+               <div className="flex items-center gap-2 border-b border-slate-100 pb-4">
+                 <Tag className="text-blue-500" size={20}/>
+                 <h3 className="text-lg font-black text-slate-800">Categorização para Business Intelligence</h3>
+               </div>
+               
+               <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                  <p className="text-[10px] font-black uppercase text-slate-400 mb-4 tracking-widest">Adicionar Nova Categoria</p>
+                  <div className="flex gap-4">
+                     <input 
+                        type="text" 
+                        placeholder="Ex: Suspensão, Lanterna, Motor..."
+                        className="flex-1 p-4 bg-white border border-slate-200 rounded-2xl outline-none font-bold text-slate-700"
+                        value={newCatName}
+                        onChange={e => setNewCatName(e.target.value)}
+                     />
+                     <button 
+                        onClick={handleAddCategory}
+                        className="bg-blue-600 text-white px-8 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center gap-2 shadow-lg shadow-blue-500/20"
+                     >
+                        <Plus size={18}/> Adicionar
+                     </button>
+                  </div>
+               </div>
+
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {categories.map(cat => (
+                    <div key={cat.id} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl shadow-sm group hover:border-blue-200 transition-all">
+                       <div className="flex items-center gap-3">
+                          <div className={`w-3 h-3 rounded-full bg-blue-500 shadow-sm shadow-blue-500/40`}></div>
+                          <p className="font-black text-slate-700 text-sm tracking-tight">{cat.name}</p>
+                       </div>
+                       <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button className="p-2 text-slate-400 hover:text-blue-600"><Edit size={16}/></button>
+                          <button onClick={() => handleRemoveCategory(cat.id)} className="p-2 text-slate-400 hover:text-red-600"><Trash2 size={16}/></button>
+                       </div>
+                    </div>
+                  ))}
+               </div>
+
+               <div className="p-6 bg-blue-50 border border-blue-100 rounded-3xl">
+                  <p className="text-xs text-blue-700 font-medium leading-relaxed italic">
+                    "A padronização de categorias é essencial para a análise visionária da IA. Categorias bem definidas permitem que o sistema identifique custos anormais e sugira parcerias estratégicas baseadas no volume real de cada setor."
+                  </p>
                </div>
             </div>
           )}
