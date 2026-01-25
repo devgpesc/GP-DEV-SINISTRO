@@ -12,18 +12,8 @@ import Suppliers from './pages/Suppliers.tsx';
 import Purchases from './pages/Purchases.tsx';
 import Deliveries from './pages/Deliveries.tsx';
 import Reports from './pages/Reports.tsx';
+import Settings from './pages/Settings.tsx';
 import AIAssistant from './components/AIAssistant.tsx';
-import { BarChart3 } from 'lucide-react';
-
-const Placeholder = ({ name }: { name: string }) => (
-  <div className="flex flex-col items-center justify-center min-h-[400px] bg-white rounded-3xl border-2 border-dashed border-slate-200 text-slate-400 p-8 text-center">
-    <div className="bg-slate-50 p-6 rounded-full mb-6">
-       <BarChart3 size={48} className="text-slate-200" />
-    </div>
-    <h2 className="text-2xl font-bold text-slate-700">{name}</h2>
-    <p className="mt-2 max-w-xs font-medium">Este módulo está sendo finalizado pela equipe de arquitetura e será entregue na V1.1.</p>
-  </div>
-);
 
 const App: React.FC = () => {
   return (
@@ -40,7 +30,7 @@ const App: React.FC = () => {
             <Route path="/veiculos" element={<Vehicles />} />
             <Route path="/catalogo" element={<Catalog />} />
             <Route path="/relatorios" element={<Reports />} />
-            <Route path="/configuracoes" element={<Placeholder name="Configurações Avançadas" />} />
+            <Route path="/configuracoes" element={<Settings />} />
           </Routes>
         </Layout>
         <AIAssistant />

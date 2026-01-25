@@ -48,8 +48,6 @@ const Vehicles: React.FC = () => {
 
     // Validações de campos vazios
     if (!formData.plate) newErrors.plate = 'Placa é obrigatória';
-    if (!formData.renavam) newErrors.renavam = 'Renavam é obrigatório';
-    if (!formData.chassi) newErrors.chassi = 'Chassi é obrigatório';
     if (!formData.model) newErrors.model = 'Modelo é obrigatório';
 
     if (Object.keys(newErrors).length > 0) {
@@ -60,15 +58,18 @@ const Vehicles: React.FC = () => {
     // Validação de unicidade no Banco de Dados
     setIsSubmitting(true);
     try {
-      const [plateExists, renavamExists, chassiExists] = await Promise.all([
-        vehicleService.checkDuplicity('plate', formData.plate),
-        vehicleService.checkDuplicity('renavam', formData.renavam),
-        vehicleService.checkDuplicity('chassi', formData.chassi)
-      ]);
-
+      const plateExists = await vehicleService.checkDuplicity('plate', formData.plate);
       if (plateExists) newErrors.plate = 'Esta placa já está cadastrada no sistema';
-      if (renavamExists) newErrors.renavam = 'Este Renavam já está vinculado a outro veículo';
-      if (chassiExists) newErrors.chassi = 'Este Chassi já existe em nossa base de dados';
+
+      if (formData.renavam) {
+        const renavamExists = await vehicleService.checkDuplicity('renavam', formData.renavam);
+        if (renavamExists) newErrors.renavam = 'Este Renavam já está vinculado a outro veículo';
+      }
+
+      if (formData.chassi) {
+        const chassiExists = await vehicleService.checkDuplicity('chassi', formData.chassi);
+        if (chassiExists) newErrors.chassi = 'Este Chassi já existe em nossa base de dados';
+      }
     } catch (e) {
       console.error("Erro na validação de unicidade:", e);
     } finally {
@@ -86,7 +87,14 @@ const Vehicles: React.FC = () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isSupabaseConfigured) {
-      alert("A conexão com o banco de dados não está configurada. Verifique as variáveis VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY.");
+      // Simulação em caso de não configurado
+      const newVeh: Vehicle = {
+        id: Math.random().toString(),
+        ...formData,
+        createdAt: new Date().toISOString()
+      };
+      setVehicles([newVeh, ...vehicles]);
+      setIsModalOpen(false);
       return;
     }
 
@@ -147,7 +155,7 @@ const Vehicles: React.FC = () => {
         </div>
       </div>
 
-      {loading ? (
+      {loading && isSupabaseConfigured ? (
         <div className="flex justify-center py-20">
           <Loader2 className="animate-spin text-blue-600" size={40} />
         </div>
@@ -169,16 +177,16 @@ const Vehicles: React.FC = () => {
               <div className="space-y-3 pt-4 border-t border-slate-50">
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-slate-400 font-bold uppercase tracking-widest">Renavam</span>
-                  <span className="text-slate-700 font-mono bg-slate-50 px-2 py-0.5 rounded border border-slate-100">{vehicle.renavam}</span>
+                  <span className="text-slate-700 font-mono bg-slate-50 px-2 py-0.5 rounded border border-slate-100">{vehicle.renavam || 'Não informado'}</span>
                 </div>
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-slate-400 font-bold uppercase tracking-widest">Chassi</span>
-                  <span className="text-slate-700 font-mono bg-slate-50 px-2 py-0.5 rounded border border-slate-100 truncate max-w-[140px]" title={vehicle.chassi}>{vehicle.chassi}</span>
+                  <span className="text-slate-700 font-mono bg-slate-50 px-2 py-0.5 rounded border border-slate-100 truncate max-w-[140px]" title={vehicle.chassi}>{vehicle.chassi || 'Não informado'}</span>
                 </div>
               </div>
             </div>
           ))}
-          {filteredVehicles.length === 0 && !loading && (
+          {filteredVehicles.length === 0 && (!loading || !isSupabaseConfigured) && (
             <div className="col-span-full py-20 text-center bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
                <Car size={48} className="mx-auto text-slate-300 mb-4" />
                <p className="text-slate-500 font-medium">Nenhum veículo encontrado com os critérios de busca.</p>
@@ -199,7 +207,7 @@ const Vehicles: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-xl font-bold text-slate-800 leading-tight">Cadastrar Veículo</h3>
-                  <p className="text-xs text-slate-500 font-medium">Campos com asterisco são obrigatórios para auditoria.</p>
+                  <p className="text-xs text-slate-500 font-medium">Campos com asterisco são obrigatórios.</p>
                 </div>
               </div>
               <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-800 rounded-full transition-all hover:bg-slate-100"><X size={20}/></button>
@@ -224,7 +232,7 @@ const Vehicles: React.FC = () => {
 
                 {/* Renavam */}
                 <div>
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Código Renavam *</label>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Código Renavam (Opcional)</label>
                   <div className="relative">
                     <ClipboardList className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
                     <input 
@@ -240,7 +248,7 @@ const Vehicles: React.FC = () => {
 
                 {/* Chassi */}
                 <div className="md:col-span-2">
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Chassi Completo (17 caracteres) *</label>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Chassi Completo (17 caracteres - Opcional)</label>
                   <div className="relative">
                     <ShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
                     <input 

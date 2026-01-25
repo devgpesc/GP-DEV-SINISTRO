@@ -1,16 +1,10 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@^2.49.1';
 
-// Função auxiliar robusta para acesso ao ambiente sem quebrar o runtime
 const getSafeEnv = (key: string): string => {
   if (typeof window === 'undefined') return '';
-  
-  // Tenta acessar via objeto global process (injetado ou shim)
   const env = (window as any).process?.env || {};
-  if (env[key]) return env[key];
-
-  // Fallback para possíveis outras formas de injeção (ex: Vercel)
-  return '';
+  return env[key] || '';
 };
 
 const supabaseUrl = getSafeEnv('VITE_SUPABASE_URL');
@@ -18,12 +12,24 @@ const supabaseAnonKey = getSafeEnv('VITE_SUPABASE_ANON_KEY');
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey && supabaseUrl.startsWith('http'));
 
-// Inicializa com URLs válidas apenas se configurado corretamente
-export const supabase = createClient(
-  isSupabaseConfigured ? supabaseUrl : 'https://placeholder-project.supabase.co',
-  isSupabaseConfigured ? supabaseAnonKey : 'placeholder-key'
-);
+// Cliente real ou placeholder
+export const supabase = isSupabaseConfigured 
+  ? createClient(supabaseUrl, supabaseAnonKey)
+  : createClient('https://placeholder-project.supabase.co', 'placeholder-key');
 
-if (!isSupabaseConfigured) {
-  console.info("AutoClaims Pro: Rodando em modo de demonstração (Supabase não configurado ou chaves ausentes).");
-}
+// Helper para persistência em LocalStorage quando offline
+export const mockStorage = {
+  get: (key: string) => {
+    const data = localStorage.getItem(`autoclaims_${key}`);
+    return data ? JSON.parse(data) : null;
+  },
+  set: (key: string, value: any) => {
+    localStorage.setItem(`autoclaims_${key}`, JSON.stringify(value));
+  },
+  append: (key: string, item: any) => {
+    const list = mockStorage.get(key) || [];
+    const newList = [item, ...list];
+    mockStorage.set(key, newList);
+    return item;
+  }
+};

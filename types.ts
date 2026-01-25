@@ -39,6 +39,8 @@ export interface Supplier {
   whatsapp: string;
   status: 'Ativo' | 'Inativo' | 'Bloqueado';
   city: string;
+  email?: string;
+  createdAt: string;
 }
 
 export interface PurchaseOrder {
@@ -114,11 +116,21 @@ export interface Event {
 export interface Vehicle {
   id: string;
   plate: string;
-  renavam: string;
-  chassi: string;
+  renavam?: string;
+  chassi?: string;
   model: string;
   brand: string;
   year: string;
   associateId: string;
   createdAt: string;
+}
+
+export interface AppSettings {
+  companyName: string;
+  cnpj: string;
+  address: string;
+  email: string;
+  phone: string;
+  currency: string;
+  autoApprovalLimit: number;
 }

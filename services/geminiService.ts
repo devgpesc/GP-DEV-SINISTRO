@@ -1,18 +1,17 @@
 
 import { GoogleGenAI } from "@google/genai";
 
-// Função para obter a instância do AI de forma segura, evitando erro de 'process is not defined'
-const getAiInstance = () => {
-  const apiKey = (typeof process !== 'undefined' && process.env?.API_KEY) || '';
-  if (!apiKey) {
-    console.warn("AutoClaims Pro: API_KEY não encontrada no ambiente.");
-  }
-  return new GoogleGenAI({ apiKey });
-};
+/**
+ * AI Service for AutoClaims Pro.
+ * Provides strategic insights and executive summaries using Gemini models.
+ */
 
 export const getAIInsight = async (query: string, context: any) => {
   try {
-    const ai = getAiInstance();
+    // Always use new GoogleGenAI({ apiKey: process.env.API_KEY }) as per guidelines.
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    // Using gemini-3-flash-preview for general text reasoning and basic assistant tasks.
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `
@@ -23,9 +22,11 @@ export const getAIInsight = async (query: string, context: any) => {
       `,
       config: {
         temperature: 0.7,
-        thinkingConfig: { thinkingBudget: 0 }
+        thinkingConfig: { thinkingBudget: 0 } // Disabling thinking to prioritize low latency.
       }
     });
+    
+    // Access the extracted string directly via the .text property (not a method).
     return response.text;
   } catch (error) {
     console.error("AI Service Error:", error);
@@ -35,7 +36,8 @@ export const getAIInsight = async (query: string, context: any) => {
 
 export const getDailySummary = async (data: any) => {
     try {
-      const ai = getAiInstance();
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: `
@@ -44,6 +46,8 @@ export const getDailySummary = async (data: any) => {
           Destaque: Eventos críticos, economia potencial em cotações abertas, fornecedores com atrasos e sugestões de otimização de SLA.
         `,
       });
+      
+      // Access the extracted string directly via the .text property.
       return response.text;
     } catch (error) {
       console.error("Daily Summary Error:", error);
