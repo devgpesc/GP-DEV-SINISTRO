@@ -3,7 +3,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, Search, ChevronRight, ArrowLeft, Send, CheckCircle, 
   FileText, Package, Users, BarChart3, Clock, Trash2, Settings,
-  Zap, Mail, MessageCircle, FileDown, Rocket, LayoutGrid, List
+  Zap, Mail, MessageCircle, FileDown, Rocket, LayoutGrid, List,
+  Eye, MoreVertical
 } from 'lucide-react';
 import { MOCK_SUPPLIERS, MOCK_EVENTS } from '../constants';
 import MatrixTable from '../components/MatrixTable';
@@ -15,6 +16,7 @@ const Quotations: React.FC = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [wizardStep, setWizardStep] = useState(1);
   const [realEvents, setRealEvents] = useState<Event[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
   
   const [newQuote, setNewQuote] = useState({
     eventId: '',
@@ -29,9 +31,15 @@ const Quotations: React.FC = () => {
   }, []);
 
   const mockQuotes = [
-    { id: '1', code: 'COT-2024-0001', eventRef: 'EVT-2024-001', status: 'Em Aberto', date: 'Há 2 dias', suppliers: 3 },
-    { id: '2', code: 'COT-2024-0002', eventRef: 'EVT-2024-001', status: 'Finalizada', date: 'Há 2 dias', suppliers: 3 },
+    { id: '1', code: 'COT-2024-0001', eventRef: 'EVT-2024-001', status: 'Em Aberto', date: '12/05/2024', suppliers: 3 },
+    { id: '2', code: 'COT-2024-0002', eventRef: 'EVT-2024-015', status: 'Finalizada', date: '10/05/2024', suppliers: 2 },
+    { id: '3', code: 'COT-2024-0003', eventRef: 'EVT-2024-022', status: 'Em Aberto', date: '14/05/2024', suppliers: 4 },
   ];
+
+  const filteredQuotes = mockQuotes.filter(q => 
+    q.code.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    q.eventRef.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const catalogMock = [
     { id: '1', name: 'Parachoque Dianteiro Corolla', type: 'Peça' },
@@ -59,31 +67,111 @@ const Quotations: React.FC = () => {
       <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
         <div className="relative flex-1 w-full">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-          <input type="text" placeholder="Buscar cotações..." className="w-full pl-12 pr-4 py-3 bg-slate-50 rounded-2xl outline-none border border-slate-100 text-sm font-medium" />
+          <input 
+            type="text" 
+            placeholder="Buscar cotações por código ou protocolo..." 
+            className="w-full pl-12 pr-4 py-3 bg-slate-50 rounded-2xl outline-none border border-slate-100 text-sm font-medium focus:ring-2 focus:ring-blue-500/10 transition-all" 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
         </div>
-        <button onClick={() => { setStep(2); setWizardStep(1); }} className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 shadow-xl shadow-blue-600/20">
-          <Plus size={20} /> Nova Cotação
-        </button>
+        
+        <div className="flex items-center gap-3">
+          <div className="bg-slate-100 p-1 rounded-xl flex">
+            <button 
+              onClick={() => setViewMode('grid')}
+              className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              <LayoutGrid size={18} />
+            </button>
+            <button 
+              onClick={() => setViewMode('list')}
+              className={`p-2 rounded-lg transition-all ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              <List size={18} />
+            </button>
+          </div>
+          <button onClick={() => { setStep(2); setWizardStep(1); }} className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 shadow-xl shadow-blue-600/20 whitespace-nowrap">
+            <Plus size={20} /> Nova Cotação
+          </button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {mockQuotes.map(quote => (
-          <div key={quote.id} className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200 hover:border-blue-200 transition-all group cursor-pointer" onClick={() => setStep(3)}>
-            <div className="flex justify-between items-start mb-6">
-              <div className="bg-blue-50 text-blue-600 p-4 rounded-3xl shadow-sm"><BarChart3 size={28} /></div>
-              <span className="px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] border bg-amber-50 text-amber-600 border-amber-100">{quote.status}</span>
+      {viewMode === 'grid' ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-2 duration-300">
+          {filteredQuotes.map(quote => (
+            <div key={quote.id} className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200 hover:border-blue-200 transition-all group cursor-pointer relative overflow-hidden" onClick={() => setStep(3)}>
+              <div className="flex justify-between items-start mb-6">
+                <div className="bg-blue-50 text-blue-600 p-4 rounded-3xl shadow-sm"><BarChart3 size={28} /></div>
+                <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-[0.2em] border ${quote.status === 'Finalizada' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
+                  {quote.status}
+                </span>
+              </div>
+              <h3 className="font-black text-slate-800 text-xl tracking-tight leading-none mb-1">{quote.code}</h3>
+              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-6">Ref: {quote.eventRef}</p>
+              
+              <div className="flex justify-between items-center pt-6 border-t border-slate-50">
+                 <div className="flex -space-x-3">
+                    {[...Array(quote.suppliers)].map((_, j) => (
+                      <div key={j} className="w-9 h-9 rounded-full border-4 border-white bg-slate-200 flex items-center justify-center text-[9px] font-black text-slate-500 shadow-sm">S{j+1}</div>
+                    ))}
+                 </div>
+                 <div className="flex items-center gap-2 text-blue-600 font-black text-[10px] uppercase tracking-widest group-hover:translate-x-1 transition-transform">Analisar <ChevronRight size={18} /></div>
+              </div>
             </div>
-            <h3 className="font-black text-slate-800 text-xl tracking-tight">{quote.code}</h3>
-            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-6">Ref: {quote.eventRef}</p>
-            <div className="flex justify-between items-center pt-6 border-t border-slate-50">
-               <div className="flex -space-x-3">
-                  {[1,2,3].map(j => <div key={j} className="w-10 h-10 rounded-full border-4 border-white bg-slate-200 flex items-center justify-center text-[10px] font-black">S{j}</div>)}
-               </div>
-               <div className="flex items-center gap-2 text-blue-600 font-black text-[10px] uppercase tracking-widest">Analisar <ChevronRight size={18} /></div>
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <div className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm animate-in slide-in-from-bottom-2 duration-300">
+          <table className="w-full text-left">
+            <thead className="bg-slate-50 border-b border-slate-100">
+              <tr>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Código</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Protocolo Ref.</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Parceiros</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {filteredQuotes.map(quote => (
+                <tr key={quote.id} className="hover:bg-slate-50/50 transition-colors group cursor-pointer" onClick={() => setStep(3)}>
+                  <td className="px-8 py-5">
+                    <p className="font-black text-slate-800 text-sm tracking-tight">{quote.code}</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{quote.date}</p>
+                  </td>
+                  <td className="px-8 py-5">
+                    <span className="text-blue-600 font-black text-xs bg-blue-50 px-3 py-1 rounded-lg border border-blue-100">{quote.eventRef}</span>
+                  </td>
+                  <td className="px-8 py-5 text-center">
+                    <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${quote.status === 'Finalizada' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
+                      {quote.status}
+                    </span>
+                  </td>
+                  <td className="px-8 py-5 text-center">
+                    <div className="flex justify-center -space-x-2">
+                      {[...Array(quote.suppliers)].map((_, j) => (
+                        <div key={j} className="w-8 h-8 rounded-full border-2 border-white bg-slate-100 flex items-center justify-center text-[8px] font-black text-slate-400 shadow-sm">S{j+1}</div>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-8 py-5 text-right flex justify-end gap-1">
+                     <button className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Eye size={18}/></button>
+                     <button className="p-2 text-slate-300 hover:text-slate-600 hover:bg-slate-50 rounded-xl transition-all"><MoreVertical size={18}/></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      
+      {filteredQuotes.length === 0 && (
+        <div className="py-24 text-center bg-white rounded-[40px] border-4 border-dashed border-slate-100">
+           <BarChart3 className="mx-auto text-slate-200 mb-4" size={48} />
+           <p className="text-slate-400 font-black uppercase text-xs tracking-widest">Nenhuma cotação encontrada</p>
+        </div>
+      )}
     </div>
   );
 
@@ -114,15 +202,15 @@ const Quotations: React.FC = () => {
             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-5">Itens Necessários ({newQuote.items.length})</label>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {catalogMock.map(item => (
-                <div key={item.id} onClick={() => toggleItem(item.id)} className={`p-5 rounded-[32px] border-2 cursor-pointer flex items-center justify-between ${newQuote.items.includes(item.id) ? 'border-blue-600 bg-blue-50' : 'border-slate-50 bg-slate-50 hover:border-slate-200'}`}>
+                <div key={item.id} onClick={() => toggleItem(item.id)} className={`p-5 rounded-[32px] border-2 cursor-pointer flex items-center justify-between transition-all ${newQuote.items.includes(item.id) ? 'border-blue-600 bg-blue-50 shadow-lg shadow-blue-500/5' : 'border-slate-50 bg-slate-50 hover:border-slate-200'}`}>
                   <p className="text-sm font-black text-slate-800">{item.name}</p>
-                  <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center ${newQuote.items.includes(item.id) ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-200'}`}><CheckCircle size={16} /></div>
+                  <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${newQuote.items.includes(item.id) ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-200'}`}><CheckCircle size={16} /></div>
                 </div>
               ))}
             </div>
           </div>
           <div className="flex justify-end pt-6 border-t border-slate-50">
-            <button disabled={!newQuote.eventId || newQuote.items.length === 0} onClick={() => setWizardStep(2)} className="px-12 py-5 bg-blue-600 text-white rounded-[24px] font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-blue-600/30 disabled:opacity-20 flex items-center gap-3">Próximo Passo <ChevronRight size={18}/></button>
+            <button disabled={!newQuote.eventId || newQuote.items.length === 0} onClick={() => setWizardStep(2)} className="px-12 py-5 bg-blue-600 text-white rounded-[24px] font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-blue-600/30 disabled:opacity-20 flex items-center gap-3 hover:translate-x-1 transition-all">Próximo Passo <ChevronRight size={18}/></button>
           </div>
         </div>
       )}
@@ -133,8 +221,8 @@ const Quotations: React.FC = () => {
             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Parceiros para Cotação ({newQuote.suppliers.length})</label>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {MOCK_SUPPLIERS.map(s => (
-                <div key={s.id} onClick={() => toggleSupplier(s.id)} className={`p-6 rounded-[32px] border-2 cursor-pointer flex items-center gap-5 ${newQuote.suppliers.includes(s.id) ? 'border-blue-600 bg-blue-50' : 'border-slate-50 bg-slate-50 hover:border-slate-200'}`}>
-                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white font-black text-xl ${newQuote.suppliers.includes(s.id) ? 'bg-blue-600' : 'bg-slate-300'}`}>{s.name.charAt(0)}</div>
+                <div key={s.id} onClick={() => toggleSupplier(s.id)} className={`p-6 rounded-[32px] border-2 cursor-pointer flex items-center gap-5 transition-all ${newQuote.suppliers.includes(s.id) ? 'border-blue-600 bg-blue-50 shadow-lg shadow-blue-500/5' : 'border-slate-50 bg-slate-50 hover:border-slate-200'}`}>
+                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white font-black text-xl transition-colors ${newQuote.suppliers.includes(s.id) ? 'bg-blue-600' : 'bg-slate-300'}`}>{s.name.charAt(0)}</div>
                   <div className="flex-1">
                     <p className="font-black text-slate-800 text-sm">{s.name}</p>
                     <p className="text-[10px] text-slate-400 font-black uppercase">{s.segment}</p>
@@ -145,8 +233,8 @@ const Quotations: React.FC = () => {
             </div>
           </div>
           <div className="flex justify-between pt-6 border-t border-slate-50">
-            <button onClick={() => setWizardStep(1)} className="px-8 py-4 text-slate-400 font-black uppercase text-[10px]">Voltar</button>
-            <button disabled={newQuote.suppliers.length === 0} onClick={() => setStep(3)} className="px-16 py-6 bg-blue-600 text-white rounded-[28px] font-black text-sm uppercase tracking-[0.3em] shadow-2xl shadow-blue-600/40 flex items-center gap-4">Finalizar e Gerar Matriz <Rocket size={20}/></button>
+            <button onClick={() => setWizardStep(1)} className="px-8 py-4 text-slate-400 font-black uppercase text-[10px] hover:text-slate-600">Voltar</button>
+            <button disabled={newQuote.suppliers.length === 0} onClick={() => setStep(3)} className="px-16 py-6 bg-blue-600 text-white rounded-[28px] font-black text-sm uppercase tracking-[0.3em] shadow-2xl shadow-blue-600/40 flex items-center gap-4 hover:scale-105 transition-all">Finalizar e Gerar Matriz <Rocket size={20}/></button>
           </div>
         </div>
       )}
@@ -154,7 +242,7 @@ const Quotations: React.FC = () => {
   );
 
   return (
-    <div>
+    <div className="pb-20">
       {step === 1 && renderList()}
       {step === 2 && renderWizard()}
       {step === 3 && (
