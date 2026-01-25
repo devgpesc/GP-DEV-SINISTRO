@@ -41,6 +41,27 @@ export interface Supplier {
   city: string;
 }
 
+export interface PurchaseOrder {
+  id: string;
+  code: string;
+  eventId: string;
+  supplierId: string;
+  items: Array<{ catalogId: string; name: string; quantity: number; price: number }>;
+  total: number;
+  status: 'Gerada' | 'Enviada' | 'Aprovada' | 'Recebida' | 'Cancelada';
+  createdAt: string;
+  approvedAt?: string;
+}
+
+export interface Delivery {
+  id: string;
+  poId: string;
+  status: 'Conforme' | 'Divergente';
+  divergenceType?: 'Falta' | 'Dano' | 'Erro';
+  notes: string;
+  receivedAt: string;
+}
+
 export interface QuoteCell {
   price: number;
   selected: boolean;
@@ -48,6 +69,7 @@ export interface QuoteCell {
 }
 
 export interface QuoteItem {
+  id: string;
   catalogId: string;
   name: string;
   quantity: number;
@@ -59,12 +81,11 @@ export interface Quotation {
   protocol: string;
   eventId: string;
   items: QuoteItem[];
-  suppliers: string[]; // supplierIds
+  suppliers: string[];
   status: 'Aberta' | 'Fechada' | 'Cancelada';
   createdAt: string;
 }
 
-// Added EventHistoryEntry to fix export error in Events.tsx
 export interface EventHistoryEntry {
   id: string;
   fromStatus: EventStatus;

@@ -9,7 +9,11 @@ import Quotations from './pages/Quotations.tsx';
 import Vehicles from './pages/Vehicles.tsx';
 import Catalog from './pages/Catalog.tsx';
 import Suppliers from './pages/Suppliers.tsx';
+import Purchases from './pages/Purchases.tsx';
+import Deliveries from './pages/Deliveries.tsx';
+import Reports from './pages/Reports.tsx';
 import AIAssistant from './components/AIAssistant.tsx';
+import { BarChart3 } from 'lucide-react';
 
 const Placeholder = ({ name }: { name: string }) => (
   <div className="flex flex-col items-center justify-center min-h-[400px] bg-white rounded-3xl border-2 border-dashed border-slate-200 text-slate-400 p-8 text-center">
@@ -21,8 +25,6 @@ const Placeholder = ({ name }: { name: string }) => (
   </div>
 );
 
-import { BarChart3 } from 'lucide-react';
-
 const App: React.FC = () => {
   return (
     <AuthProvider>
@@ -32,12 +34,12 @@ const App: React.FC = () => {
             <Route path="/" element={<Dashboard />} />
             <Route path="/eventos" element={<Events />} />
             <Route path="/cotacoes" element={<Quotations />} />
-            <Route path="/compras" element={<Placeholder name="Ordens de Compra" />} />
-            <Route path="/entregas" element={<Placeholder name="Gestão de Entregas" />} />
+            <Route path="/compras" element={<Purchases />} />
+            <Route path="/entregas" element={<Deliveries />} />
             <Route path="/fornecedores" element={<Suppliers />} />
             <Route path="/veiculos" element={<Vehicles />} />
             <Route path="/catalogo" element={<Catalog />} />
-            <Route path="/relatorios" element={<Placeholder name="Central de Inteligência" />} />
+            <Route path="/relatorios" element={<Reports />} />
             <Route path="/configuracoes" element={<Placeholder name="Configurações Avançadas" />} />
           </Routes>
         </Layout>
