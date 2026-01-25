@@ -1,7 +1,13 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
+// Importação com extensão .tsx para compatibilidade ESM pura
+import App from './App.tsx';
+
+// Shim para garantir que o acesso a process.env não quebre a aplicação no navegador
+if (typeof window !== 'undefined') {
+  (window as any).process = (window as any).process || { env: {} };
+}
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

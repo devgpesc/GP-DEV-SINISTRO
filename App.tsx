@@ -1,13 +1,13 @@
 
 import React from 'react';
 import { HashRouter as Router, Routes, Route } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
-import Layout from './components/Layout';
-import Dashboard from './pages/Dashboard';
-import Events from './pages/Events';
-import Quotations from './pages/Quotations';
-import Vehicles from './pages/Vehicles';
-import AIAssistant from './components/AIAssistant';
+import { AuthProvider } from './context/AuthContext.tsx';
+import Layout from './components/Layout.tsx';
+import Dashboard from './pages/Dashboard.tsx';
+import Events from './pages/Events.tsx';
+import Quotations from './pages/Quotations.tsx';
+import Vehicles from './pages/Vehicles.tsx';
+import AIAssistant from './components/AIAssistant.tsx';
 
 const Placeholder = ({ name }: { name: string }) => (
   <div className="flex flex-col items-center justify-center min-h-[400px] bg-white rounded-2xl border-2 border-dashed border-slate-200 text-slate-400">
