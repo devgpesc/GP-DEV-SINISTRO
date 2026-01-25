@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext.tsx';
 import Layout from './components/Layout.tsx';
@@ -16,6 +16,10 @@ import Settings from './pages/Settings.tsx';
 import AIAssistant from './components/AIAssistant.tsx';
 
 const App: React.FC = () => {
+  useEffect(() => {
+    console.log('[AutoClaims] Componente App montado com sucesso.');
+  }, []);
+
   return (
     <AuthProvider>
       <Router>
