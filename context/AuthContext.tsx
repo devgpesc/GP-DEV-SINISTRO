@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '../services/supabaseClient';
+import { supabase, isSupabaseConfigured, mockStorage } from '../services/supabaseClient';
 
 interface AuthContextType {
   user: any;
@@ -18,6 +18,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (id: string) => {
+    if (!isSupabaseConfigured || !supabase) {
+      const mockProfile = mockStorage.get('mock_profile') || {
+        id: 'mock-id',
+        full_name: 'Gestor (Offline)',
+        email: 'local@autoclaims.pro',
+        role: 'Admin'
+      };
+      setProfile(mockProfile);
+      return;
+    }
+
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -28,14 +39,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error) throw error;
       
       if (!data) {
-        // Se o perfil não existe, criamos um básico
-        const { data: newUser } = await supabase.auth.getUser();
+        const { data: userData } = await supabase.auth.getUser();
         const { data: createdProfile } = await supabase
           .from('profiles')
           .insert([{ 
             id: id, 
-            full_name: newUser.user?.user_metadata?.full_name || 'Usuário Novo',
-            email: newUser.user?.email,
+            full_name: userData.user?.user_metadata?.full_name || userData.user?.user_metadata?.name || 'Usuário Novo',
+            email: userData.user?.email,
             role: 'Usuário' 
           }])
           .select()
@@ -50,7 +60,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    // Escuta mudanças na autenticação
+    if (!isSupabaseConfigured || !supabase) {
+      const savedUser = mockStorage.get('mock_user');
+      if (savedUser) {
+        setUser(savedUser);
+        fetchProfile(savedUser.id);
+      }
+      setLoading(false);
+      return;
+    }
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
@@ -61,7 +80,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
     });
 
-    // Verificação inicial
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       if (session?.user) fetchProfile(session.user.id);
@@ -72,15 +90,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    if (isSupabaseConfigured && supabase) {
+      await supabase.auth.signOut();
+    } else {
+      mockStorage.set('mock_user', null);
+      setUser(null);
+      setProfile(null);
+    }
     window.location.href = '#/login';
   };
 
   const signInWithGoogle = async () => {
+    if (!isSupabaseConfigured || !supabase) {
+      alert("Aviso: O Supabase não está configurado. Configure as chaves para usar o login real.");
+      return;
+    }
+    
+    // Corrigido: Redirect para o domínio solicitado
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin
+        redirectTo: 'https://eventos.escsistemas.com'
       }
     });
   };

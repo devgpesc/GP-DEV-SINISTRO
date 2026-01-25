@@ -1,9 +1,9 @@
 
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { supabase } from '../services/supabaseClient';
+import { supabase, isSupabaseConfigured, mockStorage } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
-import { Car, Mail, Lock, Loader2, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Car, Mail, Lock, Loader2, ArrowRight, ShieldCheck, AlertCircle, Terminal } from 'lucide-react';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -18,10 +18,30 @@ const Login: React.FC = () => {
     setLoading(true);
     setError(null);
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (!isSupabaseConfigured || !supabase) {
+      console.warn("Entrando em modo mock devido à falta de configuração.");
+      setTimeout(() => {
+        const mockUser = { id: 'mock-user-123', email: email };
+        mockStorage.set('mock_user', mockUser);
+        setLoading(false);
+        window.location.reload();
+      }, 800);
+      return;
+    }
 
-    if (error) {
-      setError("Credenciais inválidas. Verifique seu email e senha.");
+    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+
+    if (authError) {
+      // Mensagens claras conforme solicitado
+      if (authError.message.includes("Invalid login credentials")) {
+        setError("E-mail ou senha incorretos.");
+      } else if (authError.message.includes("Email not confirmed")) {
+        setError("E-mail ainda não confirmado. Verifique sua caixa de entrada.");
+      } else if (authError.message.includes("User not found")) {
+        setError("Usuário não encontrado em nossa base.");
+      } else {
+        setError(authError.message);
+      }
       setLoading(false);
     } else {
       navigate('/');
@@ -30,7 +50,28 @@ const Login: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 font-sans">
-      <div className="w-full max-w-md">
+      {!isSupabaseConfigured && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 w-full max-w-lg bg-amber-50 border border-amber-200 p-6 rounded-[32px] shadow-2xl z-50 animate-in slide-in-from-top-4 duration-500">
+          <div className="flex gap-4">
+            <div className="bg-amber-100 p-3 rounded-2xl h-fit">
+              <AlertCircle size={24} className="text-amber-600" />
+            </div>
+            <div>
+              <h4 className="font-black text-amber-900 text-sm uppercase tracking-widest mb-1">Configuração Necessária</h4>
+              <p className="text-amber-800 text-xs leading-relaxed mb-4">
+                O sistema detectou que as variáveis de ambiente do <b>Supabase</b> não estão configuradas corretamente.
+              </p>
+              <div className="bg-white/50 p-3 rounded-xl border border-amber-200 font-mono text-[10px] text-amber-900 space-y-1">
+                <p>VITE_SUPABASE_URL: <span className="text-red-600 font-bold">AUSENTE</span></p>
+                <p>VITE_SUPABASE_ANON_KEY: <span className="text-red-600 font-bold">AUSENTE</span></p>
+              </div>
+              <p className="mt-4 text-[10px] font-bold text-amber-700 uppercase tracking-tighter">O sistema funcionará em modo demonstração (Local) até que as chaves sejam fornecidas.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="w-full max-w-md relative z-10">
         <div className="text-center mb-10">
           <div className="inline-flex items-center justify-center p-4 bg-blue-600 rounded-[28px] text-white shadow-2xl shadow-blue-600/30 mb-6">
             <Car size={40} />
@@ -41,7 +82,7 @@ const Login: React.FC = () => {
 
         <div className="bg-white p-10 rounded-[48px] shadow-2xl shadow-slate-200 border border-slate-100">
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-xs font-bold flex items-center gap-3">
+            <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-xs font-bold flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
               <ShieldCheck size={18} /> {error}
             </div>
           )}
@@ -80,7 +121,7 @@ const Login: React.FC = () => {
             <button 
               type="submit" 
               disabled={loading}
-              className="w-full py-5 bg-blue-600 text-white rounded-[24px] font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-blue-600/30 hover:bg-blue-700 transition-all flex items-center justify-center gap-3"
+              className="w-full py-5 bg-blue-600 text-white rounded-[24px] font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-blue-600/30 hover:bg-blue-700 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
             >
               {loading ? <Loader2 className="animate-spin" size={20} /> : <>Entrar no Sistema <ArrowRight size={18}/></>}
             </button>
@@ -93,11 +134,15 @@ const Login: React.FC = () => {
 
           <button 
             onClick={signInWithGoogle}
-            className="w-full mt-6 py-4 bg-white border border-slate-200 rounded-[20px] font-bold text-slate-600 hover:bg-slate-50 transition-all flex items-center justify-center gap-3 shadow-sm"
+            className="w-full mt-6 py-4 bg-white border border-slate-200 rounded-[20px] font-bold text-slate-600 hover:bg-slate-50 transition-all flex items-center justify-center gap-3 shadow-sm hover:shadow-md"
           >
             <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
             Google Workspace
           </button>
+          
+          <p className="text-center mt-6 text-xs font-bold text-slate-400">
+            Ainda não tem conta? <Link to="/register" className="text-blue-600 hover:underline">Cadastre-se</Link>
+          </p>
         </div>
 
         <p className="mt-10 text-center text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">
