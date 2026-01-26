@@ -20,11 +20,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchProfile = async (id: string) => {
     if (!isSupabaseConfigured || !supabase) {
-      const mockProfile = mockStorage.get('mock_profile') || {
-        id: 'mock-id',
-        full_name: 'Gestor (Offline)',
-        email: 'local@autoclaims.pro',
-        role: 'Admin'
+      // Se for o ID do desenvolvedor master ou se não houver perfil salvo, carrega o master
+      const savedProfile = mockStorage.get('mock_profile');
+      const mockProfile = savedProfile || {
+        id: id || 'dev-master-001',
+        full_name: 'Desenvolvedor GPESC',
+        email: 'devgpesc@gmail.com',
+        role: 'Admin Master'
       };
       setProfile(mockProfile);
       return;
@@ -66,6 +68,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (savedUser) {
         setUser(savedUser);
         fetchProfile(savedUser.id);
+      } else {
+        // Inicializa opcionalmente com o usuário master se estivermos em modo desenvolvimento local
+        // Mas deixamos para o login explicitamente carregar para evitar bypass indesejado
       }
       setLoading(false);
       return;

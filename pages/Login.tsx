@@ -6,7 +6,8 @@ import { useAuth } from '../context/AuthContext';
 import { Car, Mail, Lock, Loader2, ArrowRight, ShieldCheck, Info, RefreshCw } from 'lucide-react';
 
 const Login: React.FC = () => {
-  const [email, setEmail] = useState('');
+  // Definindo devgpesc@gmail.com como usuário principal padrão
+  const [email, setEmail] = useState('devgpesc@gmail.com');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +22,7 @@ const Login: React.FC = () => {
     if (!isSupabaseConfigured || !supabase) {
       // Modo Demonstração / Fallback Local
       setTimeout(() => {
-        const mockUser = { id: 'mock-user-123', email: email };
+        const mockUser = { id: 'dev-master-001', email: email };
         mockStorage.set('mock_user', mockUser);
         setLoading(false);
         window.location.href = '/#/';
@@ -62,7 +63,7 @@ const Login: React.FC = () => {
             </div>
             <div>
               <h4 className="font-black text-amber-900 text-sm uppercase tracking-widest mb-1">Modo de Demonstração</h4>
-              <p className="text-amber-800 text-xs font-medium">Credenciais do Supabase não encontradas ou inválidas. O sistema usará armazenamento local.</p>
+              <p className="text-amber-800 text-xs font-medium">Credenciais do Supabase não encontradas ou inválidas. O sistema usará armazenamento local com o usuário principal devgpesc@gmail.com.</p>
             </div>
           </div>
         </div>
