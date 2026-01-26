@@ -1,70 +1,51 @@
 
-import { supabase, isSupabaseConfigured, mockStorage } from './supabaseClient';
+import { supabase } from './supabaseClient';
 import { Vehicle } from '../types';
-import { MOCK_VEHICLES } from '../constants';
 
 export const vehicleService = {
   async getVehicles(): Promise<Vehicle[]> {
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase
-        .from('vehicles')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (!error) return data || [];
-    }
+    const { data, error } = await supabase
+      .from('vehicles')
+      .select('*')
+      .order('created_at', { ascending: false });
     
-    // Fallback para LocalStorage se offline ou Supabase não configurado
-    return mockStorage.get('vehicles') || MOCK_VEHICLES;
+    if (error) {
+      console.error("Erro ao buscar veículos no Supabase:", error);
+      return [];
+    }
+    return data || [];
   },
 
   async checkDuplicity(field: 'plate' | 'renavam' | 'chassi', value: string): Promise<boolean> {
     const formattedValue = value.toUpperCase().trim();
     if (!formattedValue) return false;
 
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase
-        .from('vehicles')
-        .select('id')
-        .eq(field, formattedValue)
-        .maybeSingle();
-      
-      if (!error && data) return true;
-    }
+    const { data, error } = await supabase
+      .from('vehicles')
+      .select('id')
+      .eq(field, formattedValue)
+      .maybeSingle();
     
-    // Verificação local no LocalStorage
-    const localVehicles: Vehicle[] = mockStorage.get('vehicles') || MOCK_VEHICLES;
-    return localVehicles.some(v => (v[field] as string)?.toUpperCase() === formattedValue);
+    if (!error && data) return true;
+    return false;
   },
 
   async createVehicle(vehicleData: Partial<Vehicle>): Promise<Vehicle> {
     const payload = {
-      id: Math.random().toString(36).substr(2, 9),
       ...vehicleData,
       plate: vehicleData.plate?.toUpperCase().trim(),
       renavam: vehicleData.renavam?.trim(),
       chassi: vehicleData.chassi?.toUpperCase().trim(),
       createdAt: new Date().toISOString()
-    } as Vehicle;
+    };
 
-    if (isSupabaseConfigured) {
-      try {
-        const { data, error } = await supabase
-          .from('vehicles')
-          .insert([payload])
-          .select()
-          .single();
-        if (!error) return data;
-      } catch (e) {
-        console.warn("Falha ao salvar no Supabase, salvando localmente...");
-      }
-    }
-
-    // Persistência robusta no LocalStorage
-    const currentVehicles = mockStorage.get('vehicles') || MOCK_VEHICLES;
-    const updatedVehicles = [payload, ...currentVehicles];
-    mockStorage.set('vehicles', updatedVehicles);
+    const { data, error } = await supabase
+      .from('vehicles')
+      .insert([payload])
+      .select()
+      .single();
     
-    return payload;
+    if (error) throw error;
+    return data;
   }
 };

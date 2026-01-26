@@ -1,11 +1,9 @@
-import { supabase, mockStorage, isSupabaseConfigured } from './supabaseClient';
-import { Event, EventStatus } from '../types';
-import { MOCK_EVENTS } from '../constants';
+
+import { supabase } from './supabaseClient';
+import { Event } from '../types';
 
 export const eventService = {
   async getEvents(): Promise<Event[]> {
-    if (!isSupabaseConfigured) return mockStorage.get('events') || MOCK_EVENTS;
-
     const { data, error } = await supabase
       .from('events')
       .select(`
@@ -16,8 +14,8 @@ export const eventService = {
       .order('created_at', { ascending: false });
     
     if (error) {
-      console.warn("Erro Supabase, usando fallback:", error);
-      return mockStorage.get('events') || MOCK_EVENTS;
+      console.error("Erro ao buscar eventos no Supabase:", error);
+      return [];
     }
     return data || [];
   },
@@ -30,18 +28,6 @@ export const eventService = {
       created_by: user?.id,
       created_at: new Date().toISOString()
     };
-
-    if (!isSupabaseConfigured) {
-      // Fix: mockStorage does not have an 'append' method. Implementing append logic using get and set.
-      const currentEvents = mockStorage.get('events') || MOCK_EVENTS;
-      const newEvent = { 
-        id: Math.random().toString(36).substr(2, 9), 
-        ...payload 
-      };
-      const updatedEvents = [newEvent, ...currentEvents];
-      mockStorage.set('events', updatedEvents);
-      return newEvent as any;
-    }
 
     const { data, error } = await supabase
       .from('events')

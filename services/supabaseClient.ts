@@ -2,8 +2,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@^2.49.1';
 
 /**
- * AutoClaims Pro - Configuração de Backend
- * Suporta o novo formato de chaves do Supabase (sb_*) e o legado (eyJ*).
+ * AutoClaims Pro - Configuração de Produção (Supabase)
+ * Projeto: nzikpndcvvidzzvcdajb
  */
 
 const getEnv = (key: string): string => {
@@ -11,9 +11,7 @@ const getEnv = (key: string): string => {
   const procEnv = (typeof process !== 'undefined' ? (process.env as any) : {});
   const val = (metaEnv?.[key] as string) || (procEnv?.[key] as string) || '';
   
-  // Fallback manual sincronizado com o projeto nzikpndcvvidzzvcdajb identificado na screenshot
   if (!val) {
-    // O URL deve coincidir exatamente com o Project Ref da sua chave sb_publishable_nzikPNdcvvIDzZvCDajb1Q
     if (key === 'VITE_SUPABASE_URL') return 'https://nzikpndcvvidzzvcdajb.supabase.co';
     if (key === 'VITE_SUPABASE_ANON_KEY') return 'sb_publishable_nzikPNdcvvIDzZvCDajb1Q_R3-f9WY3';
   }
@@ -24,32 +22,20 @@ const getEnv = (key: string): string => {
 export const supabaseUrl = getEnv('VITE_SUPABASE_URL');
 export const supabaseAnonKey = getEnv('VITE_SUPABASE_ANON_KEY');
 
-/**
- * Validação de Configuração:
- * O Supabase agora utiliza chaves com prefixo 'sb_publishable_'.
- */
-export const isSupabaseConfigured = Boolean(
-  supabaseUrl && 
-  supabaseAnonKey && 
-  supabaseUrl.startsWith('http') && 
-  (supabaseAnonKey.startsWith('sb_') || supabaseAnonKey.startsWith('eyJ'))
-);
+// Fix: Export isSupabaseConfigured to satisfy imports in other files
+export const isSupabaseConfigured = !!supabaseUrl && !!supabaseAnonKey;
 
-if (typeof window !== 'undefined') {
-  if (isSupabaseConfigured) {
-    console.log(`[AutoClaims] Conexão Supabase configurada para o projeto: ${supabaseUrl}`);
-  } else {
-    console.warn("[AutoClaims] Rodando em Modo de Demonstração (Sem chaves API).");
-  }
+// Em produção, assumimos que as chaves devem existir.
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error("[AutoClaims] ERRO CRÍTICO: Chaves do Supabase não configuradas.");
 }
 
-// Inicializa o cliente com a configuração validada
-export const supabase = isSupabaseConfigured 
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null;
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+/**
+ * Utilitário de Storage Local para Cache (não mais para modo demo)
+ */
 const STORAGE_PREFIX = 'autoclaims_';
-
 export const mockStorage = {
   get: (key: string) => {
     const data = localStorage.getItem(`${STORAGE_PREFIX}${key}`);
@@ -62,17 +48,10 @@ export const mockStorage = {
     localStorage.removeItem(`${STORAGE_PREFIX}${key}`);
   },
   clearAll: () => {
-    // Remove apenas as chaves do nosso aplicativo
     Object.keys(localStorage).forEach(key => {
-      if (key.startsWith(STORAGE_PREFIX)) {
+      if (key.startsWith(STORAGE_PREFIX) || key.includes('supabase.auth.token')) {
         localStorage.removeItem(key);
       }
-    });
-    // Tenta remover chaves específicas do Supabase se existirem no formato padrão
-    Object.keys(localStorage).forEach(key => {
-        if (key.includes('supabase.auth.token')) {
-            localStorage.removeItem(key);
-        }
     });
   }
 };

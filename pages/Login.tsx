@@ -1,12 +1,11 @@
 
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { supabase, isSupabaseConfigured, mockStorage } from '../services/supabaseClient';
+import { supabase, mockStorage } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
-import { Car, Mail, Lock, Loader2, ArrowRight, ShieldCheck, Info, RefreshCw } from 'lucide-react';
+import { Car, Mail, Lock, Loader2, ArrowRight, ShieldCheck, RefreshCw } from 'lucide-react';
 
 const Login: React.FC = () => {
-  // Definindo devgpesc@gmail.com como usuário principal padrão
   const [email, setEmail] = useState('devgpesc@gmail.com');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -19,34 +18,27 @@ const Login: React.FC = () => {
     setLoading(true);
     setError(null);
 
-    if (!isSupabaseConfigured || !supabase) {
-      // Modo Demonstração / Fallback Local
-      setTimeout(() => {
-        const mockUser = { id: 'dev-master-001', email: email };
-        mockStorage.set('mock_user', mockUser);
-        setLoading(false);
-        window.location.href = '/#/';
-        window.location.reload();
-      }, 800);
-      return;
-    }
-
     try {
-      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      
       if (authError) {
-        setError(authError.message === "Invalid login credentials" ? "E-mail ou senha incorretos." : authError.message);
+        if (authError.message === "Invalid login credentials") {
+          setError("E-mail ou senha incorretos. Verifique se o usuário já foi criado.");
+        } else {
+          setError(authError.message);
+        }
         setLoading(false);
-      } else {
+      } else if (data.user) {
         navigate('/');
       }
     } catch (err) {
-      setError("Erro ao conectar com o servidor.");
+      setError("Erro crítico de conexão com o Supabase.");
       setLoading(false);
     }
   };
 
   const handleResetSession = () => {
-    if (confirm("Isso irá limpar todos os dados de acesso salvos no navegador. Deseja continuar?")) {
+    if (confirm("Deseja realizar uma limpeza profunda nos cookies e cache de sessão?")) {
       clearSessionData();
       window.location.reload();
     }
@@ -54,21 +46,6 @@ const Login: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 font-sans">
-      {/* Alerta de Modo Demo (Apenas se não houver URL ou Key) */}
-      {!isSupabaseConfigured && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 w-full max-w-lg bg-amber-50 border border-amber-200 p-6 rounded-[32px] shadow-2xl z-50 animate-in slide-in-from-top-4 duration-500">
-          <div className="flex gap-4">
-            <div className="bg-amber-100 p-3 rounded-2xl h-fit">
-              <Info size={24} className="text-amber-600" />
-            </div>
-            <div>
-              <h4 className="font-black text-amber-900 text-sm uppercase tracking-widest mb-1">Modo de Demonstração</h4>
-              <p className="text-amber-800 text-xs font-medium">Credenciais do Supabase não encontradas ou inválidas. O sistema usará armazenamento local com o usuário principal devgpesc@gmail.com.</p>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="w-full max-w-md relative z-10">
         <div className="text-center mb-10">
           <div className="inline-flex items-center justify-center p-4 bg-blue-600 rounded-[28px] text-white shadow-2xl shadow-blue-600/30 mb-6">
@@ -87,14 +64,14 @@ const Login: React.FC = () => {
 
           <form onSubmit={handleLogin} className="space-y-6">
             <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-2">E-mail Corporativo</label>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-2">E-mail de Produção</label>
               <div className="relative">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                 <input 
                   type="email" 
                   required
                   className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-blue-500/10 outline-none font-bold text-slate-700 transition-all"
-                  placeholder="exemplo@empresa.com"
+                  placeholder="devgpesc@gmail.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
@@ -121,7 +98,7 @@ const Login: React.FC = () => {
               disabled={loading}
               className="w-full py-5 bg-blue-600 text-white rounded-[24px] font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-blue-600/30 hover:bg-blue-700 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
             >
-              {loading ? <Loader2 className="animate-spin" size={20} /> : <>Entrar no Sistema <ArrowRight size={18}/></>}
+              {loading ? <Loader2 className="animate-spin" size={20} /> : <>Acessar Sistema <ArrowRight size={18}/></>}
             </button>
           </form>
 
@@ -139,7 +116,7 @@ const Login: React.FC = () => {
           </button>
           
           <p className="text-center mt-6 text-xs font-bold text-slate-400">
-            Ainda não tem conta? <Link to="/register" className="text-blue-600 hover:underline">Cadastre-se</Link>
+            Deseja criar um novo acesso? <Link to="/register" className="text-blue-600 hover:underline">Cadastrar-se agora</Link>
           </p>
         </div>
 
@@ -149,11 +126,11 @@ const Login: React.FC = () => {
             className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-blue-600 transition-all group"
           >
             <RefreshCw size={14} className="group-hover:rotate-180 transition-transform duration-500" /> 
-            Limpar Cache de Acesso
+            Limpar Cache e Cookies
           </button>
 
           <p className="text-center text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">
-            Desenvolvido por <span className="text-slate-800">Esc Solutions</span>
+            Ambiente de Produção <span className="text-slate-800">Esc Solutions</span>
           </p>
         </div>
       </div>

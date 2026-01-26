@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase, isSupabaseConfigured, mockStorage } from '../services/supabaseClient';
+import { supabase, mockStorage } from '../services/supabaseClient';
 
 interface AuthContextType {
   user: any;
@@ -19,19 +19,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (id: string) => {
-    if (!isSupabaseConfigured || !supabase) {
-      // Se for o ID do desenvolvedor master ou se não houver perfil salvo, carrega o master
-      const savedProfile = mockStorage.get('mock_profile');
-      const mockProfile = savedProfile || {
-        id: id || 'dev-master-001',
-        full_name: 'Desenvolvedor GPESC',
-        email: 'devgpesc@gmail.com',
-        role: 'Admin Master'
-      };
-      setProfile(mockProfile);
-      return;
-    }
-
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -42,12 +29,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error) throw error;
       
       if (!data) {
+        // Auto-criação de perfil caso o usuário exista no Auth mas não no Profiles
         const { data: userData } = await supabase.auth.getUser();
         const { data: createdProfile } = await supabase
           .from('profiles')
           .insert([{ 
             id: id, 
-            full_name: userData.user?.user_metadata?.full_name || userData.user?.user_metadata?.name || 'Usuário Novo',
+            full_name: userData.user?.user_metadata?.full_name || userData.user?.user_metadata?.name || 'Usuário',
             email: userData.user?.email,
             role: 'Usuário' 
           }])
@@ -58,24 +46,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setProfile(data);
       }
     } catch (err) {
-      console.error("Erro ao buscar perfil:", err);
+      console.error("Erro ao buscar perfil no Supabase:", err);
+      // Mantemos o perfil nulo para indicar falha de acesso aos dados
+      setProfile(null);
     }
   };
 
   useEffect(() => {
-    if (!isSupabaseConfigured || !supabase) {
-      const savedUser = mockStorage.get('mock_user');
-      if (savedUser) {
-        setUser(savedUser);
-        fetchProfile(savedUser.id);
-      } else {
-        // Inicializa opcionalmente com o usuário master se estivermos em modo desenvolvimento local
-        // Mas deixamos para o login explicitamente carregar para evitar bypass indesejado
-      }
-      setLoading(false);
-      return;
-    }
-
+    // Escuta mudanças de autenticação reais do Supabase
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
@@ -96,10 +74,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const clearSessionData = () => {
-    // 1. Limpa Mock Storage (localStorage)
     mockStorage.clearAll();
-    
-    // 2. Limpa Cookies acessíveis por JS
+    sessionStorage.clear();
+    // Limpeza de cookies
     const cookies = document.cookie.split(";");
     for (let i = 0; i < cookies.length; i++) {
         const cookie = cookies[i];
@@ -107,41 +84,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
         document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
     }
-
-    // 3. Limpa Session Storage
-    sessionStorage.clear();
   };
 
   const signOut = async () => {
     setLoading(true);
     try {
-      if (isSupabaseConfigured && supabase) {
-        await supabase.auth.signOut();
-      }
+      await supabase.auth.signOut();
     } catch (e) {
-      console.error("Erro ao deslogar do Supabase:", e);
+      console.error("Erro ao deslogar:", e);
     } finally {
       clearSessionData();
       setUser(null);
       setProfile(null);
       setLoading(false);
-      // Força recarregamento para limpar estados residuais do React/Router
       window.location.href = window.location.origin + window.location.pathname + '#/login';
       window.location.reload();
     }
   };
 
   const signInWithGoogle = async () => {
-    if (!isSupabaseConfigured || !supabase) {
-      alert("Aviso: O Supabase não está configurado corretamente para login social.");
-      return;
-    }
-    
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: {
-        redirectTo: window.location.origin
-      }
+      options: { redirectTo: window.location.origin }
     });
   };
 
