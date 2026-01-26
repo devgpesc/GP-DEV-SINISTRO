@@ -11,9 +11,10 @@ const getEnv = (key: string): string => {
   const procEnv = (typeof process !== 'undefined' ? (process.env as any) : {});
   const val = (metaEnv?.[key] as string) || (procEnv?.[key] as string) || '';
   
-  // Fallback manual para as chaves do seu projeto
+  // Fallback manual sincronizado com o projeto nzikpndcvvidzzvcdajb identificado na screenshot
   if (!val) {
-    if (key === 'VITE_SUPABASE_URL') return 'https://rkywxqispmhmfrxidouw.supabase.co';
+    // O URL deve coincidir exatamente com o Project Ref da sua chave sb_publishable_nzikPNdcvvIDzZvCDajb1Q
+    if (key === 'VITE_SUPABASE_URL') return 'https://nzikpndcvvidzzvcdajb.supabase.co';
     if (key === 'VITE_SUPABASE_ANON_KEY') return 'sb_publishable_nzikPNdcvvIDzZvCDajb1Q_R3-f9WY3';
   }
   
@@ -36,7 +37,7 @@ export const isSupabaseConfigured = Boolean(
 
 if (typeof window !== 'undefined') {
   if (isSupabaseConfigured) {
-    console.log(`[AutoClaims] Conexão Supabase estabelecida com as novas chaves do projeto.`);
+    console.log(`[AutoClaims] Conexão Supabase configurada para o projeto: ${supabaseUrl}`);
   } else {
     console.warn("[AutoClaims] Rodando em Modo de Demonstração (Sem chaves API).");
   }
