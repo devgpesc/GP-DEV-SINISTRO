@@ -1,9 +1,9 @@
 
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { supabase, isSupabaseConfigured, mockStorage } from '../services/supabaseClient';
+import { supabase, isSupabaseConfigured, isStripeKeyDetected, mockStorage } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
-import { Car, Mail, Lock, Loader2, ArrowRight, ShieldCheck, AlertCircle, Terminal } from 'lucide-react';
+import { Car, Mail, Lock, Loader2, ArrowRight, ShieldCheck, AlertCircle, Info, ExternalLink } from 'lucide-react';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -19,7 +19,7 @@ const Login: React.FC = () => {
     setError(null);
 
     if (!isSupabaseConfigured || !supabase) {
-      console.warn("Entrando em modo mock devido à falta de configuração.");
+      // Modo Demonstração
       setTimeout(() => {
         const mockUser = { id: 'mock-user-123', email: email };
         mockStorage.set('mock_user', mockUser);
@@ -32,16 +32,7 @@ const Login: React.FC = () => {
     const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
     if (authError) {
-      // Mensagens claras conforme solicitado
-      if (authError.message.includes("Invalid login credentials")) {
-        setError("E-mail ou senha incorretos.");
-      } else if (authError.message.includes("Email not confirmed")) {
-        setError("E-mail ainda não confirmado. Verifique sua caixa de entrada.");
-      } else if (authError.message.includes("User not found")) {
-        setError("Usuário não encontrado em nossa base.");
-      } else {
-        setError(authError.message);
-      }
+      setError(authError.message === "Invalid login credentials" ? "E-mail ou senha incorretos." : authError.message);
       setLoading(false);
     } else {
       navigate('/');
@@ -50,22 +41,42 @@ const Login: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 font-sans">
-      {!isSupabaseConfigured && (
+      {/* Alerta de Chave Incorreta (Stripe detectado) */}
+      {isStripeKeyDetected && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 w-full max-w-xl bg-red-50 border border-red-200 p-6 rounded-[32px] shadow-2xl z-50 animate-in slide-in-from-top-4 duration-500">
+          <div className="flex gap-4">
+            <div className="bg-red-100 p-3 rounded-2xl h-fit">
+              <AlertCircle size={24} className="text-red-600" />
+            </div>
+            <div>
+              <h4 className="font-black text-red-900 text-sm uppercase tracking-widest mb-1">Chave do Stripe Detectada!</h4>
+              <p className="text-red-800 text-xs leading-relaxed mb-4">
+                Você configurou a variável <b>VITE_SUPABASE_ANON_KEY</b> com uma chave que começa com <code className="bg-red-200 px-1 rounded">sb_</code>. Esta é uma chave do <b>Stripe</b>, não do Supabase.
+              </p>
+              <div className="bg-white/50 p-4 rounded-2xl border border-red-100 space-y-3">
+                <p className="text-[10px] font-bold text-red-900 uppercase">Como Corrigir:</p>
+                <ol className="text-[10px] text-red-800 space-y-2 list-decimal pl-4">
+                  <li>Acesse o Dashboard do Supabase.</li>
+                  <li>Vá em <b>Project Settings</b> > <b>API</b>.</li>
+                  <li>Copie a chave <b>anon public</b> (que começa com <code className="font-bold">eyJ...</code>).</li>
+                  <li>Atualize sua variável de ambiente na Vercel.</li>
+                </ol>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Alerta de Modo Demo (Nenhuma chave configurada) */}
+      {!isSupabaseConfigured && !isStripeKeyDetected && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 w-full max-w-lg bg-amber-50 border border-amber-200 p-6 rounded-[32px] shadow-2xl z-50 animate-in slide-in-from-top-4 duration-500">
           <div className="flex gap-4">
             <div className="bg-amber-100 p-3 rounded-2xl h-fit">
-              <AlertCircle size={24} className="text-amber-600" />
+              <Info size={24} className="text-amber-600" />
             </div>
             <div>
-              <h4 className="font-black text-amber-900 text-sm uppercase tracking-widest mb-1">Configuração Necessária</h4>
-              <p className="text-amber-800 text-xs leading-relaxed mb-4">
-                O sistema detectou que as variáveis de ambiente do <b>Supabase</b> não estão configuradas corretamente.
-              </p>
-              <div className="bg-white/50 p-3 rounded-xl border border-amber-200 font-mono text-[10px] text-amber-900 space-y-1">
-                <p>VITE_SUPABASE_URL: <span className="text-red-600 font-bold">AUSENTE</span></p>
-                <p>VITE_SUPABASE_ANON_KEY: <span className="text-red-600 font-bold">AUSENTE</span></p>
-              </div>
-              <p className="mt-4 text-[10px] font-bold text-amber-700 uppercase tracking-tighter">O sistema funcionará em modo demonstração (Local) até que as chaves sejam fornecidas.</p>
+              <h4 className="font-black text-amber-900 text-sm uppercase tracking-widest mb-1">Modo de Demonstração</h4>
+              <p className="text-amber-800 text-xs font-medium">Conexão com Supabase não detectada. O sistema usará armazenamento local.</p>
             </div>
           </div>
         </div>
@@ -129,7 +140,7 @@ const Login: React.FC = () => {
 
           <div className="mt-8 relative flex items-center justify-center">
             <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-100"></div></div>
-            <span className="relative bg-white px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">ou entre com</span>
+            <span className="relative bg-white px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">ou entrar com</span>
           </div>
 
           <button 
