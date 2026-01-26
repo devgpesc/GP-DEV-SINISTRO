@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { Car, Mail, Lock, Loader2, ArrowRight, ShieldCheck, RefreshCw, AlertTriangle } from 'lucide-react';
 
 const Login: React.FC = () => {
-  const [email, setEmail] = useState('devgpesc@gmail.com');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +27,7 @@ const Login: React.FC = () => {
       
       if (authError) {
         if (authError.message.includes("Invalid login credentials")) {
-          setError("Credenciais inválidas. Verifique seu e-mail e senha no novo projeto.");
+          setError("Credenciais inválidas. Verifique seu e-mail e senha.");
         } else {
           setError(authError.message);
         }
@@ -81,7 +81,7 @@ const Login: React.FC = () => {
                   type="email" 
                   required
                   className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-blue-500/10 outline-none font-bold text-slate-700 transition-all"
-                  placeholder="devgpesc@gmail.com"
+                  placeholder="seu@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
@@ -140,7 +140,7 @@ const Login: React.FC = () => {
           </button>
 
           <p className="text-center text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">
-            Backend: <span className="text-slate-800 tracking-tighter">yxawavenbognqiihaesh</span>
+            Ambiente de Produção <span className="text-slate-800 tracking-tighter">Esc Solutions</span>
           </p>
         </div>
       </div>
