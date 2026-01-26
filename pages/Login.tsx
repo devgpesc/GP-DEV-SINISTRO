@@ -1,9 +1,9 @@
 
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { supabase, isSupabaseConfigured, isStripeKeyDetected, mockStorage } from '../services/supabaseClient';
+import { supabase, isSupabaseConfigured, mockStorage } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
-import { Car, Mail, Lock, Loader2, ArrowRight, ShieldCheck, AlertCircle, Info } from 'lucide-react';
+import { Car, Mail, Lock, Loader2, ArrowRight, ShieldCheck, Info } from 'lucide-react';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -19,7 +19,7 @@ const Login: React.FC = () => {
     setError(null);
 
     if (!isSupabaseConfigured || !supabase) {
-      // Modo Demonstração
+      // Modo Demonstração / Fallback Local
       setTimeout(() => {
         const mockUser = { id: 'mock-user-123', email: email };
         mockStorage.set('mock_user', mockUser);
@@ -29,46 +29,24 @@ const Login: React.FC = () => {
       return;
     }
 
-    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
-
-    if (authError) {
-      setError(authError.message === "Invalid login credentials" ? "E-mail ou senha incorretos." : authError.message);
+    try {
+      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      if (authError) {
+        setError(authError.message === "Invalid login credentials" ? "E-mail ou senha incorretos." : authError.message);
+        setLoading(false);
+      } else {
+        navigate('/');
+      }
+    } catch (err) {
+      setError("Erro ao conectar com o servidor.");
       setLoading(false);
-    } else {
-      navigate('/');
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 font-sans">
-      {/* Alerta de Chave Incorreta (Stripe detectado) */}
-      {isStripeKeyDetected && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 w-full max-w-xl bg-red-50 border border-red-200 p-6 rounded-[32px] shadow-2xl z-50 animate-in slide-in-from-top-4 duration-500">
-          <div className="flex gap-4">
-            <div className="bg-red-100 p-3 rounded-2xl h-fit">
-              <AlertCircle size={24} className="text-red-600" />
-            </div>
-            <div>
-              <h4 className="font-black text-red-900 text-sm uppercase tracking-widest mb-1">Chave do Stripe Detectada!</h4>
-              <p className="text-red-800 text-xs leading-relaxed mb-4">
-                Você configurou a variável <b>VITE_SUPABASE_ANON_KEY</b> com uma chave que começa com <code className="bg-red-200 px-1 rounded">sb_</code>. Esta é uma chave do <b>Stripe</b>, não do Supabase.
-              </p>
-              <div className="bg-white/50 p-4 rounded-2xl border border-red-100 space-y-3">
-                <p className="text-[10px] font-bold text-red-900 uppercase">Como Corrigir:</p>
-                <ol className="text-[10px] text-red-800 space-y-2 list-decimal pl-4">
-                  <li>Acesse o Dashboard do Supabase.</li>
-                  <li>Vá em <b>Project Settings</b> &gt; <b>API</b>.</li>
-                  <li>Copie a chave <b>anon public</b> (que começa com <code className="font-bold">eyJ...</code>).</li>
-                  <li>Atualize sua variável de ambiente na Vercel.</li>
-                </ol>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Alerta de Modo Demo (Nenhuma chave configurada) */}
-      {!isSupabaseConfigured && !isStripeKeyDetected && (
+      {/* Alerta de Modo Demo (Apenas se não houver URL ou Key) */}
+      {!isSupabaseConfigured && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 w-full max-w-lg bg-amber-50 border border-amber-200 p-6 rounded-[32px] shadow-2xl z-50 animate-in slide-in-from-top-4 duration-500">
           <div className="flex gap-4">
             <div className="bg-amber-100 p-3 rounded-2xl h-fit">
@@ -76,7 +54,7 @@ const Login: React.FC = () => {
             </div>
             <div>
               <h4 className="font-black text-amber-900 text-sm uppercase tracking-widest mb-1">Modo de Demonstração</h4>
-              <p className="text-amber-800 text-xs font-medium">Conexão com Supabase não detectada. O sistema usará armazenamento local.</p>
+              <p className="text-amber-800 text-xs font-medium">Credenciais do Supabase não encontradas. O sistema usará armazenamento local.</p>
             </div>
           </div>
         </div>

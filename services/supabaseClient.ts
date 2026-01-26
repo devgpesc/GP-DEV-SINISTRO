@@ -3,43 +3,47 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@^2.49.1';
 
 /**
  * AutoClaims Pro - Configuração de Backend
- * URL e Key obtidas do ambiente ou fallback seguro.
+ * Suporta o novo formato de chaves do Supabase (sb_*) e o legado (eyJ*).
  */
 
 const getEnv = (key: string): string => {
   const metaEnv = (import.meta as any).env;
   const procEnv = (typeof process !== 'undefined' ? (process.env as any) : {});
-  return (metaEnv?.[key] as string) || (procEnv?.[key] as string) || '';
+  const val = (metaEnv?.[key] as string) || (procEnv?.[key] as string) || '';
+  
+  // Fallback manual para as chaves do seu projeto
+  if (!val) {
+    if (key === 'VITE_SUPABASE_URL') return 'https://rkywxqispmhmfrxidouw.supabase.co';
+    if (key === 'VITE_SUPABASE_ANON_KEY') return 'sb_publishable_nzikPNdcvvIDzZvCDajb1Q_R3-f9WY3';
+  }
+  
+  return val;
 };
 
 export const supabaseUrl = getEnv('VITE_SUPABASE_URL');
 export const supabaseAnonKey = getEnv('VITE_SUPABASE_ANON_KEY');
 
-// Validação Inteligente: 
-// 1. Verifica se os campos existem.
-// 2. Verifica se o formato da chave é Supabase (JWT começa com eyJ).
-// 3. Bloqueia chaves que começam com 'sb_' (Stripe/Outros) para evitar erros de autenticação.
+/**
+ * Validação de Configuração:
+ * O Supabase agora utiliza chaves com prefixo 'sb_publishable_'.
+ * Aceitamos o formato novo (sb_) e o formato legado (eyJ).
+ */
 export const isSupabaseConfigured = Boolean(
   supabaseUrl && 
   supabaseAnonKey && 
   supabaseUrl.startsWith('http') && 
-  supabaseAnonKey.startsWith('eyJ') // Chaves anon do Supabase são sempre JWTs
+  (supabaseAnonKey.startsWith('sb_') || supabaseAnonKey.startsWith('eyJ'))
 );
-
-// Flag específica para identificar se o usuário colou uma chave do Stripe por engano
-export const isStripeKeyDetected = supabaseAnonKey.startsWith('sb_');
 
 if (typeof window !== 'undefined') {
   if (isSupabaseConfigured) {
-    console.log(`[AutoClaims] Supabase conectado com sucesso: ${supabaseUrl}`);
-  } else if (isStripeKeyDetected) {
-    console.warn("[AutoClaims] Aviso: Chave do Stripe detectada no campo do Supabase. O sistema operará em Modo Demo.");
+    console.log(`[AutoClaims] Conexão Supabase estabelecida com as novas chaves do projeto.`);
   } else {
-    console.log("[AutoClaims] Rodando em Modo de Demonstração (Local).");
+    console.warn("[AutoClaims] Rodando em Modo de Demonstração (Sem chaves API).");
   }
 }
 
-// Inicializa o cliente apenas se a configuração for válida
+// Inicializa o cliente com a configuração validada
 export const supabase = isSupabaseConfigured 
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
