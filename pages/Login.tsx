@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase, isSupabaseConfigured, isStripeKeyDetected, mockStorage } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
-import { Car, Mail, Lock, Loader2, ArrowRight, ShieldCheck, AlertCircle, Info, ExternalLink } from 'lucide-react';
+import { Car, Mail, Lock, Loader2, ArrowRight, ShieldCheck, AlertCircle, Info } from 'lucide-react';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -57,7 +57,7 @@ const Login: React.FC = () => {
                 <p className="text-[10px] font-bold text-red-900 uppercase">Como Corrigir:</p>
                 <ol className="text-[10px] text-red-800 space-y-2 list-decimal pl-4">
                   <li>Acesse o Dashboard do Supabase.</li>
-                  <li>Vá em <b>Project Settings</b> > <b>API</b>.</li>
+                  <li>Vá em <b>Project Settings</b> &gt; <b>API</b>.</li>
                   <li>Copie a chave <b>anon public</b> (que começa com <code className="font-bold">eyJ...</code>).</li>
                   <li>Atualize sua variável de ambiente na Vercel.</li>
                 </ol>
