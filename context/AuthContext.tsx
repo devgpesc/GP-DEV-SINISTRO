@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase, mockStorage, isSupabaseConfigured } from '../services/supabaseClient';
 
 interface AuthContextType {
@@ -18,7 +18,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = async (id: string) => {
+  const fetchProfile = useCallback(async (id: string) => {
     if (!isSupabaseConfigured) return;
 
     try {
@@ -31,16 +31,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error) throw error;
       
       if (!data) {
-        // Tenta buscar metadados do usuário para criar perfil inicial
         const { data: { user: authUser } } = await supabase.auth.getUser();
         if (authUser) {
           const { data: createdProfile } = await supabase
             .from('profiles')
             .insert([{ 
               id: id, 
-              full_name: authUser.user_metadata?.full_name || authUser.user_metadata?.name || 'Gestor AutoClaims',
+              full_name: authUser.user_metadata?.full_name || authUser.user_metadata?.name || 'Usuário',
               email: authUser.email,
-              role: authUser.email === 'devgpesc@gmail.com' ? 'Admin Master' : 'Usuário'
+              role: 'Usuário'
             }])
             .select()
             .single();
@@ -53,42 +52,56 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error("Erro ao sincronizar perfil:", err);
       setProfile(null);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    // Gerencia o estado da sessão em tempo real
+    let mounted = true;
+
+    // Função única para inicializar
+    const initializeAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (mounted) {
+          const currentUser = session?.user ?? null;
+          setUser(currentUser);
+          if (currentUser) await fetchProfile(currentUser.id);
+          setLoading(false);
+        }
+      } catch (err) {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    initializeAuth();
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       const currentUser = session?.user ?? null;
-      setUser(currentUser);
-      
-      if (currentUser) {
-        await fetchProfile(currentUser.id);
-      } else {
-        setProfile(null);
+      if (mounted) {
+        setUser(currentUser);
+        if (event === 'SIGNED_IN' && currentUser) {
+          await fetchProfile(currentUser.id);
+        } else if (event === 'SIGNED_OUT') {
+          setProfile(null);
+        }
+        setLoading(false);
       }
-      setLoading(false);
     });
 
-    // Verificação inicial de sessão
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) fetchProfile(session.user.id);
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [fetchProfile]);
 
   const clearSessionData = () => {
     mockStorage.clearAll();
     sessionStorage.clear();
-    // Limpeza técnica de cookies de autenticação
     const cookies = document.cookie.split(";");
     for (let i = 0; i < cookies.length; i++) {
         const cookie = cookies[i];
         const eqPos = cookie.indexOf("=");
         const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
-        document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=" + window.location.hostname;
+        document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=${window.location.hostname}`;
     }
   };
 
@@ -96,8 +109,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     try {
       await supabase.auth.signOut();
-    } catch (e) {
-      console.error("Erro ao encerrar sessão:", e);
     } finally {
       clearSessionData();
       setUser(null);
