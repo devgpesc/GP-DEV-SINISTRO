@@ -1,9 +1,9 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { supabase, mockStorage } from '../services/supabaseClient';
+import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
-import { Car, Mail, Lock, Loader2, ArrowRight, ShieldCheck, RefreshCw } from 'lucide-react';
+import { Car, Mail, Lock, Loader2, ArrowRight, ShieldCheck, RefreshCw, AlertTriangle } from 'lucide-react';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('devgpesc@gmail.com');
@@ -19,11 +19,15 @@ const Login: React.FC = () => {
     setError(null);
 
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      // Tentativa de login real no Supabase
+      const { data, error: authError } = await supabase.auth.signInWithPassword({ 
+        email: email.trim(), 
+        password: password 
+      });
       
       if (authError) {
-        if (authError.message === "Invalid login credentials") {
-          setError("E-mail ou senha incorretos. Verifique se o usuário já foi criado.");
+        if (authError.message.includes("Invalid login credentials")) {
+          setError("Credenciais inválidas. Verifique seu e-mail e senha no novo projeto.");
         } else {
           setError(authError.message);
         }
@@ -32,13 +36,13 @@ const Login: React.FC = () => {
         navigate('/');
       }
     } catch (err) {
-      setError("Erro crítico de conexão com o Supabase.");
+      setError("Erro de conexão com a rede ou com o servidor Supabase.");
       setLoading(false);
     }
   };
 
   const handleResetSession = () => {
-    if (confirm("Deseja realizar uma limpeza profunda nos cookies e cache de sessão?")) {
+    if (confirm("Deseja limpar todos os dados de sessão e cookies? Use isso se estiver tendo problemas de login persistentes.")) {
       clearSessionData();
       window.location.reload();
     }
@@ -52,10 +56,16 @@ const Login: React.FC = () => {
             <Car size={40} />
           </div>
           <h1 className="text-4xl font-black text-slate-800 tracking-tighter">AutoClaims<span className="text-blue-600">Pro</span></h1>
-          <p className="text-slate-500 mt-2 font-medium">Gestão Inteligente de Sinistros & Compras</p>
+          <p className="text-slate-500 mt-2 font-medium">Gestão Inteligente • Produção</p>
         </div>
 
         <div className="bg-white p-10 rounded-[48px] shadow-2xl shadow-slate-200 border border-slate-100">
+          {!isSupabaseConfigured && (
+            <div className="mb-6 p-4 bg-amber-50 border border-amber-100 rounded-2xl text-amber-700 text-[10px] font-black uppercase flex items-center gap-3">
+              <AlertTriangle size={18} /> Configuração pendente no servidor
+            </div>
+          )}
+
           {error && (
             <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-xs font-bold flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
               <ShieldCheck size={18} /> {error}
@@ -64,7 +74,7 @@ const Login: React.FC = () => {
 
           <form onSubmit={handleLogin} className="space-y-6">
             <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-2">E-mail de Produção</label>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-2">E-mail de Acesso</label>
               <div className="relative">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                 <input 
@@ -95,16 +105,16 @@ const Login: React.FC = () => {
 
             <button 
               type="submit" 
-              disabled={loading}
+              disabled={loading || !isSupabaseConfigured}
               className="w-full py-5 bg-blue-600 text-white rounded-[24px] font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-blue-600/30 hover:bg-blue-700 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
             >
-              {loading ? <Loader2 className="animate-spin" size={20} /> : <>Acessar Sistema <ArrowRight size={18}/></>}
+              {loading ? <Loader2 className="animate-spin" size={20} /> : <>Acessar Produção <ArrowRight size={18}/></>}
             </button>
           </form>
 
           <div className="mt-8 relative flex items-center justify-center">
             <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-100"></div></div>
-            <span className="relative bg-white px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">ou entrar com</span>
+            <span className="relative bg-white px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">v 1.2.0</span>
           </div>
 
           <button 
@@ -116,7 +126,7 @@ const Login: React.FC = () => {
           </button>
           
           <p className="text-center mt-6 text-xs font-bold text-slate-400">
-            Deseja criar um novo acesso? <Link to="/register" className="text-blue-600 hover:underline">Cadastrar-se agora</Link>
+            Novo por aqui? <Link to="/register" className="text-blue-600 hover:underline">Solicitar Acesso</Link>
           </p>
         </div>
 
@@ -126,11 +136,11 @@ const Login: React.FC = () => {
             className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-blue-600 transition-all group"
           >
             <RefreshCw size={14} className="group-hover:rotate-180 transition-transform duration-500" /> 
-            Limpar Cache e Cookies
+            Resetar Cookies de Produção
           </button>
 
           <p className="text-center text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">
-            Ambiente de Produção <span className="text-slate-800">Esc Solutions</span>
+            Backend: <span className="text-slate-800 tracking-tighter">yxawavenbognqiihaesh</span>
           </p>
         </div>
       </div>

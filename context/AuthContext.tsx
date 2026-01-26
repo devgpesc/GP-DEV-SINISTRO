@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase, mockStorage } from '../services/supabaseClient';
+import { supabase, mockStorage, isSupabaseConfigured } from '../services/supabaseClient';
 
 interface AuthContextType {
   user: any;
@@ -19,6 +19,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (id: string) => {
+    if (!isSupabaseConfigured) return;
+
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -29,41 +31,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error) throw error;
       
       if (!data) {
-        // Auto-criação de perfil caso o usuário exista no Auth mas não no Profiles
-        const { data: userData } = await supabase.auth.getUser();
-        const { data: createdProfile } = await supabase
-          .from('profiles')
-          .insert([{ 
-            id: id, 
-            full_name: userData.user?.user_metadata?.full_name || userData.user?.user_metadata?.name || 'Usuário',
-            email: userData.user?.email,
-            role: 'Usuário' 
-          }])
-          .select()
-          .single();
-        setProfile(createdProfile);
+        // Tenta buscar metadados do usuário para criar perfil inicial
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (authUser) {
+          const { data: createdProfile } = await supabase
+            .from('profiles')
+            .insert([{ 
+              id: id, 
+              full_name: authUser.user_metadata?.full_name || authUser.user_metadata?.name || 'Gestor AutoClaims',
+              email: authUser.email,
+              role: authUser.email === 'devgpesc@gmail.com' ? 'Admin Master' : 'Usuário'
+            }])
+            .select()
+            .single();
+          setProfile(createdProfile);
+        }
       } else {
         setProfile(data);
       }
     } catch (err) {
-      console.error("Erro ao buscar perfil no Supabase:", err);
-      // Mantemos o perfil nulo para indicar falha de acesso aos dados
+      console.error("Erro ao sincronizar perfil:", err);
       setProfile(null);
     }
   };
 
   useEffect(() => {
-    // Escuta mudanças de autenticação reais do Supabase
+    // Gerencia o estado da sessão em tempo real
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        await fetchProfile(session.user.id);
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      
+      if (currentUser) {
+        await fetchProfile(currentUser.id);
       } else {
         setProfile(null);
       }
       setLoading(false);
     });
 
+    // Verificação inicial de sessão
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       if (session?.user) fetchProfile(session.user.id);
@@ -76,13 +82,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const clearSessionData = () => {
     mockStorage.clearAll();
     sessionStorage.clear();
-    // Limpeza de cookies
+    // Limpeza técnica de cookies de autenticação
     const cookies = document.cookie.split(";");
     for (let i = 0; i < cookies.length; i++) {
         const cookie = cookies[i];
         const eqPos = cookie.indexOf("=");
         const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
-        document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+        document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=" + window.location.hostname;
     }
   };
 
@@ -91,7 +97,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await supabase.auth.signOut();
     } catch (e) {
-      console.error("Erro ao deslogar:", e);
+      console.error("Erro ao encerrar sessão:", e);
     } finally {
       clearSessionData();
       setUser(null);
