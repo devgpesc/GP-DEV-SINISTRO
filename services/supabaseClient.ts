@@ -26,7 +26,6 @@ export const supabaseAnonKey = getEnv('VITE_SUPABASE_ANON_KEY');
 /**
  * Validação de Configuração:
  * O Supabase agora utiliza chaves com prefixo 'sb_publishable_'.
- * Aceitamos o formato novo (sb_) e o formato legado (eyJ).
  */
 export const isSupabaseConfigured = Boolean(
   supabaseUrl && 
@@ -48,12 +47,31 @@ export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
 
+const STORAGE_PREFIX = 'autoclaims_';
+
 export const mockStorage = {
   get: (key: string) => {
-    const data = localStorage.getItem(`autoclaims_${key}`);
+    const data = localStorage.getItem(`${STORAGE_PREFIX}${key}`);
     return data ? JSON.parse(data) : null;
   },
   set: (key: string, value: any) => {
-    localStorage.setItem(`autoclaims_${key}`, JSON.stringify(value));
+    localStorage.setItem(`${STORAGE_PREFIX}${key}`, JSON.stringify(value));
+  },
+  remove: (key: string) => {
+    localStorage.removeItem(`${STORAGE_PREFIX}${key}`);
+  },
+  clearAll: () => {
+    // Remove apenas as chaves do nosso aplicativo
+    Object.keys(localStorage).forEach(key => {
+      if (key.startsWith(STORAGE_PREFIX)) {
+        localStorage.removeItem(key);
+      }
+    });
+    // Tenta remover chaves específicas do Supabase se existirem no formato padrão
+    Object.keys(localStorage).forEach(key => {
+        if (key.includes('supabase.auth.token')) {
+            localStorage.removeItem(key);
+        }
+    });
   }
 };

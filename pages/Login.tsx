@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase, isSupabaseConfigured, mockStorage } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
-import { Car, Mail, Lock, Loader2, ArrowRight, ShieldCheck, Info } from 'lucide-react';
+import { Car, Mail, Lock, Loader2, ArrowRight, ShieldCheck, Info, RefreshCw } from 'lucide-react';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -11,7 +11,7 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
-  const { signInWithGoogle } = useAuth();
+  const { signInWithGoogle, clearSessionData } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,6 +24,7 @@ const Login: React.FC = () => {
         const mockUser = { id: 'mock-user-123', email: email };
         mockStorage.set('mock_user', mockUser);
         setLoading(false);
+        window.location.href = '/#/';
         window.location.reload();
       }, 800);
       return;
@@ -43,6 +44,13 @@ const Login: React.FC = () => {
     }
   };
 
+  const handleResetSession = () => {
+    if (confirm("Isso irá limpar todos os dados de acesso salvos no navegador. Deseja continuar?")) {
+      clearSessionData();
+      window.location.reload();
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 font-sans">
       {/* Alerta de Modo Demo (Apenas se não houver URL ou Key) */}
@@ -54,7 +62,7 @@ const Login: React.FC = () => {
             </div>
             <div>
               <h4 className="font-black text-amber-900 text-sm uppercase tracking-widest mb-1">Modo de Demonstração</h4>
-              <p className="text-amber-800 text-xs font-medium">Credenciais do Supabase não encontradas. O sistema usará armazenamento local.</p>
+              <p className="text-amber-800 text-xs font-medium">Credenciais do Supabase não encontradas ou inválidas. O sistema usará armazenamento local.</p>
             </div>
           </div>
         </div>
@@ -134,9 +142,19 @@ const Login: React.FC = () => {
           </p>
         </div>
 
-        <p className="mt-10 text-center text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">
-          Desenvolvido por <span className="text-slate-800">Esc Solutions</span>
-        </p>
+        <div className="mt-8 flex flex-col items-center gap-4">
+          <button 
+            onClick={handleResetSession}
+            className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-blue-600 transition-all group"
+          >
+            <RefreshCw size={14} className="group-hover:rotate-180 transition-transform duration-500" /> 
+            Limpar Cache de Acesso
+          </button>
+
+          <p className="text-center text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">
+            Desenvolvido por <span className="text-slate-800">Esc Solutions</span>
+          </p>
+        </div>
       </div>
     </div>
   );

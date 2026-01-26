@@ -8,6 +8,7 @@ interface AuthContextType {
   loading: boolean;
   signOut: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
+  clearSessionData: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -89,34 +90,58 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => subscription.unsubscribe();
   }, []);
 
+  const clearSessionData = () => {
+    // 1. Limpa Mock Storage (localStorage)
+    mockStorage.clearAll();
+    
+    // 2. Limpa Cookies acessíveis por JS
+    const cookies = document.cookie.split(";");
+    for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i];
+        const eqPos = cookie.indexOf("=");
+        const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+        document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+    }
+
+    // 3. Limpa Session Storage
+    sessionStorage.clear();
+  };
+
   const signOut = async () => {
-    if (isSupabaseConfigured && supabase) {
-      await supabase.auth.signOut();
-    } else {
-      mockStorage.set('mock_user', null);
+    setLoading(true);
+    try {
+      if (isSupabaseConfigured && supabase) {
+        await supabase.auth.signOut();
+      }
+    } catch (e) {
+      console.error("Erro ao deslogar do Supabase:", e);
+    } finally {
+      clearSessionData();
       setUser(null);
       setProfile(null);
+      setLoading(false);
+      // Força recarregamento para limpar estados residuais do React/Router
+      window.location.href = window.location.origin + window.location.pathname + '#/login';
+      window.location.reload();
     }
-    window.location.href = '#/login';
   };
 
   const signInWithGoogle = async () => {
     if (!isSupabaseConfigured || !supabase) {
-      alert("Aviso: O Supabase não está configurado. Configure as chaves para usar o login real.");
+      alert("Aviso: O Supabase não está configurado corretamente para login social.");
       return;
     }
     
-    // Corrigido: Redirect para o domínio solicitado
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: 'https://eventos.escsistemas.com'
+        redirectTo: window.location.origin
       }
     });
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signOut, signInWithGoogle }}>
+    <AuthContext.Provider value={{ user, profile, loading, signOut, signInWithGoogle, clearSessionData }}>
       {children}
     </AuthContext.Provider>
   );
