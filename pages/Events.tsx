@@ -1,10 +1,11 @@
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { 
   Plus, Search, MoreVertical, Eye, X, AlertCircle, 
   Upload, FileText, Image as ImageIcon, Trash2, Tag, 
   ShieldAlert, Hash, Zap, Edit3, Clock, Paperclip, History,
-  ChevronRight, Calendar, User, MapPin, Car
+  ChevronRight, Calendar, User, MapPin, Car, Mail, Phone, ExternalLink
 } from 'lucide-react';
 import { MOCK_EVENTS, MOCK_VEHICLES, MOCK_ASSOCIATES } from '../constants';
 import { EventStatus, EventType, Priority, Event } from '../types';
@@ -245,23 +246,80 @@ const Events: React.FC = () => {
                     <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
                        <Car size={14}/> Veículo e Associado
                     </h3>
-                    <div className="grid grid-cols-2 gap-4">
-                       <div className="p-6 bg-white border border-slate-100 rounded-[28px] shadow-sm">
-                          <p className="text-[9px] font-black text-slate-400 uppercase mb-3">Associado</p>
-                          <div className="flex items-center gap-3">
-                             <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center"><User size={20}/></div>
-                             <p className="font-black text-slate-800 text-sm">{MOCK_ASSOCIATES.find(a => a.id === selectedEvent.associateId)?.name}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                       {/* Card Associado Detalhado */}
+                       <div className="p-6 bg-white border border-slate-100 rounded-[28px] shadow-sm relative group hover:border-blue-200 transition-all flex flex-col justify-between h-full">
+                          <div>
+                            <div className="flex justify-between items-start mb-4">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Associado Responsável</p>
+                                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl"><User size={18}/></div>
+                            </div>
+                            
+                            {(() => {
+                                const linkedAssociate = MOCK_ASSOCIATES.find(a => a.id === selectedEvent.associateId);
+                                return (
+                                    <div className="space-y-4">
+                                        <div>
+                                            <p className="text-lg font-black text-slate-800 leading-tight">{linkedAssociate?.name || 'Não vinculado'}</p>
+                                            <p className="text-xs font-medium text-slate-500 mt-1">{linkedAssociate?.document || '-'}</p>
+                                        </div>
+                                        <div className="space-y-2 pt-2 border-t border-slate-50">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400"><Mail size={14}/></div>
+                                                <p className="text-xs font-bold text-slate-600">{(linkedAssociate as any)?.email || 'email@exemplo.com'}</p>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400"><Phone size={14}/></div>
+                                                <p className="text-xs font-bold text-slate-600">{(linkedAssociate as any)?.phone || '(11) 99999-9999'}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                           </div>
+                          <Link to="/veiculos" className="mt-6 flex items-center justify-center gap-2 w-full py-3 bg-slate-50 text-slate-600 rounded-xl text-[10px] font-black uppercase hover:bg-indigo-50 hover:text-indigo-600 transition-colors">
+                             Ver Cadastro Completo <ExternalLink size={14}/>
+                          </Link>
                        </div>
-                       <div className="p-6 bg-white border border-slate-100 rounded-[28px] shadow-sm">
-                          <p className="text-[9px] font-black text-slate-400 uppercase mb-3">Veículo</p>
-                          <div className="flex items-center gap-3">
-                             <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center"><Car size={20}/></div>
-                             <div>
-                                <p className="font-black text-slate-800 text-sm">{MOCK_VEHICLES.find(v => v.id === selectedEvent.vehicleId)?.plate}</p>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase">{MOCK_VEHICLES.find(v => v.id === selectedEvent.vehicleId)?.model}</p>
-                             </div>
+
+                       {/* Card Veículo Detalhado */}
+                       <div className="p-6 bg-white border border-slate-100 rounded-[28px] shadow-sm relative group hover:border-blue-200 transition-all flex flex-col justify-between h-full">
+                          <div>
+                            <div className="flex justify-between items-start mb-4">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Veículo do Evento</p>
+                                <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><Car size={18}/></div>
+                            </div>
+
+                            {(() => {
+                                const linkedVehicle = MOCK_VEHICLES.find(v => v.id === selectedEvent.vehicleId);
+                                return (
+                                    <div className="space-y-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="bg-slate-900 text-white px-3 py-1 rounded-lg font-black text-sm tracking-widest shadow-lg shadow-slate-200">
+                                                {linkedVehicle?.plate || '---'}
+                                            </div>
+                                            <span className="text-[10px] font-black text-slate-400 uppercase bg-slate-50 px-2 py-1 rounded border border-slate-100">
+                                                {linkedVehicle?.year || 'N/A'}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <p className="text-lg font-black text-slate-800 leading-tight uppercase">{linkedVehicle?.model || 'Desconhecido'}</p>
+                                            <p className="text-xs font-bold text-slate-400 uppercase mt-1 tracking-widest">{linkedVehicle?.brand || '-'}</p>
+                                        </div>
+                                        <div className="pt-2 border-t border-slate-50">
+                                            <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Status Frota</p>
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                                                <span className="text-xs font-bold text-green-600">Ativo / Regular</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                           </div>
+                          <Link to="/veiculos" className="mt-6 flex items-center justify-center gap-2 w-full py-3 bg-slate-50 text-slate-600 rounded-xl text-[10px] font-black uppercase hover:bg-blue-50 hover:text-blue-600 transition-colors">
+                             Ver Ficha Técnica <ExternalLink size={14}/>
+                          </Link>
                        </div>
                     </div>
                   </section>
