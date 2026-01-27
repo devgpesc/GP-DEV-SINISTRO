@@ -28,8 +28,18 @@ interface CommTemplate {
   channel: 'WhatsApp' | 'E-mail' | 'Sistema';
   subject?: string;
   body: string;
-  icon: any;
+  icon: string; // Alterado para string para evitar erro de serialização
 }
+
+// Mapa de ícones para renderização segura
+const ICON_MAP: Record<string, any> = {
+  'MessageCircle': MessageCircle,
+  'Mail': Mail,
+  'MessageSquare': MessageSquare,
+  // Fallbacks
+  'WhatsApp': MessageCircle,
+  'E-mail': Mail
+};
 
 const Settings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'empresa' | 'usuarios' | 'sistema' | 'templates' | 'metas' | 'categorias' | 'seguranca' | 'integracoes'>('empresa');
@@ -127,14 +137,19 @@ const Settings: React.FC = () => {
     const savedRules = mockStorage.get('app_rules');
     if (savedRules) setRules(savedRules);
 
-    // Carregar Templates
+    // Carregar Templates com Migração de Dados Antigos
     const savedTemplates = mockStorage.get('app_templates');
     if (savedTemplates) {
-      setTemplates(savedTemplates);
+      // Migração segura: garante que 'icon' seja string
+      const safeTemplates = savedTemplates.map((t: any) => ({
+        ...t,
+        icon: typeof t.icon === 'string' ? t.icon : (t.channel === 'WhatsApp' ? 'MessageCircle' : 'Mail')
+      }));
+      setTemplates(safeTemplates);
     } else {
       setTemplates([
-        { id: '1', title: 'RFQ - Envio de Cotação', channel: 'WhatsApp', body: 'Olá {{fornecedor}}, solicitamos cotação para o evento {{protocolo}} com urgência.', icon: MessageCircle },
-        { id: '2', title: 'OC - Confirmação', channel: 'E-mail', subject: 'Nova Ordem de Compra #{{oc_codigo}}', body: 'Prezado, segue em anexo a OC referente ao sinistro {{protocolo}}.', icon: Mail },
+        { id: '1', title: 'RFQ - Envio de Cotação', channel: 'WhatsApp', body: 'Olá {{fornecedor}}, solicitamos cotação para o evento {{protocolo}} com urgência.', icon: 'MessageCircle' },
+        { id: '2', title: 'OC - Confirmação', channel: 'E-mail', subject: 'Nova Ordem de Compra #{{oc_codigo}}', body: 'Prezado, segue em anexo a OC referente ao sinistro {{protocolo}}.', icon: 'Mail' },
       ]);
     }
 
@@ -631,11 +646,15 @@ const Settings: React.FC = () => {
                  <h3 className="text-lg font-black text-slate-800">Templates de Comunicação</h3>
                </div>
                <div className="space-y-4">
-                  {templates.map((t) => (
+                  {templates.map((t) => {
+                    const IconComponent = ICON_MAP[t.icon] || MessageSquare;
+                    return (
                     <div key={t.id} className="p-6 bg-slate-50 border border-slate-100 rounded-3xl group hover:border-blue-200 transition-all">
                        <div className="flex justify-between items-start mb-2">
                           <div className="flex items-center gap-3">
-                             <div className="p-2 bg-white rounded-xl shadow-sm text-slate-400"><t.icon size={18}/></div>
+                             <div className="p-2 bg-white rounded-xl shadow-sm text-slate-400">
+                               <IconComponent size={18}/>
+                             </div>
                              <div>
                                 <p className="font-black text-slate-800 text-sm">{t.title}</p>
                                 <span className="text-[10px] font-bold text-slate-400 uppercase">{t.channel}</span>
@@ -645,7 +664,7 @@ const Settings: React.FC = () => {
                        </div>
                        <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed italic border-l-2 border-slate-200 pl-3">"{t.body}"</p>
                     </div>
-                  ))}
+                  )})}
                </div>
             </div>
           )}
