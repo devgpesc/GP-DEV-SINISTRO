@@ -126,14 +126,28 @@ export interface Event {
 
 export interface Vehicle {
   id: string;
-  plate: string;
-  renavam?: string;
-  chassi?: string;
-  model: string;
-  brand: string;
-  year: string;
   associateId: string;
   createdAt: string;
+  
+  // Identificação
+  plate: string;
+  chassi?: string;
+  renavam?: string;
+  uf?: string;
+  municipio?: string;
+
+  // Dados Técnicos
+  brand: string;      // Marca
+  model: string;      // Modelo
+  version?: string;   // Versão
+  yearFab?: string;   // Ano Fabricação
+  yearModel?: string; // Ano Modelo
+  color?: string;     // Cor
+  fuel?: string;      // Combustível
+  type?: string;      // Tipo (Carro, Moto...)
+  
+  // Retrocompatibilidade (serão removidos futuramente ou mapeados)
+  year?: string;      // Alias para yearModel
 }
 
 export interface AppSettings {
