@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Link, useLocation, Outlet } from 'react-router-dom';
 import { 
@@ -50,8 +51,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
-      <aside className="w-64 bg-slate-900 text-white flex flex-col fixed h-full z-20">
+    <div className="flex min-h-screen bg-slate-50 print:bg-white">
+      <aside className="w-64 bg-slate-900 text-white flex flex-col fixed h-full z-20 print:hidden">
         <div className="p-6">
           <div className="flex items-center gap-2 mb-8">
             <div className="bg-blue-600 p-2 rounded-lg"><Car className="text-white" size={24} /></div>
@@ -119,8 +120,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </div>
       </aside>
 
-      <main className="flex-1 ml-64 p-8 relative">
-        <header className="flex justify-between items-center mb-8">
+      <main className="flex-1 ml-64 p-8 relative print:ml-0 print:p-0 print:w-full">
+        <header className="flex justify-between items-center mb-8 print:hidden">
           <div>
             <h2 className="text-2xl font-bold text-slate-800">
                 {isSuperAdmin ? 'Painel Mestre' : 'Visão Operacional'}

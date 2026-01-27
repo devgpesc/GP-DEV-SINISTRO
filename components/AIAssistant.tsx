@@ -39,7 +39,7 @@ const AIAssistant: React.FC = () => {
     return (
       <button 
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 rounded-full shadow-2xl flex items-center justify-center text-white hover:bg-blue-700 transition-all z-50 hover:scale-110"
+        className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 rounded-full shadow-2xl flex items-center justify-center text-white hover:bg-blue-700 transition-all z-50 hover:scale-110 print:hidden"
       >
         <Sparkles size={24} />
       </button>
@@ -47,7 +47,7 @@ const AIAssistant: React.FC = () => {
   }
 
   return (
-    <div className={`fixed bottom-6 right-6 w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 overflow-hidden flex flex-col transition-all ${isMinimized ? 'h-14' : 'h-[500px]'}`}>
+    <div className={`fixed bottom-6 right-6 w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 overflow-hidden flex flex-col transition-all print:hidden ${isMinimized ? 'h-14' : 'h-[500px]'}`}>
       <div className="p-4 bg-slate-900 text-white flex justify-between items-center cursor-pointer" onClick={() => setIsMinimized(!isMinimized)}>
         <div className="flex items-center gap-2">
           <Sparkles size={18} className="text-blue-400" />
