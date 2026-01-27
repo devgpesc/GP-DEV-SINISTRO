@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, Outlet } from 'react-router-dom';
 import { 
   LayoutDashboard, FileText, ShoppingCart, Users, Truck, 
   BarChart3, Settings, Package, Car, Bell, Search, UserCircle, X, ShoppingBag, Clock, Trash2, CheckCheck,
@@ -9,7 +9,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 
 interface LayoutProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }
 
 const NavItem = ({ to, icon: Icon, label, active, badge }: { to: string, icon: any, label: string, active: boolean, badge?: string }) => (
@@ -122,7 +122,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </button>
           </div>
         </header>
-        {children}
+        {children || <Outlet />}
       </main>
     </div>
   );

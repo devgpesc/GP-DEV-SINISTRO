@@ -23,7 +23,7 @@ import SaasAdmin from './pages/SaasAdmin.tsx';
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isSuperAdmin, loading } = useAuth();
   
-  if (loading) return null; // Deixa o PrivateRoute lidar com o loading visual
+  if (loading) return null; // PrivateRoute já lida com o loading visual pai, mas por segurança.
   if (!isSuperAdmin) return <Navigate to="/" replace />;
   
   return <>{children}</>;
@@ -31,25 +31,19 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
 const App: React.FC = () => {
   useEffect(() => {
-    console.log('[AutoClaims] App Inicializado. Usando BrowserRouter para suporte nativo OAuth.');
+    console.log('[AutoClaims] App Inicializado. Router configurado.');
   }, []);
 
   return (
     <AuthProvider>
-      {/* 
-        USANDO BROWSER ROUTER
-        O Google OAuth retorna tokens na URL. O HashRouter (#) quebra esse fluxo 
-        porque interpreta o token como uma rota inexistente antes do Supabase ler.
-        O BrowserRouter permite que o Supabase Client leia a URL corretamente.
-      */}
       <Router>
         <Routes>
           {/* Rotas Públicas */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           
-          {/* Rotas Privadas (Protegidas) */}
-          {/* PrivateRoute agora gerencia o estado de loading globalmente */}
+          {/* Rotas Privadas (Layout Principal) */}
+          {/* PrivateRoute controla o acesso e o loading state inicial */}
           <Route element={<PrivateRoute><Layout /></PrivateRoute>}>
              <Route path="/" element={<Dashboard />} />
              <Route path="/eventos" element={<Events />} />
@@ -70,18 +64,16 @@ const App: React.FC = () => {
              } />
           </Route>
 
-          {/* Fallback */}
+          {/* Rota Padrão (Catch-all) */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         
-        {/* Assistente Flutuante (renderizado apenas se autenticado, controlado internamente ou via rota) */}
         <AuthOnlyAssistant />
       </Router>
     </AuthProvider>
   );
 };
 
-// Pequeno wrapper para mostrar o Assistant apenas quando logado
 const AuthOnlyAssistant = () => {
   const { user } = useAuth();
   return user ? <AIAssistant /> : null;

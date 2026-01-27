@@ -12,8 +12,8 @@ export const PrivateRoute: React.FC<PrivateRouteProps> = ({ children }) => {
   const { user, loading } = useAuth();
 
   // 1. ESTADO DE CARREGAMENTO (Bloqueante)
-  // Enquanto o Supabase verifica a sessão (getSession), mostramos o Loading.
-  // Isso impede que o router redirecione para /login prematuramente.
+  // Enquanto o Supabase verifica a sessão ou troca o token OAuth, mostramos o Splash.
+  // CRÍTICO: Não redirecionar aqui.
   if (loading) {
     return (
       <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center font-sans">
@@ -24,9 +24,9 @@ export const PrivateRoute: React.FC<PrivateRouteProps> = ({ children }) => {
            <div className="flex flex-col items-center gap-2">
              <div className="flex items-center gap-2 text-blue-600 font-bold">
                <Loader2 className="animate-spin" size={20} />
-               <span className="text-sm uppercase tracking-widest">Sincronizando Sessão...</span>
+               <span className="text-sm uppercase tracking-widest">Autenticando...</span>
              </div>
-             <p className="text-xs text-slate-400">Verificando credenciais de acesso seguro.</p>
+             <p className="text-xs text-slate-400">Estabelecendo conexão segura.</p>
            </div>
         </div>
       </div>
@@ -34,12 +34,12 @@ export const PrivateRoute: React.FC<PrivateRouteProps> = ({ children }) => {
   }
 
   // 2. NÃO AUTENTICADO
-  // Se terminou de carregar e não tem usuário, manda pro login.
+  // Só chegamos aqui se loading === false e user === null.
   if (!user) {
     return <Navigate to="/login" replace />;
   }
 
   // 3. AUTENTICADO
-  // Renderiza o conteúdo protegido (Outlet para rotas aninhadas ou children direto)
+  // Renderiza o conteúdo
   return children ? <>{children}</> : <Outlet />;
 };

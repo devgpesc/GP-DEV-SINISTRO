@@ -39,7 +39,16 @@ const Suppliers: React.FC = () => {
 
   const handleEdit = (s: Supplier) => {
     setSupplierToEdit(s);
-    setFormData({ ...s });
+    setFormData({ 
+      name: s.name,
+      cnpj: s.cnpj,
+      segment: s.segment,
+      whatsapp: s.whatsapp,
+      email: s.email || '',
+      city: s.city,
+      status: s.status,
+      rating: s.rating
+    });
     setIsModalOpen(true);
   };
 
