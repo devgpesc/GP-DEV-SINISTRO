@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { Session, User } from 'https://esm.sh/@supabase/supabase-js@^2.49.1';
 import { supabase, isSupabaseConfigured, mockStorage } from '../services/supabaseClient';
@@ -24,10 +23,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<any>(null);
   
-  // INICIALIZA COMO TRUE. O app não deve renderizar rotas protegidas até que isso vire false.
+  // O loading inicia TRUE para bloquear a renderização até termos certeza do estado.
   const [loading, setLoading] = useState(true);
 
-  // Busca ou cria o perfil do usuário
+  // Busca ou cria o perfil do usuário no banco
   const fetchProfile = useCallback(async (currentUser: User) => {
     if (!isSupabaseConfigured || !currentUser) return null;
 
@@ -39,7 +38,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .maybeSingle();
 
       if (existingProfile) {
-        // Atualiza role se for super admin hardcoded
         if (SUPER_ADMIN_EMAILS.includes(currentUser.email || '') && existingProfile.role !== 'super_admin') {
            const { data: updated } = await supabase.from('profiles').update({ role: 'super_admin' }).eq('id', currentUser.id).select().single();
            return updated || existingProfile;
@@ -47,7 +45,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return existingProfile;
       } 
       
-      // Cria perfil se não existir
       const meta = currentUser.user_metadata;
       const newProfile = { 
         id: currentUser.id, 
@@ -73,51 +70,55 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     let mounted = true;
+    console.log('[Auth] Inicializando Contexto...');
 
-    // LÓGICA DE CALLBACK AWARENESS
-    // Verifica se estamos voltando de um redirecionamento OAuth (Code ou Token na URL)
-    const isAuthCallback = window.location.search.includes('code=') || 
-                           window.location.hash.includes('access_token') ||
-                           window.location.href.includes('type=recovery');
+    // DETECÇÃO DE CALLBACK:
+    // Identifica se estamos em um fluxo de retorno OAuth (Hash ou Query).
+    // Se verdadeiro, sabemos que o Supabase SDK ainda vai processar a sessão.
+    const isAuthCallback = window.location.hash.includes('access_token') || 
+                           window.location.search.includes('code=') ||
+                           window.location.hash.includes('type=recovery');
+    
+    console.log(`[Auth] Callback detectado na URL? ${isAuthCallback ? 'SIM' : 'NÃO'}`);
 
-    console.log(`[Auth] Iniciando verificação. Callback detectado? ${isAuthCallback}`);
-
-    const initSession = async () => {
+    // Função de inicialização
+    const initializeAuth = async () => {
       try {
-        // Tenta recuperar sessão existente
+        // Tenta pegar a sessão atual (persistida ou da URL se o SDK já processou)
         const { data: { session: initialSession }, error } = await supabase.auth.getSession();
         
-        if (error) throw error;
+        if (error) console.error('[Auth] Erro no getSession:', error);
 
         if (mounted) {
           if (initialSession) {
-            console.log('[Auth] Sessão encontrada via getSession.');
+            console.log('[Auth] Sessão inicial encontrada.');
             setSession(initialSession);
             setUser(initialSession.user);
             const userProfile = await fetchProfile(initialSession.user);
             if (mounted) setProfile(userProfile);
-            setLoading(false); // Sessão confirmada, libera app.
+            setLoading(false); // Sessão confirmada, libera o app.
           } else {
-            console.log('[Auth] Nenhuma sessão ativa no getSession.');
+            console.log('[Auth] Nenhuma sessão inicial.');
             
-            // SE NÃO TEM SESSÃO, MAS É UM CALLBACK: NÃO SETA LOADING=FALSE AINDA
-            // Deixa o onAuthStateChange processar o evento SIGNED_IN.
+            // LÓGICA CRÍTICA:
+            // Se não tem sessão, mas parece ser um callback, NÃO definimos loading=false.
+            // Esperamos o evento SIGNED_IN do onAuthStateChange.
             if (!isAuthCallback) {
-              setLoading(false); // Não é callback, usuário realmente deslogado.
+              setLoading(false); // Realmente deslogado e sem pendências.
             } else {
-              console.log('[Auth] Aguardando processamento do OAuth (Callback)...');
+              console.log('[Auth] Aguardando processamento do SDK (loading permanece true)...');
             }
           }
         }
-      } catch (error) {
-        console.error("[Auth] Erro na inicialização:", error);
+      } catch (err) {
+        console.error("[Auth] Falha crítica na inicialização:", err);
         if (mounted && !isAuthCallback) setLoading(false);
       }
     };
 
-    initSession();
+    initializeAuth();
 
-    // Listener de Eventos do Supabase
+    // Listener de mudanças de estado
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
       console.log(`[Auth] Evento recebido: ${event}`);
       
@@ -127,19 +128,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(currentSession?.user ?? null);
 
       if (currentSession?.user) {
-        // Se logou (inclusive via OAuth callback), busca perfil e libera loading
+        console.log('[Auth] Usuário autenticado via evento.');
+        // Evita refetch desnecessário se o perfil já estiver carregado
         if (!profile) {
            const userProfile = await fetchProfile(currentSession.user);
            if (mounted) setProfile(userProfile);
         }
-        setLoading(false);
+        setLoading(false); // Libera o app (resolve o caso do callback)
       } else if (event === 'SIGNED_OUT') {
         setProfile(null);
         clearSessionData();
         setLoading(false);
       } else if (event === 'INITIAL_SESSION') {
-         // Evento inicial disparado pelo SDK
-         // Se session for null e não for callback, o loading já foi tratado no initSession
+         // Evento disparado pelo SDK após processar a URL.
+         // Se a sessão for nula aqui e não for callback, o initializeAuth já tratou.
       }
     });
 
@@ -147,7 +149,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [fetchProfile]);
+  }, [fetchProfile]); // Removido 'profile' das dependências para evitar loop
 
   const clearSessionData = () => {
     mockStorage.clearAll();
@@ -166,7 +168,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signInWithGoogle = async () => {
-    const redirectUrl = window.location.origin; // Redireciona para a raiz
+    const redirectUrl = window.location.origin;
     console.log('[Auth] Iniciando OAuth Google. Redirect:', redirectUrl);
     
     const { error } = await supabase.auth.signInWithOAuth({

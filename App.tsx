@@ -1,6 +1,6 @@
 
 import React, { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'https://esm.sh/react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext.tsx';
 import { PrivateRoute } from './components/PrivateRoute.tsx';
 import Layout from './components/Layout.tsx';
@@ -19,11 +19,13 @@ import Register from './pages/Register.tsx';
 import AIAssistant from './components/AIAssistant.tsx';
 import SaasAdmin from './pages/SaasAdmin.tsx';
 
-// Componente para proteger rota de Admin
+// Rota protegida específica para Super Admin
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isSuperAdmin, loading } = useAuth();
   
-  if (loading) return null; // PrivateRoute já lida com o loading visual pai, mas por segurança.
+  // PrivateRoute já cuida do loading global, mas verificamos novamente por segurança
+  if (loading) return null;
+  
   if (!isSuperAdmin) return <Navigate to="/" replace />;
   
   return <>{children}</>;
@@ -31,7 +33,7 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
 const App: React.FC = () => {
   useEffect(() => {
-    console.log('[AutoClaims] App Inicializado. Router configurado.');
+    console.log('[App] Inicializando Router...');
   }, []);
 
   return (
@@ -42,8 +44,7 @@ const App: React.FC = () => {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           
-          {/* Rotas Privadas (Layout Principal) */}
-          {/* PrivateRoute controla o acesso e o loading state inicial */}
+          {/* Rotas Privadas (Protegidas por PrivateRoute) */}
           <Route element={<PrivateRoute><Layout /></PrivateRoute>}>
              <Route path="/" element={<Dashboard />} />
              <Route path="/eventos" element={<Events />} />
@@ -56,7 +57,7 @@ const App: React.FC = () => {
              <Route path="/relatorios" element={<Reports />} />
              <Route path="/configuracoes" element={<Settings />} />
              
-             {/* Rota Super Admin */}
+             {/* Rota Exclusiva Super Admin */}
              <Route path="/saas-admin" element={
                <AdminRoute>
                  <SaasAdmin />
@@ -64,16 +65,18 @@ const App: React.FC = () => {
              } />
           </Route>
 
-          {/* Rota Padrão (Catch-all) */}
+          {/* Fallback para rota inexistente */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         
+        {/* Assistente IA Global (visível apenas se logado) */}
         <AuthOnlyAssistant />
       </Router>
     </AuthProvider>
   );
 };
 
+// Wrapper para isolar o hook useAuth fora do provider no mesmo arquivo
 const AuthOnlyAssistant = () => {
   const { user } = useAuth();
   return user ? <AIAssistant /> : null;

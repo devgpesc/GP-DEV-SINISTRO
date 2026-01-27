@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet } from 'https://esm.sh/react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Loader2, ShieldCheck } from 'lucide-react';
 
@@ -11,9 +11,9 @@ interface PrivateRouteProps {
 export const PrivateRoute: React.FC<PrivateRouteProps> = ({ children }) => {
   const { user, loading } = useAuth();
 
-  // 1. ESTADO DE CARREGAMENTO (Bloqueante)
-  // Enquanto o Supabase verifica a sessão ou troca o token OAuth, mostramos o Splash.
-  // CRÍTICO: Não redirecionar aqui.
+  // 1. ESTADO DE LOADING (Bloqueio Total)
+  // Se o contexto diz que está carregando (seja verificando sessão ou processando OAuth),
+  // mostramos o Splash Screen. NÃO redirecionamos.
   if (loading) {
     return (
       <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center font-sans">
@@ -24,22 +24,22 @@ export const PrivateRoute: React.FC<PrivateRouteProps> = ({ children }) => {
            <div className="flex flex-col items-center gap-2">
              <div className="flex items-center gap-2 text-blue-600 font-bold">
                <Loader2 className="animate-spin" size={20} />
-               <span className="text-sm uppercase tracking-widest">Autenticando...</span>
+               <span className="text-sm uppercase tracking-widest">Sincronizando Sessão...</span>
              </div>
-             <p className="text-xs text-slate-400">Estabelecendo conexão segura.</p>
+             <p className="text-xs text-slate-400">Verificando credenciais de acesso seguro.</p>
            </div>
         </div>
       </div>
     );
   }
 
-  // 2. NÃO AUTENTICADO
-  // Só chegamos aqui se loading === false e user === null.
+  // 2. VERIFICAÇÃO DE USUÁRIO
+  // Só chegamos aqui se loading === false. Se não tiver usuário, tchau.
   if (!user) {
     return <Navigate to="/login" replace />;
   }
 
-  // 3. AUTENTICADO
-  // Renderiza o conteúdo
+  // 3. RENDERIZAÇÃO
+  // Usuário autenticado e carregamento finalizado.
   return children ? <>{children}</> : <Outlet />;
 };
