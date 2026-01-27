@@ -25,12 +25,12 @@ export const supabaseAnonKey = getEnv('VITE_SUPABASE_ANON_KEY');
 
 export const isSupabaseConfigured = !!supabaseUrl && supabaseUrl.includes('supabase.co');
 
-// Inicialização com persistência explícita para evitar perda de sessão no refresh
+// Inicialização com persistência explícita e detecção de URL desativada para evitar conflito com HashRouter
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true
+    detectSessionInUrl: false // IMPORTANTE: Desativado para gerenciar manualmente no AuthContext
   }
 });
 

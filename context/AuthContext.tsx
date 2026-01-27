@@ -78,7 +78,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (err) {
       console.error("[Auth] Erro ao sincronizar perfil (usando fallback):", err);
-      // Em caso de erro (ex: RLS bloqueando insert), usamos o perfil local para permitir o login
       setProfile(fallbackProfile);
     }
   }, []);
@@ -89,15 +88,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const initializeAuth = async () => {
       try {
-        // 1. Verificação Manual de Hash (Correção para HashRouter + OAuth)
-        // O Supabase coloca o token no hash: #access_token=...
-        // O HashRouter pode confundir isso. Vamos pegar antes.
+        // 1. Verificação Manual de Hash para OAuth com HashRouter
+        // Isso roda ANTES do Router ser montado porque o AuthProvider bloqueia a renderização dos filhos enquanto loading=true
         const hash = window.location.hash;
+        
+        // Exemplo de hash do Supabase: #access_token=...&refresh_token=...
+        // Exemplo de hash do Router: #/login
         if (hash && hash.includes('access_token')) {
-          console.log('[Auth] Token encontrado na URL via Hash. Processando manualmente...');
+          console.log('[Auth] Token OAuth detectado no Hash. Iniciando processamento manual...');
           
-          // Extrai parâmetros do hash de forma bruta para garantir
-          const params = new URLSearchParams(hash.substring(1)); // remove o #
+          // Remove o '#' inicial para processar
+          const hashString = hash.substring(1); 
+          const params = new URLSearchParams(hashString);
+          
           const accessToken = params.get('access_token');
           const refreshToken = params.get('refresh_token');
 
@@ -108,17 +111,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             });
 
             if (!error && data.session) {
-              console.log('[Auth] Sessão manual estabelecida com sucesso.');
-              // Limpa a URL para evitar loops
-              window.history.replaceState(null, '', window.location.pathname);
-              // Não retornamos aqui, deixamos o fluxo seguir para carregar o usuário
+              console.log('[Auth] Sessão criada manualmente via token da URL.');
+              // Limpa o hash para evitar loops e preparar para o HashRouter
+              // Define como '/' para o HashRouter ir para a home
+              window.location.hash = '/'; 
             } else {
-              console.error('[Auth] Falha ao definir sessão manual:', error);
+              console.error('[Auth] Erro ao definir sessão manual:', error);
             }
           }
         }
 
-        // 2. Verifica sessão atual (seja recuperada do storage ou do setSession acima)
+        // 2. Verifica sessão persistida
         const { data: { session } } = await supabase.auth.getSession();
 
         if (mounted) {
@@ -141,7 +144,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     initializeAuth();
 
-    // 3. Listener para mudanças futuras (Logout, troca de tab, etc)
+    // 3. Listener para mudanças de estado
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log(`[Auth] Evento: ${event}`);
       if (!mounted) return;
@@ -149,15 +152,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         setUser(session?.user ?? null);
         if (session?.user) {
-          // Só mostra loading se não tivermos perfil ainda
-          if (!profile) setLoading(true);
-          await fetchProfile(session.user.id, session.user.email);
-          setLoading(false);
+           // Se o profile ainda não estiver carregado, mantemos loading visual apenas se desejado, 
+           // mas aqui preferimos não bloquear toda a UI em refresh
+           if (!profile) await fetchProfile(session.user.id, session.user.email);
         }
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setProfile(null);
-        setLoading(false);
       }
     });
 
@@ -187,9 +188,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signInWithGoogle = async () => {
-    // Usa window.location.origin para garantir que volte para a raiz do domínio
     const redirectUrl = window.location.origin;
-    console.log('[Auth] Iniciando OAuth Google. Redirect:', redirectUrl);
+    console.log('[Auth] Redirect URL:', redirectUrl);
     
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -206,6 +206,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isSuperAdmin = profile?.role === 'super_admin';
   const tenantId = profile?.tenant_id || null;
+
+  // IMPORTANTE: Bloqueia a renderização dos filhos (Router) enquanto carrega.
+  // Isso impede que o HashRouter tente rotear o access_token da URL.
+  if (loading) {
+    return (
+      <div className="flex h-screen w-screen flex-col items-center justify-center bg-[#0A1628] text-white">
+        <div className="relative flex flex-col items-center gap-6">
+           <div className="h-16 w-16 animate-spin rounded-full border-4 border-blue-500 border-t-transparent shadow-lg shadow-blue-500/50"></div>
+           <div className="text-center">
+             <h2 className="text-xl font-bold tracking-tight">AutoClaims Pro</h2>
+             <p className="mt-2 text-xs font-bold uppercase tracking-widest text-slate-400">Estabelecendo Conexão Segura...</p>
+           </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <AuthContext.Provider value={{ user, profile, loading, signOut, signInWithGoogle, clearSessionData, isSuperAdmin, tenantId }}>
