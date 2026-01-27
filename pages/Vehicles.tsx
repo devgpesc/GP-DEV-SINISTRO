@@ -1,8 +1,10 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, Search, Car, Hash, ShieldCheck, 
   X, AlertCircle, Loader2, MoreVertical, ClipboardList,
-  CloudLightning, Users, FileText, Phone, Mail, User
+  CloudLightning, Users, FileText, Phone, Mail, User,
+  LayoutGrid, List, Trash2, Edit
 } from 'lucide-react';
 import { vehicleService } from '../services/vehicleService';
 import { lookupService } from '../services/lookupService';
@@ -22,6 +24,7 @@ interface Associate {
 
 const Vehicles: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'veiculos' | 'associados'>('veiculos');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid'); // Novo estado para controle de visualização
   
   // Veículos States
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -271,13 +274,13 @@ const Vehicles: React.FC = () => {
       {/* Tabs */}
       <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-sm inline-flex">
          <button 
-            onClick={() => setActiveTab('veiculos')}
+            onClick={() => { setActiveTab('veiculos'); setViewMode('grid'); }}
             className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'veiculos' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
          >
             Veículos ({vehicles.length})
          </button>
          <button 
-            onClick={() => setActiveTab('associados')}
+            onClick={() => { setActiveTab('associados'); setViewMode('grid'); }}
             className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'associados' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
          >
             Associados ({associates.length})
@@ -287,25 +290,39 @@ const Vehicles: React.FC = () => {
       {/* TAB VEÍCULOS */}
       {activeTab === 'veiculos' && (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
-            <div className="bg-white p-6 rounded-[32px] shadow-sm border border-slate-200">
-                <div className="relative max-w-xl">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                <input 
-                    type="text" 
-                    placeholder="Buscar por placa, modelo ou fabricante..."
-                    className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-blue-500/10 outline-none text-sm font-medium transition-all"
-                    value={vehicleSearchTerm}
-                    onChange={(e) => setVehicleSearchTerm(e.target.value)}
-                />
+            <div className="bg-white p-6 rounded-[32px] shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 items-center justify-between">
+                <div className="relative w-full max-w-xl">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                    <input 
+                        type="text" 
+                        placeholder="Buscar por placa, modelo ou fabricante..."
+                        className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-blue-500/10 outline-none text-sm font-medium transition-all"
+                        value={vehicleSearchTerm}
+                        onChange={(e) => setVehicleSearchTerm(e.target.value)}
+                    />
+                </div>
+                <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200">
+                   <button 
+                      onClick={() => setViewMode('grid')}
+                      className={`p-3 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                   >
+                      <LayoutGrid size={20} />
+                   </button>
+                   <button 
+                      onClick={() => setViewMode('list')}
+                      className={`p-3 rounded-xl transition-all ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                   >
+                      <List size={20} />
+                   </button>
                 </div>
             </div>
 
             {loading ? (
                 <div className="flex justify-center py-20">
-                <Loader2 className="animate-spin text-blue-600" size={40} />
+                    <Loader2 className="animate-spin text-blue-600" size={40} />
                 </div>
-            ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            ) : viewMode === 'grid' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-2 duration-300">
                 {filteredVehicles.map((vehicle) => {
                     const owner = associates.find(a => a.id === vehicle.associateId);
                     return (
@@ -342,14 +359,62 @@ const Vehicles: React.FC = () => {
                         </div>
                     );
                 })}
-                {filteredVehicles.length === 0 && (
-                    <div className="col-span-full py-32 text-center bg-white rounded-[48px] border-4 border-dashed border-slate-100">
-                    <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <Car size={48} className="text-slate-200" />
-                    </div>
-                    <p className="text-slate-400 font-black uppercase text-xs tracking-[0.3em]">Nenhum veículo encontrado na frota</p>
-                    </div>
-                )}
+                </div>
+            ) : (
+                <div className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm animate-in slide-in-from-bottom-2 duration-300">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-50 border-b border-slate-100">
+                      <tr>
+                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Placa / Modelo</th>
+                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Ano / Fabricante</th>
+                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Associado</th>
+                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Dados Técnicos</th>
+                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {filteredVehicles.map(vehicle => {
+                        const owner = associates.find(a => a.id === vehicle.associateId);
+                        return (
+                          <tr key={vehicle.id} className="hover:bg-slate-50/50 transition-colors group">
+                            <td className="px-8 py-5">
+                              <span className="font-black text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-xs inline-block mb-1">{vehicle.plate}</span>
+                              <p className="text-xs font-bold text-slate-600 uppercase">{vehicle.model}</p>
+                            </td>
+                            <td className="px-8 py-5">
+                              <p className="font-bold text-slate-800 text-sm">{vehicle.year}</p>
+                              <p className="text-[10px] text-slate-400 font-bold uppercase">{vehicle.brand}</p>
+                            </td>
+                            <td className="px-8 py-5">
+                              {owner ? (
+                                <div className="flex items-center gap-2">
+                                    <div className="w-6 h-6 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-[10px] font-bold">{owner.name.charAt(0)}</div>
+                                    <span className="text-xs font-bold text-slate-700">{owner.name}</span>
+                                </div>
+                              ) : <span className="text-slate-400 text-xs italic">Não vinculado</span>}
+                            </td>
+                            <td className="px-8 py-5">
+                                <p className="text-[10px] text-slate-500"><strong className="text-slate-400 uppercase">Renavam:</strong> {vehicle.renavam || '-'}</p>
+                                <p className="text-[10px] text-slate-500"><strong className="text-slate-400 uppercase">Chassi:</strong> {vehicle.chassi || '-'}</p>
+                            </td>
+                            <td className="px-8 py-5 text-right flex justify-end gap-2">
+                               <button className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Edit size={16}/></button>
+                               <button className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={16}/></button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+            )}
+            
+            {filteredVehicles.length === 0 && !loading && (
+                <div className="col-span-full py-32 text-center bg-white rounded-[48px] border-4 border-dashed border-slate-100">
+                <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Car size={48} className="text-slate-200" />
+                </div>
+                <p className="text-slate-400 font-black uppercase text-xs tracking-[0.3em]">Nenhum veículo encontrado na frota</p>
                 </div>
             )}
         </div>
@@ -358,54 +423,118 @@ const Vehicles: React.FC = () => {
       {/* TAB ASSOCIADOS */}
       {activeTab === 'associados' && (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
-            <div className="bg-white p-6 rounded-[32px] shadow-sm border border-slate-200">
-                <div className="relative max-w-xl">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                <input 
-                    type="text" 
-                    placeholder="Buscar associado por nome ou CPF/CNPJ..."
-                    className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-blue-500/10 outline-none text-sm font-medium transition-all"
-                    value={associateSearchTerm}
-                    onChange={(e) => setAssociateSearchTerm(e.target.value)}
-                />
+            <div className="bg-white p-6 rounded-[32px] shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 items-center justify-between">
+                <div className="relative w-full max-w-xl">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                    <input 
+                        type="text" 
+                        placeholder="Buscar associado por nome ou CPF/CNPJ..."
+                        className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-blue-500/10 outline-none text-sm font-medium transition-all"
+                        value={associateSearchTerm}
+                        onChange={(e) => setAssociateSearchTerm(e.target.value)}
+                    />
+                </div>
+                <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200">
+                   <button 
+                      onClick={() => setViewMode('grid')}
+                      className={`p-3 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                   >
+                      <LayoutGrid size={20} />
+                   </button>
+                   <button 
+                      onClick={() => setViewMode('list')}
+                      className={`p-3 rounded-xl transition-all ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                   >
+                      <List size={20} />
+                   </button>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredAssociates.map(associate => {
-                    const vehicleCount = vehicles.filter(v => v.associateId === associate.id).length;
-                    return (
-                        <div key={associate.id} className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200 hover:border-blue-200 transition-all group relative">
-                            <div className="flex justify-between items-start mb-6">
-                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-xl shadow-sm ${associate.type === 'PJ' ? 'bg-indigo-50 text-indigo-600' : 'bg-blue-50 text-blue-600'}`}>
-                                    {associate.name.charAt(0)}
+            {viewMode === 'grid' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-2 duration-300">
+                    {filteredAssociates.map(associate => {
+                        const vehicleCount = vehicles.filter(v => v.associateId === associate.id).length;
+                        return (
+                            <div key={associate.id} className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200 hover:border-blue-200 transition-all group relative">
+                                <div className="flex justify-between items-start mb-6">
+                                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-xl shadow-sm ${associate.type === 'PJ' ? 'bg-indigo-50 text-indigo-600' : 'bg-blue-50 text-blue-600'}`}>
+                                        {associate.name.charAt(0)}
+                                    </div>
+                                    <button onClick={() => handleOpenAssociateModal(associate)} className="p-2 text-slate-300 hover:text-blue-600 rounded-xl hover:bg-blue-50 transition-all"><MoreVertical size={20}/></button>
                                 </div>
-                                <button onClick={() => handleOpenAssociateModal(associate)} className="p-2 text-slate-300 hover:text-blue-600 rounded-xl hover:bg-blue-50 transition-all"><MoreVertical size={20}/></button>
-                            </div>
-                            
-                            <h3 className="font-black text-slate-800 text-lg leading-tight mb-1">{associate.name}</h3>
-                            <div className="flex items-center gap-2 mb-6">
-                                <span className="bg-slate-100 text-slate-500 text-[9px] font-black px-2 py-0.5 rounded border border-slate-200 uppercase">{associate.type}</span>
-                                <span className="text-[10px] text-slate-400 font-bold">{associate.document}</span>
-                            </div>
+                                
+                                <h3 className="font-black text-slate-800 text-lg leading-tight mb-1">{associate.name}</h3>
+                                <div className="flex items-center gap-2 mb-6">
+                                    <span className="bg-slate-100 text-slate-500 text-[9px] font-black px-2 py-0.5 rounded border border-slate-200 uppercase">{associate.type}</span>
+                                    <span className="text-[10px] text-slate-400 font-bold">{associate.document}</span>
+                                </div>
 
-                            <div className="space-y-3">
-                                <div className="flex items-center gap-3 text-xs font-medium text-slate-600">
-                                    <Phone size={14} className="text-slate-400"/> {associate.phone || 'Sem telefone'}
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-3 text-xs font-medium text-slate-600">
+                                        <Phone size={14} className="text-slate-400"/> {associate.phone || 'Sem telefone'}
+                                    </div>
+                                    <div className="flex items-center gap-3 text-xs font-medium text-slate-600">
+                                        <Mail size={14} className="text-slate-400"/> {associate.email || 'Sem e-mail'}
+                                    </div>
                                 </div>
-                                <div className="flex items-center gap-3 text-xs font-medium text-slate-600">
-                                    <Mail size={14} className="text-slate-400"/> {associate.email || 'Sem e-mail'}
-                                </div>
-                            </div>
 
-                            <div className="mt-6 pt-6 border-t border-slate-50 flex justify-between items-center">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ativos Vinculados</p>
-                                <span className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-black shadow-lg shadow-blue-600/20">{vehicleCount}</span>
+                                <div className="mt-6 pt-6 border-t border-slate-50 flex justify-between items-center">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ativos Vinculados</p>
+                                    <span className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-black shadow-lg shadow-blue-600/20">{vehicleCount}</span>
+                                </div>
                             </div>
-                        </div>
-                    );
-                })}
-            </div>
+                        );
+                    })}
+                </div>
+            ) : (
+                <div className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm animate-in slide-in-from-bottom-2 duration-300">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-50 border-b border-slate-100">
+                      <tr>
+                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Associado</th>
+                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Documento / Tipo</th>
+                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Contatos</th>
+                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ativos</th>
+                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {filteredAssociates.map(associate => {
+                        const vehicleCount = vehicles.filter(v => v.associateId === associate.id).length;
+                        return (
+                          <tr key={associate.id} className="hover:bg-slate-50/50 transition-colors group">
+                            <td className="px-8 py-5">
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs ${associate.type === 'PJ' ? 'bg-indigo-50 text-indigo-600' : 'bg-blue-50 text-blue-600'}`}>
+                                        {associate.name.charAt(0)}
+                                    </div>
+                                    <span className="font-bold text-slate-800 text-sm">{associate.name}</span>
+                                </div>
+                            </td>
+                            <td className="px-8 py-5">
+                              <p className="font-bold text-slate-600 text-xs">{associate.document}</p>
+                              <span className="text-[10px] font-black bg-slate-100 px-2 py-0.5 rounded uppercase text-slate-500">{associate.type}</span>
+                            </td>
+                            <td className="px-8 py-5">
+                                <div className="text-xs text-slate-600 flex flex-col gap-0.5">
+                                    <span className="flex items-center gap-1.5"><Mail size={12} className="text-slate-400"/> {associate.email || '-'}</span>
+                                    <span className="flex items-center gap-1.5"><Phone size={12} className="text-slate-400"/> {associate.phone || '-'}</span>
+                                </div>
+                            </td>
+                            <td className="px-8 py-5 text-center">
+                                <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded font-black text-xs">{vehicleCount}</span>
+                            </td>
+                            <td className="px-8 py-5 text-right flex justify-end gap-2">
+                               <button onClick={() => handleOpenAssociateModal(associate)} className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Edit size={16}/></button>
+                               <button className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={16}/></button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+            )}
         </div>
       )}
 
