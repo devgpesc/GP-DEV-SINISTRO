@@ -48,6 +48,7 @@ export interface Supplier {
   blockedReason?: string;
   city: string;
   email?: string;
+  contactName?: string;
   createdAt: string;
   ratingHistory?: Array<{ date: string; score: number; comment?: string }>;
 }

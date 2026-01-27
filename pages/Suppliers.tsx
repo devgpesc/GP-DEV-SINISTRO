@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, Search, Star, MessageCircle, MapPin, X, 
   LayoutGrid, List, Edit, Trash2, Shield, Loader2, 
-  TrendingUp, Clock, Globe
+  TrendingUp, Clock, Globe, User, Mail, Phone
 } from 'lucide-react';
 import { Supplier } from '../types';
 import { mockStorage, isSupabaseConfigured, supabase } from '../services/supabaseClient';
@@ -23,7 +24,7 @@ const Suppliers: React.FC = () => {
   const [lookupMessage, setLookupMessage] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
-    name: '', cnpj: '', segment: 'Peças' as any, whatsapp: '', email: '', city: '', status: 'Ativo' as any, rating: 5
+    name: '', cnpj: '', segment: 'Peças' as any, whatsapp: '', email: '', city: '', status: 'Ativo' as any, rating: 5, contactName: ''
   });
 
   useEffect(() => {
@@ -33,8 +34,8 @@ const Suppliers: React.FC = () => {
   async function loadSuppliers() {
     setLoading(true);
     const saved = mockStorage.get('suppliers') || [
-      { id: '1', name: 'Elisa Maria', cnpj: '70435786121', rating: 5.0, segment: 'Ambos', whatsapp: '5511999999999', status: 'Ativo', city: 'APARECIDA DE GOIANIA', createdAt: new Date().toISOString() },
-      { id: '2', name: 'Oficina Silva e Filhos', cnpj: '98.765.432/0001-10', rating: 4.5, segment: 'Ambos', whatsapp: '5511888888888', status: 'Ativo', city: 'Curitiba', createdAt: new Date().toISOString() },
+      { id: '1', name: 'Elisa Maria', cnpj: '70435786121', rating: 5.0, segment: 'Ambos', whatsapp: '5511999999999', status: 'Ativo', city: 'APARECIDA DE GOIANIA', createdAt: new Date().toISOString(), contactName: 'Elisa' },
+      { id: '2', name: 'Oficina Silva e Filhos', cnpj: '98.765.432/0001-10', rating: 4.5, segment: 'Ambos', whatsapp: '5511888888888', status: 'Ativo', city: 'Curitiba', createdAt: new Date().toISOString(), contactName: 'Roberto Silva' },
     ];
     setSuppliers(saved);
     setLoading(false);
@@ -50,7 +51,8 @@ const Suppliers: React.FC = () => {
       email: s.email || '',
       city: s.city,
       status: s.status,
-      rating: s.rating
+      rating: s.rating,
+      contactName: s.contactName || ''
     });
     setIsModalOpen(true);
   };
@@ -104,6 +106,7 @@ const Suppliers: React.FC = () => {
     setIsModalOpen(false);
     setSupplierToEdit(null);
     setLookupMessage(null);
+    setFormData({name: '', cnpj: '', segment: 'Peças', whatsapp: '', email: '', city: '', status: 'Ativo', rating: 5, contactName: ''});
   };
 
   const filtered = useMemo(() => {
@@ -117,7 +120,7 @@ const Suppliers: React.FC = () => {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input type="text" placeholder="Buscar por nome ou CNPJ..." className="w-full pl-10 pr-4 py-3 bg-slate-50 rounded-2xl outline-none border border-slate-100 text-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
         </div>
-        <button onClick={() => { setSupplierToEdit(null); setFormData({name: '', cnpj: '', segment: 'Peças', whatsapp: '', email: '', city: '', status: 'Ativo', rating: 5}); setIsModalOpen(true); }} className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 shadow-xl shadow-blue-500/20 whitespace-nowrap">
+        <button onClick={() => { setSupplierToEdit(null); setFormData({name: '', cnpj: '', segment: 'Peças', whatsapp: '', email: '', city: '', status: 'Ativo', rating: 5, contactName: ''}); setIsModalOpen(true); }} className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 shadow-xl shadow-blue-500/20 whitespace-nowrap">
           <Plus size={18} /> Novo Parceiro
         </button>
       </div>
@@ -138,6 +141,7 @@ const Suppliers: React.FC = () => {
                 <td className="px-8 py-5">
                   <p className="font-bold text-slate-800">{s.name}</p>
                   <p className="text-[10px] text-slate-400 font-bold">{s.cnpj}</p>
+                  {s.contactName && <p className="text-[10px] text-blue-600 font-bold mt-0.5 flex items-center gap-1"><User size={10}/> {s.contactName}</p>}
                 </td>
                 <td className="px-8 py-5 text-xs font-bold text-slate-500 uppercase">{s.city}</td>
                 <td className="px-8 py-5">
@@ -195,14 +199,41 @@ const Suppliers: React.FC = () => {
                     )}
                   </div>
                 </div>
+                
                 <div className="col-span-2">
                   <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Razão Social *</label>
                   <input required className="w-full p-4 bg-[#F8FAFC] border border-slate-100 rounded-2xl font-bold outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
                 </div>
+
+                <div className="col-span-2">
+                  <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Nome do Responsável</label>
+                  <div className="relative">
+                    <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                    <input className="w-full pl-12 pr-4 py-4 bg-[#F8FAFC] border border-slate-100 rounded-2xl font-bold outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20" value={formData.contactName} onChange={e => setFormData({...formData, contactName: e.target.value})} placeholder="Nome do contato principal" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">E-mail do Responsável</label>
+                  <div className="relative">
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                    <input type="email" className="w-full pl-12 pr-4 py-4 bg-[#F8FAFC] border border-slate-100 rounded-2xl font-bold outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="email@exemplo.com" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Telefone do Responsável</label>
+                  <div className="relative">
+                    <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                    <input className="w-full pl-12 pr-4 py-4 bg-[#F8FAFC] border border-slate-100 rounded-2xl font-bold outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20" value={formData.whatsapp} onChange={e => setFormData({...formData, whatsapp: e.target.value})} placeholder="(00) 00000-0000" />
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Cidade de Operação *</label>
                   <input required className="w-full p-4 bg-[#F8FAFC] border border-slate-100 rounded-2xl font-bold outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20" value={formData.city} onChange={e => setFormData({...formData, city: e.target.value.toUpperCase()})} />
                 </div>
+                
                 <div>
                   <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Avaliação (1-5)</label>
                   <div className="flex items-center gap-2 p-4 bg-[#F8FAFC] border border-slate-100 rounded-2xl">
