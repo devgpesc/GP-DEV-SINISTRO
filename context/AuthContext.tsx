@@ -58,8 +58,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const initializeAuth = async () => {
       try {
-        // 1. Verifica sessão atual (especialmente importante para retornos de OAuth)
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        // Verifica se estamos voltando de um OAuth (Google)
+        // Não limpamos a hash aqui! O Supabase precisa dela.
+        const isOAuthReturn = window.location.hash.includes('access_token') || window.location.hash.includes('type=recovery');
+        
+        if (isOAuthReturn) {
+          setLoading(true);
+          // Pequeno delay para garantir que o listener do Supabase capture o evento antes de desistirmos
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+
+        const { data: { session } } = await supabase.auth.getSession();
         
         if (mounted) {
           const currentUser = session?.user ?? null;
@@ -67,13 +76,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           
           if (currentUser) {
             await fetchProfile(currentUser.id);
-            // Se entramos via OAuth, limpamos a URL para não confundir o HashRouter
-            if (window.location.hash.includes('access_token')) {
-              window.location.hash = '/';
-            }
           }
           
-          setLoading(false);
+          // Se não for retorno de OAuth, libera o loading imediatamente.
+          // Se for OAuth, o onAuthStateChange vai lidar com o desbloqueio.
+          if (!isOAuthReturn) {
+            setLoading(false);
+          }
         }
       } catch (err) {
         console.error("Erro na inicialização de sessão:", err);
@@ -83,7 +92,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     initializeAuth();
 
-    // Listener para mudanças de estado (Login/Logout)
+    // Listener para mudanças de estado (Login/Logout/OAuth Redirect)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('[Auth] Evento Detectado:', event);
       if (!mounted) return;
@@ -91,7 +100,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const currentUser = session?.user ?? null;
       setUser(currentUser);
 
-      if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+      if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') {
         if (currentUser) await fetchProfile(currentUser.id);
         setLoading(false);
       } else if (event === 'SIGNED_OUT') {
@@ -132,7 +141,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signInWithGoogle = async () => {
-    // Usamos apenas o origin para evitar conflitos com a hash
     const redirectUrl = window.location.origin;
     
     const { error } = await supabase.auth.signInWithOAuth({

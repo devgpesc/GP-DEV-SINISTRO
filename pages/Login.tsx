@@ -16,10 +16,13 @@ const Login: React.FC = () => {
   const navigate = useNavigate();
   const { user, loading: authLoading, clearSessionData, signInWithGoogle } = useAuth();
 
-  // Se detectar token, forçamos um estado visual de carregamento rápido
-  const hasAuthToken = window.location.hash.includes('access_token');
+  // Verifica se a URL contém tokens de acesso do Google
+  const isProcessingToken = window.location.hash.includes('access_token') || 
+                            window.location.hash.includes('type=recovery') ||
+                            window.location.hash.includes('error=');
 
   useEffect(() => {
+    // Apenas redireciona se tiver usuário E não estiver carregando
     if (user && !authLoading) {
       navigate('/', { replace: true });
     }
@@ -68,8 +71,8 @@ const Login: React.FC = () => {
     }
   };
 
-  // Tela de Transição (Melhorada para não travar)
-  if (hasAuthToken || (authLoading && !localLoading)) {
+  // Se estiver carregando (AuthContext), processando token (URL) ou carregando localmente (Click), mostra loader
+  if (authLoading || isProcessingToken || localLoading) {
     return (
       <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center font-sans">
         <div className="relative flex flex-col items-center gap-8">
