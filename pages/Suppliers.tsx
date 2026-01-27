@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, Search, Star, MessageCircle, MapPin, X, 
   LayoutGrid, List, Edit, Trash2, Shield, Loader2, 
-  TrendingUp, Clock, Globe, User, Mail, Phone
+  TrendingUp, Clock, Globe, User, Mail, Phone, AlertTriangle
 } from 'lucide-react';
 import { Supplier } from '../types';
 import { mockStorage, isSupabaseConfigured, supabase } from '../services/supabaseClient';
@@ -13,9 +13,15 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 const Suppliers: React.FC = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Modais de Edição/Criação
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [supplierToEdit, setSupplierToEdit] = useState<Supplier | null>(null);
+  
+  // Modal de Exclusão
+  const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null);
+
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -55,6 +61,19 @@ const Suppliers: React.FC = () => {
       contactName: s.contactName || ''
     });
     setIsModalOpen(true);
+  };
+
+  const handleDeleteClick = (s: Supplier) => {
+    setSupplierToDelete(s);
+  };
+
+  const handleConfirmDelete = () => {
+    if (supplierToDelete) {
+      const updatedList = suppliers.filter(s => s.id !== supplierToDelete.id);
+      setSuppliers(updatedList);
+      mockStorage.set('suppliers', updatedList);
+      setSupplierToDelete(null);
+    }
   };
 
   const handleCNPJLookup = async () => {
@@ -149,7 +168,7 @@ const Suppliers: React.FC = () => {
                 </td>
                 <td className="px-8 py-5 text-right flex justify-end gap-2">
                    <button onClick={(e) => { e.stopPropagation(); handleEdit(s); }} className="p-2 text-slate-400 hover:text-blue-600 rounded-lg"><Edit size={18}/></button>
-                   <button className="p-2 text-slate-400 hover:text-red-600 rounded-lg"><Trash2 size={18}/></button>
+                   <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(s); }} className="p-2 text-slate-400 hover:text-red-600 rounded-lg"><Trash2 size={18}/></button>
                 </td>
               </tr>
             ))}
@@ -247,6 +266,26 @@ const Suppliers: React.FC = () => {
                 <button type="submit" className="px-12 py-4 bg-blue-600 text-white rounded-full font-black shadow-xl shadow-blue-600/30 uppercase text-xs tracking-widest hover:bg-blue-700 transition-all">FINALIZAR CADASTRO</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Exclusão "Caixa Bonita" */}
+      {supplierToDelete && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setSupplierToDelete(null)}></div>
+          <div className="relative bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden p-8 animate-in zoom-in duration-200 text-center">
+            <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
+              <AlertTriangle size={40} />
+            </div>
+            <h3 className="text-xl font-black text-slate-800 mb-2">Excluir Parceiro?</h3>
+            <p className="text-sm text-slate-500 font-medium mb-8 leading-relaxed">
+              Você está prestes a remover <span className="font-black text-slate-800">{supplierToDelete.name}</span>. Esta ação é irreversível.
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <button onClick={() => setSupplierToDelete(null)} className="py-3 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-slate-200 transition-all">Cancelar</button>
+              <button onClick={handleConfirmDelete} className="py-3 bg-red-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-red-600 transition-all shadow-xl shadow-red-500/20">Excluir</button>
+            </div>
           </div>
         </div>
       )}
