@@ -1,9 +1,11 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   ShoppingCart, Search, Filter, FileText, 
   CheckCircle2, XCircle, Send, Printer, MoreVertical, 
   Clock, DollarSign, UserCheck, X, ChevronDown, ListFilter,
-  Eye, EyeOff, Share2, Download, ShieldCheck, AlertTriangle
+  Eye, EyeOff, Share2, Download, ShieldCheck, AlertTriangle,
+  Loader2, Info
 } from 'lucide-react';
 import { PurchaseOrder } from '../types';
 import { mockStorage } from '../services/supabaseClient';
@@ -15,6 +17,9 @@ const Purchases: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('Todos');
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
+
+  // Estado para Notificações (Toast)
+  const [toast, setToast] = useState<{ show: boolean; title: string; message: string; type: 'success' | 'info' | 'loading' } | null>(null);
 
   // Estado para o Modal de Confirmação Moderno
   const [confirmModal, setConfirmModal] = useState<{
@@ -71,6 +76,16 @@ const Purchases: React.FC = () => {
     }
   }, []);
 
+  // Auto-dismiss toast
+  useEffect(() => {
+    if (toast?.show && toast.type !== 'loading') {
+      const timer = setTimeout(() => {
+        setToast(null);
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
   const canApprove = currentUserRole === 'Admin' || currentUserRole === 'Gerente';
   const canSeeValues = currentUserRole === 'Admin' || currentUserRole === 'Gerente';
 
@@ -83,7 +98,7 @@ const Purchases: React.FC = () => {
   // Abre o modal de aprovação
   const handleRequestApprove = (order: PurchaseOrder) => {
     if (!canApprove) {
-      alert("Apenas administradores ou gestores podem aprovar ordens de compra.");
+      setToast({ show: true, title: 'Acesso Negado', message: 'Apenas gestores podem aprovar OCs.', type: 'info' });
       return;
     }
     setConfirmModal({
@@ -111,15 +126,34 @@ const Purchases: React.FC = () => {
     if (confirmModal.orderId && confirmModal.type) {
       if (confirmModal.type === 'approve') {
         updateOrderStatus(confirmModal.orderId, 'Aprovada');
+        setToast({ show: true, title: 'Sucesso', message: `Ordem ${confirmModal.orderCode} aprovada.`, type: 'success' });
       } else {
         updateOrderStatus(confirmModal.orderId, 'Cancelada');
+        setToast({ show: true, title: 'Cancelado', message: `Ordem ${confirmModal.orderCode} foi cancelada.`, type: 'info' });
       }
       setConfirmModal({ isOpen: false, type: null, orderId: null, orderCode: null });
     }
   };
 
   const handlePrint = (code: string) => {
-    alert(`Enviando comando de impressão para OC ${code}...`);
+    // 1. Mostra notificação de "Gerando..."
+    setToast({ 
+        show: true, 
+        title: 'Gerando PDF', 
+        message: `Preparando documento ${code} para impressão...`, 
+        type: 'loading' 
+    });
+
+    // 2. Simula delay de processamento e abre o print dialog
+    setTimeout(() => {
+        setToast({ 
+            show: true, 
+            title: 'Pronto', 
+            message: 'Janela de impressão aberta.', 
+            type: 'success' 
+        });
+        window.print();
+    }, 1500);
   };
 
   const getStatusStyle = (status: string) => {
@@ -146,6 +180,29 @@ const Purchases: React.FC = () => {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
+      
+      {/* Toast Notification Customizado */}
+      {toast && toast.show && (
+        <div className="fixed top-6 right-6 z-[110] animate-in slide-in-from-right-10 duration-300">
+            <div className="bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 min-w-[320px] border border-slate-700/50">
+                <div className="p-2 bg-white/10 rounded-xl">
+                    {toast.type === 'loading' ? <Loader2 className="animate-spin" size={20}/> : 
+                     toast.type === 'success' ? <CheckCircle2 size={20} className="text-green-400"/> : 
+                     <Info size={20} className="text-blue-400"/>}
+                </div>
+                <div className="flex-1">
+                    <p className="font-bold text-sm">{toast.title}</p>
+                    <p className="text-xs text-slate-300 mt-0.5">{toast.message}</p>
+                </div>
+                {toast.type !== 'loading' && (
+                    <button onClick={() => setToast(null)} className="text-slate-400 hover:text-white transition-colors">
+                        <X size={18}/>
+                    </button>
+                )}
+            </div>
+        </div>
+      )}
+
       {/* Header com Dashboard Financeiro Otimizado */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div className="space-y-1">
