@@ -1,5 +1,5 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   CheckCircle2, 
   AlertCircle, 
@@ -15,6 +15,7 @@ import {
   Check
 } from 'lucide-react';
 import { MOCK_SUPPLIERS } from '../constants';
+import { mockStorage } from '../services/supabaseClient';
 
 interface MatrixProps {
   eventId?: string;
@@ -37,6 +38,8 @@ interface QuoteDetail {
 }
 
 const MatrixTable: React.FC<MatrixProps> = ({ eventId }) => {
+  const navigate = useNavigate();
+
   // Mock de Itens da Cotação
   const [items] = useState<MatrixItem[]>([
     { id: 'i1', description: 'Alma De Aço Dianteira', partNumber: '52021-02190', quantity: 1, refPrice: 450.00 },
@@ -158,7 +161,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ eventId }) => {
 
   const handleGenerateOrders = () => {
     // Agrupar itens por fornecedor
-    const orders: Record<string, { supplierName: string, items: any[], total: number }> = {};
+    const orders: Record<string, { supplierId: string, supplierName: string, items: any[], total: number }> = {};
 
     items.forEach(item => {
       const supplierQuotes = quotes[item.id];
@@ -166,7 +169,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ eventId }) => {
         if (quote.selected) {
           if (!orders[supplierId]) {
             const sName = suppliers.find(s => s.id === supplierId)?.name || 'Desconhecido';
-            orders[supplierId] = { supplierName: sName, items: [], total: 0 };
+            orders[supplierId] = { supplierId, supplierName: sName, items: [], total: 0 };
           }
           orders[supplierId].items.push({ ...item, price: quote.price });
           orders[supplierId].total += quote.price;
@@ -175,6 +178,37 @@ const MatrixTable: React.FC<MatrixProps> = ({ eventId }) => {
     });
 
     setGeneratedOCs(Object.values(orders));
+  };
+
+  const handleConfirmEmission = () => {
+    if (!generatedOCs) return;
+
+    // Recupera OCs existentes
+    const existingOrders = mockStorage.get('purchase_orders') || [];
+
+    // Cria os objetos de OC baseados na seleção
+    const newOrders = generatedOCs.map((oc, index) => ({
+      id: Math.random().toString(36).substr(2, 9),
+      code: `OC-2024-${String(existingOrders.length + index + 4).padStart(3, '0')}`, // Continua a sequência (simulada)
+      eventId: eventId || 'EVT-GENERIC',
+      supplierId: oc.supplierId,
+      total: oc.total,
+      status: 'Gerada', // Status inicial
+      createdAt: new Date().toISOString(),
+      items: oc.items.map((i: any) => ({
+        catalogId: i.id,
+        name: i.description,
+        quantity: i.quantity,
+        price: i.price
+      }))
+    }));
+
+    // Salva no storage (simulando persistência)
+    const updatedList = [...newOrders, ...existingOrders];
+    mockStorage.set('purchase_orders', updatedList);
+
+    // Navega para a tela de compras
+    navigate('/compras');
   };
 
   if (generatedOCs) {
@@ -216,7 +250,10 @@ const MatrixTable: React.FC<MatrixProps> = ({ eventId }) => {
 
          <div className="flex justify-center gap-4">
             <button onClick={() => setGeneratedOCs(null)} className="px-6 py-3 text-slate-400 font-bold text-xs uppercase hover:text-slate-600">Voltar para Matriz</button>
-            <button onClick={() => window.location.href = '/compras'} className="px-10 py-3 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase shadow-xl shadow-blue-600/30 hover:bg-blue-700 transition-all flex items-center gap-2">
+            <button 
+                onClick={handleConfirmEmission} 
+                className="px-10 py-3 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase shadow-xl shadow-blue-600/30 hover:bg-blue-700 transition-all flex items-center gap-2"
+            >
                <ShoppingCart size={16}/> Confirmar e Emitir OCs
             </button>
          </div>
@@ -418,4 +455,3 @@ const MatrixTable: React.FC<MatrixProps> = ({ eventId }) => {
 };
 
 export default MatrixTable;
-    
