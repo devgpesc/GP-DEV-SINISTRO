@@ -1,5 +1,4 @@
-
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   ShoppingCart, Search, Filter, FileText, 
   CheckCircle2, XCircle, Send, Printer, MoreVertical, 
@@ -7,66 +6,89 @@ import {
   Eye, EyeOff, Share2, Download
 } from 'lucide-react';
 import { PurchaseOrder } from '../types';
+import { mockStorage } from '../services/supabaseClient';
 
 const Purchases: React.FC = () => {
-  // Simulação de Role (Em um sistema real viria do AuthContext)
-  // Altere para 'User' para testar a restrição de valores
   const [currentUserRole] = useState<'Admin' | 'Gerente' | 'User'>('Admin');
   
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('Todos');
-  
-  const [orders, setOrders] = useState<PurchaseOrder[]>([
-    {
-      id: '1',
-      code: 'OC-2024-001',
-      eventId: '1',
-      supplierId: 's1',
-      total: 1367.13,
-      status: 'Aprovada',
-      createdAt: '2024-05-12T10:00:00Z',
-      items: [
-        { catalogId: 'c1', name: 'Parachoque Corolla', quantity: 1, price: 967.13 },
-        { catalogId: 'c2', name: 'Mão de Obra', quantity: 1, price: 400.00 }
-      ]
-    },
-    {
-      id: '2',
-      code: 'OC-2024-002',
-      eventId: '1',
-      supplierId: 's2',
-      total: 6850.00,
-      status: 'Gerada',
-      createdAt: '2024-05-14T15:30:00Z',
-      items: []
-    },
-    {
-      id: '3',
-      code: 'OC-2024-003',
-      eventId: '2',
-      supplierId: 's3',
-      total: 12450.50,
-      status: 'Enviada',
-      createdAt: '2024-05-15T09:00:00Z',
-      items: []
+  const [orders, setOrders] = useState<PurchaseOrder[]>([]);
+
+  useEffect(() => {
+    // Carregar dados iniciais ou do storage
+    const savedOrders = mockStorage.get('purchase_orders');
+    if (savedOrders) {
+        setOrders(savedOrders);
+    } else {
+        const initialMock: PurchaseOrder[] = [
+            {
+              id: '1',
+              code: 'OC-2024-001',
+              eventId: '1',
+              supplierId: 's1',
+              total: 1367.13,
+              status: 'Aprovada',
+              createdAt: '2024-05-12T10:00:00Z',
+              items: [
+                { catalogId: 'c1', name: 'Parachoque Corolla', quantity: 1, price: 967.13 },
+                { catalogId: 'c2', name: 'Mão de Obra', quantity: 1, price: 400.00 }
+              ]
+            },
+            {
+              id: '2',
+              code: 'OC-2024-002',
+              eventId: '1',
+              supplierId: 's2',
+              total: 6850.00,
+              status: 'Gerada',
+              createdAt: '2024-05-14T15:30:00Z',
+              items: []
+            },
+            {
+              id: '3',
+              code: 'OC-2024-003',
+              eventId: '2',
+              supplierId: 's3',
+              total: 12450.50,
+              status: 'Enviada',
+              createdAt: '2024-05-15T09:00:00Z',
+              items: []
+            }
+        ];
+        setOrders(initialMock);
+        mockStorage.set('purchase_orders', initialMock);
     }
-  ]);
+  }, []);
 
   const canApprove = currentUserRole === 'Admin' || currentUserRole === 'Gerente';
   const canSeeValues = currentUserRole === 'Admin' || currentUserRole === 'Gerente';
+
+  const updateOrderStatus = (id: string, newStatus: PurchaseOrder['status']) => {
+    const updated = orders.map(o => o.id === id ? { ...o, status: newStatus } : o);
+    setOrders(updated);
+    mockStorage.set('purchase_orders', updated);
+  };
 
   const handleApprove = (id: string) => {
     if (!canApprove) {
       alert("Apenas administradores ou gestores podem aprovar ordens de compra.");
       return;
     }
-    setOrders(prev => prev.map(o => o.id === id ? { ...o, status: 'Aprovada' } : o));
-    alert("Ordem de Compra aprovada com sucesso!");
+    if (confirm('Confirma a aprovação financeira desta OC?')) {
+        updateOrderStatus(id, 'Aprovada');
+    }
+  };
+
+  const handleCancel = (id: string) => {
+    if (confirm('Tem certeza que deseja cancelar esta Ordem de Compra? Esta ação não pode ser desfeita.')) {
+        updateOrderStatus(id, 'Cancelada');
+    }
   };
 
   const handlePrint = (code: string) => {
-    alert(`Gerando PDF da Ordem de Compra ${code}...`);
+    alert(`Enviando comando de impressão para OC ${code}...`);
   };
 
   const getStatusStyle = (status: string) => {
@@ -88,7 +110,7 @@ const Purchases: React.FC = () => {
   }, [orders, searchTerm, filterStatus]);
 
   const totalMonth = useMemo(() => {
-    return orders.reduce((acc, curr) => acc + curr.total, 0);
+    return orders.filter(o => o.status !== 'Cancelada').reduce((acc, curr) => acc + curr.total, 0);
   }, [orders]);
 
   return (
@@ -106,7 +128,7 @@ const Purchases: React.FC = () => {
               <DollarSign size={28} />
             </div>
             <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Total do Mês</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Total Comprometido</p>
               <p className="text-2xl font-black text-slate-800 tracking-tighter">
                 R$ {totalMonth.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </p>
@@ -175,12 +197,12 @@ const Purchases: React.FC = () => {
             
             {/* Ícone e Identificação */}
             <div className="flex items-center gap-5 w-full md:w-auto">
-              <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-[20px] flex items-center justify-center border border-blue-100 shadow-sm transition-transform group-hover:scale-105">
-                <ShoppingCart size={28} />
+              <div className={`w-16 h-16 rounded-[20px] flex items-center justify-center border shadow-sm transition-transform group-hover:scale-105 ${order.status === 'Cancelada' ? 'bg-red-50 text-red-400 border-red-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
+                {order.status === 'Cancelada' ? <XCircle size={28}/> : <ShoppingCart size={28} />}
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-1.5">
-                  <h3 className="font-black text-xl text-slate-800 tracking-tight">{order.code}</h3>
+                  <h3 className={`font-black text-xl tracking-tight ${order.status === 'Cancelada' ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{order.code}</h3>
                   <span className={`px-4 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.15em] border ${getStatusStyle(order.status)} shadow-sm`}>
                     {order.status}
                   </span>
@@ -207,7 +229,7 @@ const Purchases: React.FC = () => {
 
               <div className="flex-1 text-right">
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Itens</p>
-                <p className="text-sm font-black text-slate-800">{order.items.length || '-'} un</p>
+                <p className="text-sm font-black text-slate-800">{order.items?.length || '-'} un</p>
               </div>
             </div>
 
@@ -230,9 +252,6 @@ const Purchases: React.FC = () => {
                 >
                   <Printer size={20}/>
                 </button>
-                <button className="p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all" title="Enviar WhatsApp/Email">
-                  <Send size={20}/>
-                </button>
                 <div className="relative group/more">
                   <button className="p-3 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-xl transition-all">
                     <MoreVertical size={20}/>
@@ -241,12 +260,11 @@ const Purchases: React.FC = () => {
                     <button className="w-full px-5 py-3 text-left text-xs font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50">
                       <Eye size={16}/> Visualizar Itens
                     </button>
-                    <button className="w-full px-5 py-3 text-left text-xs font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50">
-                      <Download size={16}/> Baixar XML/NF
-                    </button>
-                    <button className="w-full px-5 py-3 text-left text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-3">
-                      <XCircle size={16}/> Cancelar OC
-                    </button>
+                    {order.status !== 'Cancelada' && (
+                        <button onClick={() => handleCancel(order.id)} className="w-full px-5 py-3 text-left text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-3">
+                          <XCircle size={16}/> Cancelar OC
+                        </button>
+                    )}
                   </div>
                 </div>
               </div>
