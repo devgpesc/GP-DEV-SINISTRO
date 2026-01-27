@@ -58,7 +58,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const initializeAuth = async () => {
       try {
-        // getSession é o método "agressivo" que lê o token da URL assim que o app carrega
+        // Tenta capturar sessão ativa imediatamente (importante para redirecionamentos OAuth)
         const { data: { session } } = await supabase.auth.getSession();
         
         if (mounted) {
@@ -70,7 +70,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setLoading(false);
         }
       } catch (err) {
-        console.error("Falha ao inicializar sessão:", err);
+        console.error("Erro na inicialização de sessão:", err);
         if (mounted) setLoading(false);
       }
     };
@@ -101,7 +101,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const clearSessionData = () => {
     mockStorage.clearAll();
     sessionStorage.clear();
-    // Limpeza profunda de cookies para evitar loops de redirecionamento
+    // Limpeza rigorosa para evitar loops
     const cookies = document.cookie.split(";");
     for (let i = 0; i < cookies.length; i++) {
         const cookie = cookies[i];
@@ -121,15 +121,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setProfile(null);
       setLoading(false);
       window.location.hash = '/login';
-      window.location.reload();
     }
   };
 
   const signInWithGoogle = async () => {
-    // IMPORTANTE: Use origin puro sem trailing slashes para bater com a configuração do Supabase
+    // Força o redirectTo para a origem limpa, sem a hash do router
     const redirectUrl = window.location.origin;
     
-    console.log('[Auth] Iniciando OAuth com redirect:', redirectUrl);
+    console.log('[Auth] Google OAuth Redirect:', redirectUrl);
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -137,7 +136,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         redirectTo: redirectUrl,
         queryParams: {
           access_type: 'offline',
-          prompt: 'select_account', // Força a escolha da conta para garantir a sessão correta
+          prompt: 'select_account',
         }
       }
     });
