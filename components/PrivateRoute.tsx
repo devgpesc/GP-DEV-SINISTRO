@@ -1,19 +1,12 @@
-
 import React from 'react';
-import { Navigate, Outlet } from 'https://esm.sh/react-router-dom';
+import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Loader2, ShieldCheck } from 'lucide-react';
 
-interface PrivateRouteProps {
-  children?: React.ReactNode;
-}
-
-export const PrivateRoute: React.FC<PrivateRouteProps> = ({ children }) => {
+export const PrivateRoute: React.FC = () => {
   const { user, loading } = useAuth();
 
-  // 1. ESTADO DE LOADING (Bloqueio Total)
-  // Se o contexto diz que está carregando (seja verificando sessão ou processando OAuth),
-  // mostramos o Splash Screen. NÃO redirecionamos.
+  // Se estiver carregando (inicialização ou callback OAuth), exibe Splash
   if (loading) {
     return (
       <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center font-sans">
@@ -24,22 +17,20 @@ export const PrivateRoute: React.FC<PrivateRouteProps> = ({ children }) => {
            <div className="flex flex-col items-center gap-2">
              <div className="flex items-center gap-2 text-blue-600 font-bold">
                <Loader2 className="animate-spin" size={20} />
-               <span className="text-sm uppercase tracking-widest">Sincronizando Sessão...</span>
+               <span className="text-sm uppercase tracking-widest font-mono">Autenticando...</span>
              </div>
-             <p className="text-xs text-slate-400">Verificando credenciais de acesso seguro.</p>
+             <p className="text-xs text-slate-400 font-medium">Estabelecendo conexão segura TLS.</p>
            </div>
         </div>
       </div>
     );
   }
 
-  // 2. VERIFICAÇÃO DE USUÁRIO
-  // Só chegamos aqui se loading === false. Se não tiver usuário, tchau.
+  // Se parou de carregar e não tem user, redireciona
   if (!user) {
     return <Navigate to="/login" replace />;
   }
 
-  // 3. RENDERIZAÇÃO
-  // Usuário autenticado e carregamento finalizado.
-  return children ? <>{children}</> : <Outlet />;
+  // Se tem user, renderiza rota
+  return <Outlet />;
 };
