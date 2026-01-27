@@ -56,41 +56,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let mounted = true;
 
-    // Função auxiliar para lidar com a bagunça do HashRouter vs OAuth Hash
     const handleHashConflict = async () => {
       const hash = window.location.hash;
+      // Detecta tokens do Google OAuth na URL
+      const isOAuthReturn = hash.includes('access_token') || hash.includes('type=recovery');
       
-      // Se detectarmos um token de acesso na URL (formato do Google/Supabase)
-      if (hash && (hash.includes('access_token') || hash.includes('type=recovery'))) {
-        console.log('[Auth] Token OAuth detectado. Interceptando antes do Router...');
+      if (isOAuthReturn) {
+        console.log('[Auth] Token OAuth detectado. Iniciando handshake...');
         setLoading(true);
 
+        // DELAY CRÍTICO: Dá tempo para o Supabase processar o token internamente
+        // antes de tentarmos ler a sessão ou limpar a URL.
+        await new Promise(r => setTimeout(r, 500));
+
         try {
-            // Tentativa agressiva de obter a sessão, pois o token já está na URL
             const { data: { session }, error } = await supabase.auth.getSession();
             
-            if (error) throw error;
-
-            if (session) {
-                console.log('[Auth] Sessão recuperada com sucesso via URL.');
-                if (mounted) {
-                    setUser(session.user);
-                    await fetchProfile(session.user.id);
-                    
-                    // CRÍTICO: Limpar a hash para que o HashRouter não se confunda
-                    // Forçamos a ida para a raiz do app limpo
-                    window.location.hash = ''; 
-                    window.location.href = window.location.origin + window.location.pathname + '#/';
-                    setLoading(false);
-                    return;
-                }
+            if (session && mounted) {
+                console.log('[Auth] Sessão confirmada. Entrando no Dashboard...');
+                setUser(session.user);
+                await fetchProfile(session.user.id);
+                
+                // LIMPEZA SEGURA: Usamos replaceState para não disparar reload
+                // e depois definimos o hash para '/' para o Router navegar.
+                window.history.replaceState(null, '', window.location.pathname);
+                window.location.hash = '/';
+                
+                setLoading(false);
+                return;
             }
         } catch (e) {
-            console.error('[Auth] Erro ao processar token da URL:', e);
+            console.error('[Auth] Erro ao processar OAuth:', e);
         }
       }
 
-      // Fluxo padrão se não houver token na URL
+      // Fluxo normal (sem token na URL)
       const { data: { session } } = await supabase.auth.getSession();
       if (mounted) {
         if (session?.user) {
@@ -103,23 +103,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     handleHashConflict();
 
-    // Listener para mudanças futuras
+    // Listener para manter o estado sincronizado
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[Auth] Evento:', event);
+      console.log('[Auth] Evento de Sessão:', event);
       if (!mounted) return;
       
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         const currentUser = session?.user ?? null;
-        setUser(currentUser);
         if (currentUser) {
-             await fetchProfile(currentUser.id);
-        }
-        setLoading(false);
-        
-        // Se ainda tiver lixo na URL, limpa
-        if (window.location.hash.includes('access_token')) {
-             window.location.hash = '';
-             window.location.href = window.location.origin + window.location.pathname + '#/';
+            setUser(currentUser);
+            // Evita refetch desnecessário se já tivermos perfil e usuário não mudou
+            if (!user || user.id !== currentUser.id) {
+                await fetchProfile(currentUser.id);
+            }
+            
+            // Se ainda houver lixo na URL, limpa suavemente
+            if (window.location.hash.includes('access_token')) {
+                window.location.hash = '/';
+            }
+            setLoading(false);
         }
       } 
       else if (event === 'SIGNED_OUT') {
@@ -133,12 +135,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [fetchProfile]);
+  }, [fetchProfile, user]);
 
   const clearSessionData = () => {
+    // Limpeza profunda para garantir que nada corrompido fique
     mockStorage.clearAll();
     sessionStorage.clear();
-    localStorage.clear();
+    
+    // Limpa chaves específicas do Supabase
+    Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('sb-') || key.includes('supabase')) {
+            localStorage.removeItem(key);
+        }
+    });
+
     const cookies = document.cookie.split(";");
     for (let i = 0; i < cookies.length; i++) {
         const cookie = cookies[i];
@@ -157,16 +167,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(null);
       setProfile(null);
       setLoading(false);
-      window.location.href = '/'; // Força reload limpo
+      window.location.hash = '/login'; // Navegação via HashRouter
     }
   };
 
   const signInWithGoogle = async () => {
-    // Usamos origin pura para garantir que o redirecionamento volte para a raiz
-    // Onde o nosso interceptador acima vai pegar o token
     const redirectUrl = window.location.origin;
-    
-    console.log('[Auth] Iniciando Google Auth. Callback:', redirectUrl);
+    console.log('[Auth] Google Login ->', redirectUrl);
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
