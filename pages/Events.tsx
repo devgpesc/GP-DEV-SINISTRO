@@ -7,7 +7,7 @@ import {
   ShieldAlert, Hash, Zap, Edit3, Clock, Paperclip, History,
   ChevronRight, Calendar, User, MapPin, Car, Mail, Phone, ExternalLink
 } from 'lucide-react';
-import { MOCK_EVENTS, MOCK_VEHICLES, MOCK_ASSOCIATES } from '../constants';
+import { MOCK_VEHICLES, MOCK_ASSOCIATES } from '../constants';
 import { EventStatus, EventType, Priority, Event } from '../types';
 import StatusChangeModal from '../components/StatusChangeModal';
 import { mockStorage } from '../services/supabaseClient';
@@ -57,14 +57,15 @@ const Events: React.FC = () => {
     type: EventType.COLLISION,
     priority: Priority.MEDIUM,
     category: '',
-    vehicleId: 'v1',
-    associateId: 'a1',
+    vehicleId: '',
+    associateId: '',
     description: '',
     attachments: [] as any[]
   });
 
+  // Carrega apenas dados do storage, sem mocks hardcoded
   useEffect(() => {
-    const savedEvents = mockStorage.get('events') || MOCK_EVENTS.map(e => ({ ...e, history: [], attachments: [] }));
+    const savedEvents = mockStorage.get('events') || [];
     setEvents(savedEvents);
   }, []);
 
@@ -172,17 +173,24 @@ const Events: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {filteredEvents.map(evt => {
+            {filteredEvents.length === 0 ? (
+               <tr>
+                 <td colSpan={5} className="px-8 py-12 text-center text-slate-400">
+                    <p className="text-sm font-bold">Nenhum sinistro registrado.</p>
+                    <p className="text-xs">Utilize o botão "Novo Sinistro" para começar.</p>
+                 </td>
+               </tr>
+            ) : filteredEvents.map(evt => {
                const associate = MOCK_ASSOCIATES.find(a => a.id === evt.associateId);
                const vehicle = MOCK_VEHICLES.find(v => v.id === evt.vehicleId);
                return (
                 <tr key={evt.id} className="hover:bg-slate-50/50 transition-colors group">
                   <td className="px-8 py-5">
                     <p className="font-black text-slate-800 leading-none mb-1">{evt.protocol}</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">{associate?.name}</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">{associate?.name || '---'}</p>
                   </td>
                   <td className="px-8 py-5">
-                    <p className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-lg inline-block text-[11px] border border-slate-200 mb-1">{vehicle?.plate}</p>
+                    <p className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-lg inline-block text-[11px] border border-slate-200 mb-1">{vehicle?.plate || '---'}</p>
                     <p className="text-[10px] text-slate-400 font-bold uppercase block">{vehicle?.model}</p>
                   </td>
                   <td className="px-8 py-5"><div className="flex justify-center"><PriorityBadge priority={evt.priority} /></div></td>

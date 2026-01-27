@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, Package, Settings, Trash2, Edit3, Tag, Layers, LayoutGrid, List, X, CheckCircle, AlertCircle } from 'lucide-react';
 import { CatalogItem } from '../types';
@@ -28,11 +29,8 @@ const Catalog: React.FC = () => {
   }, []);
 
   const loadItems = () => {
-    const saved = mockStorage.get('catalog_items') || [
-      { id: '1', code: 'PC-001', name: 'Parachoque Dianteiro Corolla', category: 'Funilaria', type: 'Peça', unit: 'UN', description: 'Original Toyota' },
-      { id: '2', code: 'SV-001', name: 'Mão de Obra Funilaria Leve', category: 'Serviço', type: 'Serviço', unit: 'H', description: 'Reparo simples' },
-      { id: '3', code: 'PC-002', name: 'Farol LED Direito', category: 'Iluminação', type: 'Peça', unit: 'UN', description: 'Full LED' },
-    ];
+    // Carrega apenas dados do storage, sem mocks
+    const saved = mockStorage.get('catalog_items') || [];
     setItems(saved);
   };
 

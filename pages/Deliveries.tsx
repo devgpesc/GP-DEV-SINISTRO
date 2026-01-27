@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Truck, CheckCircle, AlertTriangle, Search, Filter, Camera, ClipboardList, Clock, Archive } from 'lucide-react';
 import { mockStorage } from '../services/supabaseClient';
@@ -17,18 +18,9 @@ const Deliveries: React.FC = () => {
   const [deliveries, setDeliveries] = useState<DeliveryItem[]>([]);
 
   useEffect(() => {
-    // Carregar dados iniciais ou mock
-    const saved = mockStorage.get('deliveries');
-    if (saved) {
-      setDeliveries(saved);
-    } else {
-      const initialMock: DeliveryItem[] = [
-        { id: '1', po: 'OC-2024-001', supplier: 'TAURO', items: 6, date: '15/05/2024', event: 'EVT-2024-001', status: 'Pendente' },
-        { id: '2', po: 'OC-2024-004', supplier: 'REA Peças', items: 2, date: '16/05/2024', event: 'EVT-2024-003', status: 'Pendente' }
-      ];
-      setDeliveries(initialMock);
-      mockStorage.set('deliveries', initialMock);
-    }
+    // Carregar apenas dados do storage, sem mocks hardcoded
+    const saved = mockStorage.get('deliveries') || [];
+    setDeliveries(saved);
   }, []);
 
   const handleProcessDelivery = (id: string, newStatus: 'Conforme' | 'Divergente') => {

@@ -6,7 +6,7 @@ import {
   Zap, Mail, MessageCircle, FileDown, Rocket, LayoutGrid, List,
   Eye, MoreVertical, ShieldAlert
 } from 'lucide-react';
-import { MOCK_SUPPLIERS, MOCK_EVENTS } from '../constants';
+import { MOCK_SUPPLIERS } from '../constants';
 import MatrixTable from '../components/MatrixTable';
 import { mockStorage } from '../services/supabaseClient';
 import { Event } from '../types';
@@ -25,19 +25,20 @@ const Quotations: React.FC = () => {
     sendMode: 'auto' as 'auto' | 'manual'
   });
 
-  // State para cotações (com dados iniciais)
-  const [quotes, setQuotes] = useState([
-    { id: '1', code: 'COT-2024-0001', eventRef: 'EVT-2024-001', status: 'Em Aberto', date: '12/05/2024', suppliers: 3 },
-    { id: '2', code: 'COT-2024-0002', eventRef: 'EVT-2024-015', status: 'Finalizada', date: '10/05/2024', suppliers: 2 },
-    { id: '3', code: 'COT-2024-0003', eventRef: 'EVT-2024-022', status: 'Em Aberto', date: '14/05/2024', suppliers: 4 },
-  ]);
+  // State para cotações - INICIA VAZIO
+  const [quotes, setQuotes] = useState<any[]>([]);
   
   // State para exclusão
   const [quoteToDelete, setQuoteToDelete] = useState<any>(null);
 
   useEffect(() => {
-    const saved = mockStorage.get('events') || MOCK_EVENTS;
-    setRealEvents(saved);
+    // Carregar eventos do storage
+    const savedEvents = mockStorage.get('events') || [];
+    setRealEvents(savedEvents);
+
+    // Carregar cotações do storage
+    const savedQuotes = mockStorage.get('quotations') || [];
+    setQuotes(savedQuotes);
   }, []);
 
   const filteredQuotes = quotes.filter(q => 
@@ -47,9 +48,31 @@ const Quotations: React.FC = () => {
 
   const handleDelete = () => {
     if (quoteToDelete) {
-      setQuotes(prev => prev.filter(q => q.id !== quoteToDelete.id));
+      const updatedQuotes = quotes.filter(q => q.id !== quoteToDelete.id);
+      setQuotes(updatedQuotes);
+      mockStorage.set('quotations', updatedQuotes);
       setQuoteToDelete(null);
     }
+  };
+
+  const handleCreateQuote = () => {
+    const selectedEvent = realEvents.find(e => e.id === newQuote.eventId);
+    const newQuoteEntry = {
+        id: Math.random().toString(36).substr(2, 9),
+        code: `COT-2024-${String(quotes.length + 1).padStart(4, '0')}`,
+        eventRef: selectedEvent ? selectedEvent.protocol : 'N/A',
+        status: 'Em Aberto',
+        date: new Date().toLocaleDateString('pt-BR'),
+        suppliers: newQuote.suppliers.length,
+        itemCount: newQuote.items.length
+    };
+
+    const updatedQuotes = [...quotes, newQuoteEntry];
+    setQuotes(updatedQuotes);
+    mockStorage.set('quotations', updatedQuotes);
+    
+    // Avança para a matriz
+    setStep(3);
   };
 
   const catalogMock = [
@@ -254,7 +277,7 @@ const Quotations: React.FC = () => {
           </div>
           <div className="flex justify-between pt-6 border-t border-slate-50">
             <button onClick={() => setWizardStep(1)} className="px-8 py-4 text-slate-400 font-black uppercase text-[10px] hover:text-slate-600">Voltar</button>
-            <button disabled={newQuote.suppliers.length === 0} onClick={() => setStep(3)} className="px-16 py-6 bg-blue-600 text-white rounded-[28px] font-black text-sm uppercase tracking-[0.3em] shadow-2xl shadow-blue-600/40 flex items-center gap-4 hover:scale-105 transition-all">Finalizar e Gerar Matriz <Rocket size={20}/></button>
+            <button disabled={newQuote.suppliers.length === 0} onClick={handleCreateQuote} className="px-16 py-6 bg-blue-600 text-white rounded-[28px] font-black text-sm uppercase tracking-[0.3em] shadow-2xl shadow-blue-600/40 flex items-center gap-4 hover:scale-105 transition-all">Finalizar e Gerar Matriz <Rocket size={20}/></button>
           </div>
         </div>
       )}

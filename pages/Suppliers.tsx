@@ -39,10 +39,8 @@ const Suppliers: React.FC = () => {
 
   async function loadSuppliers() {
     setLoading(true);
-    const saved = mockStorage.get('suppliers') || [
-      { id: '1', name: 'Elisa Maria', cnpj: '70435786121', rating: 5.0, segment: 'Ambos', whatsapp: '5511999999999', status: 'Ativo', city: 'APARECIDA DE GOIANIA', createdAt: new Date().toISOString(), contactName: 'Elisa' },
-      { id: '2', name: 'Oficina Silva e Filhos', cnpj: '98.765.432/0001-10', rating: 4.5, segment: 'Ambos', whatsapp: '5511888888888', status: 'Ativo', city: 'Curitiba', createdAt: new Date().toISOString(), contactName: 'Roberto Silva' },
-    ];
+    // Dados carregados apenas do storage, sem mocks
+    const saved = mockStorage.get('suppliers') || [];
     setSuppliers(saved);
     setLoading(false);
   }
@@ -155,7 +153,13 @@ const Suppliers: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {filtered.map(s => (
+            {filtered.length === 0 ? (
+               <tr>
+                 <td colSpan={4} className="px-8 py-12 text-center text-slate-400">
+                    <p className="text-sm font-bold">Nenhum fornecedor cadastrado.</p>
+                 </td>
+               </tr>
+            ) : filtered.map(s => (
               <tr key={s.id} className="hover:bg-slate-50/50 transition-colors group cursor-pointer" onClick={() => setSelectedSupplier(s)}>
                 <td className="px-8 py-5">
                   <p className="font-bold text-slate-800">{s.name}</p>

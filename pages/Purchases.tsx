@@ -31,49 +31,9 @@ const Purchases: React.FC = () => {
   }>({ isOpen: false, type: null, orderId: null, orderCode: null });
 
   useEffect(() => {
-    // Carregar dados iniciais ou do storage
-    const savedOrders = mockStorage.get('purchase_orders');
-    if (savedOrders) {
-        setOrders(savedOrders);
-    } else {
-        const initialMock: PurchaseOrder[] = [
-            {
-              id: '1',
-              code: 'OC-2024-001',
-              eventId: '1',
-              supplierId: 's1',
-              total: 1367.13,
-              status: 'Aprovada',
-              createdAt: '2024-05-12T10:00:00Z',
-              items: [
-                { catalogId: 'c1', name: 'Parachoque Corolla', quantity: 1, price: 967.13 },
-                { catalogId: 'c2', name: 'Mão de Obra', quantity: 1, price: 400.00 }
-              ]
-            },
-            {
-              id: '2',
-              code: 'OC-2024-002',
-              eventId: '1',
-              supplierId: 's2',
-              total: 6850.00,
-              status: 'Gerada',
-              createdAt: '2024-05-14T15:30:00Z',
-              items: []
-            },
-            {
-              id: '3',
-              code: 'OC-2024-003',
-              eventId: '2',
-              supplierId: 's3',
-              total: 12450.50,
-              status: 'Enviada',
-              createdAt: '2024-05-15T09:00:00Z',
-              items: []
-            }
-        ];
-        setOrders(initialMock);
-        mockStorage.set('purchase_orders', initialMock);
-    }
+    // Carregar dados do storage (sem mocks hardcoded)
+    const savedOrders = mockStorage.get('purchase_orders') || [];
+    setOrders(savedOrders);
   }, []);
 
   // Auto-dismiss toast

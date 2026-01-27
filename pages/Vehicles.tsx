@@ -10,7 +10,6 @@ import { vehicleService } from '../services/vehicleService';
 import { lookupService } from '../services/lookupService';
 import { isSupabaseConfigured, mockStorage } from '../services/supabaseClient';
 import { Vehicle } from '../types';
-import { MOCK_ASSOCIATES } from '../constants';
 
 interface Associate {
   id: string;
@@ -76,21 +75,10 @@ const Vehicles: React.FC = () => {
       const vehicleData = await vehicleService.getVehicles();
       setVehicles(vehicleData);
 
-      const storedAssociates = mockStorage.get('associates');
-      if (storedAssociates) {
-        setAssociates(storedAssociates);
-      } else {
-        const initialAssociates = MOCK_ASSOCIATES.map(a => ({
-            id: a.id,
-            name: a.name,
-            document: a.document,
-            type: a.type as 'PF' | 'PJ',
-            email: 'pendente@email.com',
-            phone: '11999999999'
-        }));
-        setAssociates(initialAssociates);
-        mockStorage.set('associates', initialAssociates);
-      }
+      // Carrega apenas dados reais do storage
+      const storedAssociates = mockStorage.get('associates') || [];
+      setAssociates(storedAssociates);
+
     } catch (err) {
       console.error("Erro ao carregar dados:", err);
     } finally {
@@ -274,6 +262,11 @@ const Vehicles: React.FC = () => {
 
             {loading ? (
                 <div className="flex justify-center py-20"><Loader2 className="animate-spin text-blue-600" size={40} /></div>
+            ) : filteredVehicles.length === 0 ? (
+                <div className="text-center py-20 text-slate-400">
+                   <Car size={40} className="mx-auto mb-4 opacity-50"/>
+                   <p className="text-sm font-bold uppercase tracking-widest">Nenhum veículo encontrado</p>
+                </div>
             ) : viewMode === 'grid' ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-2 duration-300">
                 {filteredVehicles.map((vehicle) => {
