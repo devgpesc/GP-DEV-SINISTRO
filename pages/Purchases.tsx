@@ -126,16 +126,129 @@ const Purchases: React.FC = () => {
     }
   };
 
-  const handlePrint = (code: string) => {
+  const handlePrint = (order: PurchaseOrder) => {
     // 1. Mostra notificação de "Gerando..."
     setToast({ 
         show: true, 
         title: 'Gerando PDF', 
-        message: `Preparando documento ${code} para impressão...`, 
+        message: `Preparando documento ${order.code} para impressão...`, 
         type: 'loading' 
     });
 
-    // 2. Simula delay de processamento e abre o print dialog
+    // 2. Gera o HTML da fatura
+    const itemsHtml = order.items?.map((item: any) => `
+      <tr>
+        <td style="padding: 12px; border-bottom: 1px solid #eee;">${item.name || 'Item Diverso'}</td>
+        <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: center;">${item.quantity || 1}</td>
+        <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: right;">R$ ${(item.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+        <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: right;">R$ ${((item.price || 0) * (item.quantity || 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+      </tr>
+    `).join('') || '<tr><td colspan="4" style="padding: 20px; text-align: center; color: #999;">Sem itens registrados</td></tr>';
+
+    const printContent = `
+      <html>
+        <head>
+          <title>Ordem de Compra - ${order.code}</title>
+          <style>
+            body { font-family: 'Helvetica', 'Arial', sans-serif; color: #333; line-height: 1.6; padding: 40px; max-width: 900px; margin: 0 auto; }
+            .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; border-bottom: 2px solid #2563eb; padding-bottom: 20px; }
+            .logo h1 { color: #2563eb; margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 2px; }
+            .logo p { margin: 5px 0 0; font-size: 12px; color: #666; }
+            .meta { text-align: right; }
+            .meta h2 { margin: 0; font-size: 32px; color: #1e293b; }
+            .meta p { margin: 5px 0 0; font-weight: bold; color: #64748b; font-size: 14px; }
+            .status-badge { display: inline-block; background: #eee; padding: 4px 12px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase; margin-top: 10px; }
+            
+            .grid { display: flex; gap: 40px; margin-bottom: 40px; }
+            .box { flex: 1; background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; }
+            .box h3 { margin: 0 0 15px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; }
+            .box p { margin: 0; font-size: 14px; font-weight: 600; color: #1e293b; }
+            .box span { display: block; font-size: 13px; color: #64748b; font-weight: 400; margin-top: 4px; }
+
+            table { width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 13px; }
+            th { background: #1e293b; color: white; text-align: left; padding: 12px; text-transform: uppercase; font-size: 11px; letter-spacing: 1px; }
+            
+            .totals { display: flex; justify-content: flex-end; }
+            .totals-box { width: 250px; }
+            .row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
+            .row.final { border-top: 2px solid #333; border-bottom: none; margin-top: 10px; padding-top: 15px; font-size: 18px; font-weight: bold; color: #2563eb; }
+            
+            .footer { margin-top: 60px; padding-top: 30px; border-top: 1px solid #eee; display: flex; justify-content: space-between; align-items: flex-end; font-size: 11px; color: #94a3b8; }
+            .signature { border-top: 1px solid #ccc; width: 200px; padding-top: 10px; text-align: center; color: #333; font-weight: bold; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="logo">
+              <h1>AutoClaims Pro</h1>
+              <p>Sistema de Gestão de Sinistros</p>
+            </div>
+            <div class="meta">
+              <h2>${order.code}</h2>
+              <p>EMISSÃO: ${new Date(order.createdAt).toLocaleDateString()}</p>
+              <span class="status-badge">${order.status}</span>
+            </div>
+          </div>
+
+          <div class="grid">
+            <div class="box">
+              <h3>Fornecedor</h3>
+              <p>TAURO Peças LTDA</p>
+              <span>CNPJ: 12.345.678/0001-90</span>
+              <span>São Paulo - SP</span>
+            </div>
+            <div class="box">
+              <h3>Referência / Evento</h3>
+              <p>EVT-2024-001</p>
+              <span>Tipo: Colisão</span>
+              <span>Associado Ref: A1-99</span>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th width="50%">Descrição do Item</th>
+                <th width="10%" style="text-align: center;">Qtd</th>
+                <th width="20%" style="text-align: right;">Valor Unit.</th>
+                <th width="20%" style="text-align: right;">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsHtml}
+            </tbody>
+          </table>
+
+          <div class="totals">
+            <div class="totals-box">
+              <div class="row">
+                <span>Subtotal</span>
+                <span>R$ ${order.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div class="row">
+                <span>Frete</span>
+                <span>R$ 0,00</span>
+              </div>
+              <div class="row final">
+                <span>TOTAL</span>
+                <span>R$ ${order.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="footer">
+            <div>
+              <p>Documento gerado eletronicamente em ${new Date().toLocaleString()}.</p>
+              <p>Aprovação sistêmica válida.</p>
+            </div>
+            <div class="signature">
+              Assinatura Autorizada
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
     setTimeout(() => {
         setToast({ 
             show: true, 
@@ -143,7 +256,21 @@ const Purchases: React.FC = () => {
             message: 'Janela de impressão aberta.', 
             type: 'success' 
         });
-        window.print();
+        
+        // Abre uma nova janela para impressão
+        const printWindow = window.open('', '_blank', 'width=900,height=800');
+        if (printWindow) {
+            printWindow.document.write(printContent);
+            printWindow.document.close();
+            printWindow.focus();
+            // Pequeno delay para garantir que estilos carregaram
+            setTimeout(() => {
+                printWindow.print();
+                printWindow.close();
+            }, 500);
+        } else {
+            alert('Permita pop-ups para imprimir.');
+        }
     }, 1500);
   };
 
@@ -325,7 +452,7 @@ const Purchases: React.FC = () => {
               
               <div className="flex items-center gap-1">
                 <button 
-                  onClick={() => handlePrint(order.code)}
+                  onClick={() => handlePrint(order)}
                   className="p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all" 
                   title="Imprimir PDF"
                 >
