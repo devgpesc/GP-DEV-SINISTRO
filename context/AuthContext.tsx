@@ -9,47 +9,69 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   clearSessionData: () => void;
+  isSuperAdmin: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// Lista de emails que automaticamente ganham permissão de Super Admin
+const SUPER_ADMIN_EMAILS = ['devgpesc@gmail.com', 'aidaadigitall@gmail.com'];
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = useCallback(async (id: string) => {
+  const fetchProfile = useCallback(async (userId: string, email?: string) => {
     if (!isSupabaseConfigured) return;
 
     try {
-      const { data, error } = await supabase
+      // Tenta buscar o perfil existente
+      const { data: existingProfile, error: fetchError } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', id)
+        .eq('id', userId)
         .maybeSingle();
 
-      if (error) throw error;
-      
-      if (data) {
-        setProfile(data);
-      } else {
-        const { data: { user: authUser } } = await supabase.auth.getUser();
-        if (authUser) {
-          const { data: createdProfile } = await supabase
-            .from('profiles')
-            .insert([{ 
-              id: id, 
-              full_name: authUser.user_metadata?.full_name || authUser.user_metadata?.name || 'Usuário',
-              email: authUser.email,
-              role: 'Usuário'
-            }])
-            .select()
-            .single();
-          setProfile(createdProfile);
+      const userEmail = email || user?.email;
+      // Define se é super admin baseado no email hardcoded
+      const isSuper = SUPER_ADMIN_EMAILS.includes(userEmail);
+      const targetRole = isSuper ? 'super_admin' : 'user';
+
+      if (existingProfile) {
+        // Se perfil existe, verificamos se precisamos atualizar a role para Super Admin
+        if (isSuper && existingProfile.role !== 'super_admin') {
+            const { data: updated } = await supabase.from('profiles').update({ role: 'super_admin' }).eq('id', userId).select().single();
+            setProfile(updated);
+        } else {
+            setProfile(existingProfile);
         }
+      } else {
+        // Se não existe, cria (UPSERT para garantir)
+        const { data: authUser } = await supabase.auth.getUser();
+        const meta = authUser.user?.user_metadata;
+        
+        const newProfile = { 
+          id: userId, 
+          full_name: meta?.full_name || meta?.name || 'Usuário',
+          email: userEmail,
+          role: targetRole,
+          created_at: new Date().toISOString()
+        };
+
+        const { data: createdProfile, error: insertError } = await supabase
+          .from('profiles')
+          .upsert([newProfile]) // Upsert corrige conflitos de IDs antigos
+          .select()
+          .single();
+
+        if (insertError) throw insertError;
+        setProfile(createdProfile);
       }
     } catch (err) {
       console.error("Erro ao sincronizar perfil:", err);
+      // Fallback local para não travar o app
+      setProfile({ id: userId, email: email, role: SUPER_ADMIN_EMAILS.includes(email || '') ? 'super_admin' : 'user' });
     }
   }, []);
 
@@ -58,27 +80,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const handleHashConflict = async () => {
       const hash = window.location.hash;
-      // Detecta tokens do Google OAuth na URL
       const isOAuthReturn = hash.includes('access_token') || hash.includes('type=recovery');
       
       if (isOAuthReturn) {
-        console.log('[Auth] Token OAuth detectado. Iniciando handshake...');
+        console.log('[Auth] Token OAuth detectado. Iniciando processamento...');
         setLoading(true);
 
-        // DELAY CRÍTICO: Dá tempo para o Supabase processar o token internamente
-        // antes de tentarmos ler a sessão ou limpar a URL.
-        await new Promise(r => setTimeout(r, 500));
+        // Delay para garantir que o Supabase Client processe o token da URL
+        await new Promise(r => setTimeout(r, 800));
 
         try {
             const { data: { session }, error } = await supabase.auth.getSession();
             
             if (session && mounted) {
-                console.log('[Auth] Sessão confirmada. Entrando no Dashboard...');
+                console.log('[Auth] Sessão recuperada. Configurando usuário...');
                 setUser(session.user);
-                await fetchProfile(session.user.id);
+                await fetchProfile(session.user.id, session.user.email);
                 
-                // LIMPEZA SEGURA: Usamos replaceState para não disparar reload
-                // e depois definimos o hash para '/' para o Router navegar.
+                // Limpeza segura da URL
                 window.history.replaceState(null, '', window.location.pathname);
                 window.location.hash = '/';
                 
@@ -86,16 +105,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 return;
             }
         } catch (e) {
-            console.error('[Auth] Erro ao processar OAuth:', e);
+            console.error('[Auth] Erro crítico no OAuth:', e);
         }
       }
 
-      // Fluxo normal (sem token na URL)
+      // Verificação padrão de sessão
       const { data: { session } } = await supabase.auth.getSession();
       if (mounted) {
         if (session?.user) {
             setUser(session.user);
-            await fetchProfile(session.user.id);
+            await fetchProfile(session.user.id, session.user.email);
         }
         setLoading(false);
       }
@@ -103,21 +122,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     handleHashConflict();
 
-    // Listener para manter o estado sincronizado
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[Auth] Evento de Sessão:', event);
+      console.log('[Auth] Mudança de estado:', event);
       if (!mounted) return;
       
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         const currentUser = session?.user ?? null;
         if (currentUser) {
             setUser(currentUser);
-            // Evita refetch desnecessário se já tivermos perfil e usuário não mudou
             if (!user || user.id !== currentUser.id) {
-                await fetchProfile(currentUser.id);
+                await fetchProfile(currentUser.id, currentUser.email);
             }
-            
-            // Se ainda houver lixo na URL, limpa suavemente
             if (window.location.hash.includes('access_token')) {
                 window.location.hash = '/';
             }
@@ -135,20 +150,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [fetchProfile, user]);
+  }, [fetchProfile]);
 
   const clearSessionData = () => {
-    // Limpeza profunda para garantir que nada corrompido fique
     mockStorage.clearAll();
     sessionStorage.clear();
-    
-    // Limpa chaves específicas do Supabase
-    Object.keys(localStorage).forEach(key => {
-        if (key.startsWith('sb-') || key.includes('supabase')) {
-            localStorage.removeItem(key);
-        }
-    });
-
+    localStorage.clear();
     const cookies = document.cookie.split(";");
     for (let i = 0; i < cookies.length; i++) {
         const cookie = cookies[i];
@@ -167,30 +174,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(null);
       setProfile(null);
       setLoading(false);
-      window.location.hash = '/login'; // Navegação via HashRouter
+      window.location.hash = '/login';
     }
   };
 
   const signInWithGoogle = async () => {
     const redirectUrl = window.location.origin;
-    console.log('[Auth] Google Login ->', redirectUrl);
-
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { 
         redirectTo: redirectUrl,
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'select_account',
-        }
+        queryParams: { access_type: 'offline', prompt: 'select_account' }
       }
     });
-
     if (error) throw error;
   };
 
+  const isSuperAdmin = profile?.role === 'super_admin';
+
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signOut, signInWithGoogle, clearSessionData }}>
+    <AuthContext.Provider value={{ user, profile, loading, signOut, signInWithGoogle, clearSessionData, isSuperAdmin }}>
       {children}
     </AuthContext.Provider>
   );

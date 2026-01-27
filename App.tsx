@@ -1,7 +1,7 @@
 
 import React, { useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext.tsx';
+import { AuthProvider, useAuth } from './context/AuthContext.tsx';
 import { PrivateRoute } from './components/PrivateRoute.tsx';
 import Layout from './components/Layout.tsx';
 import Dashboard from './pages/Dashboard.tsx';
@@ -17,6 +17,14 @@ import Settings from './pages/Settings.tsx';
 import Login from './pages/Login.tsx';
 import Register from './pages/Register.tsx';
 import AIAssistant from './components/AIAssistant.tsx';
+import SaasAdmin from './pages/SaasAdmin.tsx';
+
+// Componente para proteger rota de Admin
+const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isSuperAdmin } = useAuth();
+  if (!isSuperAdmin) return <Navigate to="/" replace />;
+  return <>{children}</>;
+};
 
 const App: React.FC = () => {
   useEffect(() => {
@@ -46,6 +54,14 @@ const App: React.FC = () => {
                   <Route path="/catalogo" element={<Catalog />} />
                   <Route path="/relatorios" element={<Reports />} />
                   <Route path="/configuracoes" element={<Settings />} />
+                  
+                  {/* Rota Super Admin */}
+                  <Route path="/saas-admin" element={
+                    <AdminRoute>
+                      <SaasAdmin />
+                    </AdminRoute>
+                  } />
+                  
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </Layout>
