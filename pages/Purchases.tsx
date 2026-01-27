@@ -5,7 +5,7 @@ import {
   CheckCircle2, XCircle, Send, Printer, MoreVertical, 
   Clock, DollarSign, UserCheck, X, ChevronDown, ListFilter,
   Eye, EyeOff, Share2, Download, ShieldCheck, AlertTriangle,
-  Loader2, Info, Trash2
+  Loader2, Info, Trash2, Package
 } from 'lucide-react';
 import { PurchaseOrder } from '../types';
 import { mockStorage } from '../services/supabaseClient';
@@ -20,6 +20,9 @@ const Purchases: React.FC = () => {
   
   // Estado para controlar qual menu está aberto (pelo ID da OC)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+  // Estado para Visualizar Itens
+  const [viewOrder, setViewOrder] = useState<PurchaseOrder | null>(null);
 
   // Estado para Notificações (Toast)
   const [toast, setToast] = useState<{ show: boolean; title: string; message: string; type: 'success' | 'info' | 'loading' } | null>(null);
@@ -473,7 +476,7 @@ const Purchases: React.FC = () => {
                             <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Opções da OC</p>
                         </div>
                         <button 
-                            onClick={() => setOpenMenuId(null)}
+                            onClick={() => { setViewOrder(order); setOpenMenuId(null); }}
                             className="w-full px-5 py-3 text-left text-xs font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50"
                         >
                             <Eye size={16}/> Visualizar Itens
@@ -507,6 +510,66 @@ const Purchases: React.FC = () => {
         <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-8 py-4 rounded-full shadow-2xl flex items-center gap-3 animate-bounce">
            <EyeOff size={18} className="text-amber-400" />
            <p className="text-xs font-black uppercase tracking-widest">Modo Restrito: Valores financeiros ocultos para seu perfil.</p>
+        </div>
+      )}
+
+      {/* --- MODAL DE VISUALIZAR ITENS --- */}
+      {viewOrder && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setViewOrder(null)}></div>
+            <div className="relative bg-white w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in duration-200">
+                
+                {/* Header */}
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl"><Package size={24}/></div>
+                        <div>
+                            <h3 className="text-xl font-black text-slate-800">Itens da Compra</h3>
+                            <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">{viewOrder.code}</p>
+                        </div>
+                    </div>
+                    <button onClick={() => setViewOrder(null)} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-full shadow-sm hover:shadow-md transition-all"><X size={20}/></button>
+                </div>
+                
+                {/* List */}
+                <div className="flex-1 overflow-y-auto p-6">
+                    {viewOrder.items && viewOrder.items.length > 0 ? (
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr>
+                                    <th className="text-[10px] font-black text-slate-400 uppercase tracking-widest pb-4 border-b border-slate-100">Item / Descrição</th>
+                                    <th className="text-[10px] font-black text-slate-400 uppercase tracking-widest pb-4 border-b border-slate-100 text-center">Qtd</th>
+                                    <th className="text-[10px] font-black text-slate-400 uppercase tracking-widest pb-4 border-b border-slate-100 text-right">Unitário</th>
+                                    <th className="text-[10px] font-black text-slate-400 uppercase tracking-widest pb-4 border-b border-slate-100 text-right">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50">
+                                {viewOrder.items.map((item, idx) => (
+                                    <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                                        <td className="py-4 text-sm font-bold text-slate-700">{item.name}</td>
+                                        <td className="py-4 text-sm font-bold text-slate-600 text-center">{item.quantity}</td>
+                                        <td className="py-4 text-sm font-bold text-slate-600 text-right">R$ {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                        <td className="py-4 text-sm font-black text-slate-800 text-right">R$ {(item.price * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    ) : (
+                        <div className="text-center py-10 text-slate-400">
+                            <p className="text-sm font-bold">Nenhum item encontrado.</p>
+                        </div>
+                    )}
+                    
+                    {canSeeValues && (
+                        <div className="mt-6 flex justify-end border-t border-slate-100 pt-6">
+                            <div className="text-right">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Valor Total</p>
+                                <p className="text-3xl font-black text-blue-600">R$ {viewOrder.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
         </div>
       )}
 
