@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { BarChart3, TrendingDown, Target, ShieldCheck, Download, Filter, Calendar, Users, ShoppingBag, CheckCircle, AlertTriangle, Printer } from 'lucide-react';
+import { BarChart3, TrendingDown, Target, ShieldCheck, Download, Filter, Calendar, Users, ShoppingBag, CheckCircle, AlertTriangle, Printer, Car } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   LineChart, Line, PieChart, Pie, Cell 
@@ -11,9 +11,12 @@ const Reports: React.FC = () => {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [loading, setLoading] = useState(true);
+  const [company, setCompany] = useState({ name: 'AutoClaims Pro', logo: '' });
 
   useEffect(() => {
     loadRealData();
+    const savedCompany = mockStorage.get('app_company');
+    if (savedCompany) setCompany({ name: savedCompany.name, logo: savedCompany.logo });
   }, []);
 
   const loadRealData = () => {
@@ -137,6 +140,21 @@ const Reports: React.FC = () => {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Header Apenas para Impressão */}
+      <div className="hidden print:flex items-center gap-4 mb-8 border-b border-slate-200 pb-4">
+         {company.logo ? (
+            <img src={company.logo} className="h-16 w-auto object-contain" alt="Logo" />
+         ) : (
+            <div className="h-16 w-16 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400">
+               <Car size={32}/>
+            </div>
+         )}
+         <div>
+            <h1 className="text-2xl font-black text-slate-900">{company.name}</h1>
+            <p className="text-sm text-slate-500">Relatório Analítico de Performance</p>
+         </div>
       </div>
 
       {/* KPIs Cards */}

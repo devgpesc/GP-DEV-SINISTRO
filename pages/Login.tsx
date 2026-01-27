@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
+import { supabase, isSupabaseConfigured, mockStorage } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { 
   Loader2, ArrowRight, ShieldCheck, Mail, Lock, 
-  LayoutDashboard, Zap, Globe, AlertCircle, WifiOff 
+  LayoutDashboard, Zap, Globe, AlertCircle, WifiOff, Car 
 } from 'lucide-react';
 
 const Login: React.FC = () => {
@@ -15,11 +15,16 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [localLoading, setLocalLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  const [company, setCompany] = useState({ name: 'ESC Solutions', logo: '' });
 
   useEffect(() => {
     if (user) {
       navigate('/', { replace: true });
     }
+    // Carregar configurações da empresa
+    const saved = mockStorage.get('app_company');
+    if (saved) setCompany({ name: saved.name, logo: saved.logo });
   }, [user, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -66,11 +71,15 @@ const Login: React.FC = () => {
         <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(#4b5563 1px, transparent 1px)', backgroundSize: '32px 32px' }}></div>
         
         <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-10">
-            <div className="bg-blue-600 p-2.5 rounded-xl shadow-lg shadow-blue-900/50">
-               <span className="font-black text-white text-xl tracking-tighter">ESC</span>
-            </div>
-            <span className="text-white/90 font-bold tracking-widest text-sm uppercase font-mono">Solutions</span>
+          <div className="flex items-center gap-4 mb-10">
+             {company.logo ? (
+                <img src={company.logo} className="h-12 w-auto bg-white/10 rounded-lg p-1 backdrop-blur-sm" alt="Logo" />
+             ) : (
+                <div className="bg-blue-600 p-2.5 rounded-xl shadow-lg shadow-blue-900/50">
+                   <Car className="text-white" size={24} />
+                </div>
+             )}
+            <span className="text-white/90 font-bold tracking-widest text-sm uppercase font-mono">{company.name}</span>
           </div>
 
           <h1 className="text-5xl font-extrabold text-white leading-[1.15] mb-6 tracking-tight">
