@@ -24,16 +24,18 @@ const Login: React.FC = () => {
                              window.location.hash.includes('type=recovery');
 
   useEffect(() => {
+    // Redireciona se o usuário já estiver autenticado
     if (user && !authLoading) {
+      console.log('[Login] Usuário detectado, redirecionando para dashboard...');
       navigate('/', { replace: true });
     }
   }, [user, authLoading, navigate]);
 
-  // Ativa o botão de reset após 5 segundos de espera
+  // Ativa o botão de reset após 8 segundos de espera se estiver travado carregando
   useEffect(() => {
     let timer: any;
     if (authLoading || isHashTokenPresent || localLoading) {
-        timer = setTimeout(() => setShowResetButton(true), 5000);
+        timer = setTimeout(() => setShowResetButton(true), 8000);
     } else {
         setShowResetButton(false);
     }
@@ -41,7 +43,10 @@ const Login: React.FC = () => {
   }, [authLoading, isHashTokenPresent, localLoading]);
 
   const handleForceReset = () => {
+      console.log('[Login] Forçando reset da sessão...');
       clearSessionData();
+      // Remove hash da URL e recarrega
+      window.history.replaceState(null, '', window.location.pathname);
       window.location.hash = '/login';
       window.location.reload();
   };
@@ -74,12 +79,15 @@ const Login: React.FC = () => {
     setError(null);
     try {
       await signInWithGoogle();
+      // Não setamos loading false aqui pois o redirect acontecerá
     } catch (err: any) {
-      setError("Erro ao iniciar Google Auth: " + err.message);
+      console.error(err);
+      setError("Erro ao iniciar Google Auth: " + (err.message || 'Erro desconhecido'));
       setLocalLoading(false);
     }
   };
 
+  // Tela de Loading (Global ou Local)
   if (authLoading || isHashTokenPresent || (localLoading && !error)) {
     return (
       <div className="min-h-screen bg-[#0A1628] flex flex-col items-center justify-center font-sans relative overflow-hidden">
@@ -95,16 +103,21 @@ const Login: React.FC = () => {
              <div className="flex flex-col items-center gap-3 mt-4 text-blue-200 text-sm font-medium">
                <div className="flex items-center gap-2">
                  <Loader2 className="animate-spin" size={16} />
-                 <span>Autenticando acesso seguro...</span>
+                 <span>
+                    {isHashTokenPresent ? 'Processando credenciais seguras...' : 'Autenticando acesso...'}
+                 </span>
                </div>
                
                {showResetButton && (
-                   <button 
-                     onClick={handleForceReset}
-                     className="mt-4 px-4 py-2 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-xs font-bold uppercase tracking-widest flex items-center gap-2 transition-all animate-in fade-in"
-                   >
-                     <RefreshCw size={14}/> Demorando muito? Reiniciar
-                   </button>
+                   <div className="flex flex-col items-center gap-2 mt-4 animate-in fade-in">
+                     <p className="text-xs text-red-300">O processo está demorando mais que o esperado.</p>
+                     <button 
+                       onClick={handleForceReset}
+                       className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-xs font-bold uppercase tracking-widest flex items-center gap-2 transition-all cursor-pointer"
+                     >
+                       <RefreshCw size={14}/> Reiniciar Login
+                     </button>
+                   </div>
                )}
              </div>
            </div>
@@ -115,10 +128,8 @@ const Login: React.FC = () => {
 
   return (
     <div className="min-h-screen flex font-sans bg-[#F8FAFC]">
-      
-      {/* LADO ESQUERDO: Identidade Visual ESC Solutions */}
+      {/* LADO ESQUERDO: Identidade Visual ESC Solutions (Mantido igual) */}
       <div className="hidden lg:flex w-1/2 bg-[#0A1628] relative flex-col justify-between p-16 overflow-hidden">
-        {/* Background & Effects */}
         <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5"></div>
         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-[#0A1628] via-[#0f224a] to-[#0A1628] z-0"></div>
         <div className="absolute bottom-0 left-0 w-full h-1/2 bg-gradient-to-t from-blue-900/20 to-transparent"></div>
@@ -155,13 +166,6 @@ const Login: React.FC = () => {
                 <p className="text-slate-400 text-xs mt-0.5">Proteção de dados com criptografia de ponta a ponta.</p>
               </div>
            </div>
-           <div className="flex items-center gap-4 p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm">
-              <div className="p-3 bg-amber-500/20 rounded-xl text-amber-400"><Bell size={24}/></div>
-              <div>
-                <h3 className="text-white font-bold">Alertas Instantâneos</h3>
-                <p className="text-slate-400 text-xs mt-0.5">Notificações inteligentes para tomada de decisão.</p>
-              </div>
-           </div>
         </div>
 
         <div className="relative z-10 text-slate-500 text-xs font-medium">
@@ -191,7 +195,6 @@ const Login: React.FC = () => {
                disabled={localLoading}
                className="w-full py-4 bg-white border border-slate-200 text-slate-700 font-bold rounded-2xl flex items-center justify-center gap-3 hover:bg-slate-50 hover:border-slate-300 transition-all group disabled:opacity-50"
             >
-               {/* Ícone SVG do Google */}
                <svg className="w-5 h-5 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                   <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -222,7 +225,6 @@ const Login: React.FC = () => {
                <div className="group">
                   <div className="flex justify-between items-center mb-2">
                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider group-focus-within:text-blue-600 transition-colors">Senha</label>
-                     <button type="button" className="text-xs font-bold text-blue-600 hover:text-blue-800">Esqueceu a senha?</button>
                   </div>
                   <input 
                     type="password" 
@@ -256,7 +258,6 @@ const Login: React.FC = () => {
           </div>
         </div>
       </div>
-
       <style>{`
         @keyframes shimmer {
           0% { background-position: 200% 0; }

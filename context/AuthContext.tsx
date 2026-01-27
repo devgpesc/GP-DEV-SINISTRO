@@ -15,36 +15,47 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// E-mails de Super Admin hardcoded para segurança e fallback
 const SUPER_ADMIN_EMAILS = ['devgpesc@gmail.com', 'aidaadigitall@gmail.com'];
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
-  // Começa true para evitar flash de conteúdo ou redirect errado
   const [loading, setLoading] = useState(true);
 
+  // Função para processar/criar perfil do usuário
   const fetchProfile = useCallback(async (userId: string, email?: string) => {
     if (!isSupabaseConfigured) return;
 
+    // Dados para fallback local caso o DB falhe
+    const userEmail = email || user?.email;
+    const isSuper = SUPER_ADMIN_EMAILS.includes(userEmail);
+    const fallbackProfile = { 
+      id: userId, 
+      email: userEmail, 
+      role: isSuper ? 'super_admin' : 'user', 
+      full_name: 'Usuário',
+      tenant_id: null 
+    };
+
     try {
+      // 1. Tenta buscar perfil existente
       const { data: existingProfile } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .maybeSingle();
 
-      const userEmail = email || user?.email;
-      const isSuper = SUPER_ADMIN_EMAILS.includes(userEmail);
-      const targetRole = isSuper ? 'super_admin' : 'user';
-
       if (existingProfile) {
+        // Se é super admin hardcoded, garante que o DB reflita isso
         if (isSuper && existingProfile.role !== 'super_admin') {
-            const { data: updated } = await supabase.from('profiles').update({ role: 'super_admin' }).eq('id', userId).select().single();
-            setProfile(updated);
+            await supabase.from('profiles').update({ role: 'super_admin' }).eq('id', userId);
+            setProfile({ ...existingProfile, role: 'super_admin' });
         } else {
             setProfile(existingProfile);
         }
       } else {
+        // 2. Se não existe, cria (Upsert)
         const { data: authUser } = await supabase.auth.getUser();
         const meta = authUser.user?.user_metadata;
         
@@ -52,76 +63,101 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           id: userId, 
           full_name: meta?.full_name || meta?.name || 'Usuário',
           email: userEmail,
-          role: targetRole,
+          role: isSuper ? 'super_admin' : 'user',
           created_at: new Date().toISOString(),
         };
 
-        const { data: createdProfile } = await supabase
+        const { data: createdProfile, error: insertError } = await supabase
           .from('profiles')
           .upsert([newProfile]) 
           .select()
           .single();
 
+        if (insertError) throw insertError;
         setProfile(createdProfile);
       }
     } catch (err) {
-      console.error("Erro ao sincronizar perfil:", err);
-      setProfile({ id: userId, email: email, role: SUPER_ADMIN_EMAILS.includes(email || '') ? 'super_admin' : 'user', tenant_id: null });
+      console.error("[Auth] Erro ao sincronizar perfil (usando fallback):", err);
+      // Em caso de erro (ex: RLS bloqueando insert), usamos o perfil local para permitir o login
+      setProfile(fallbackProfile);
     }
   }, []);
 
+  // Lógica Principal de Inicialização de Sessão
   useEffect(() => {
     let mounted = true;
 
-    // Função para inicializar sessão
-    const initSession = async () => {
+    const initializeAuth = async () => {
       try {
-        // Verifica sessão atual
+        // 1. Verificação Manual de Hash (Correção para HashRouter + OAuth)
+        // O Supabase coloca o token no hash: #access_token=...
+        // O HashRouter pode confundir isso. Vamos pegar antes.
+        const hash = window.location.hash;
+        if (hash && hash.includes('access_token')) {
+          console.log('[Auth] Token encontrado na URL via Hash. Processando manualmente...');
+          
+          // Extrai parâmetros do hash de forma bruta para garantir
+          const params = new URLSearchParams(hash.substring(1)); // remove o #
+          const accessToken = params.get('access_token');
+          const refreshToken = params.get('refresh_token');
+
+          if (accessToken && refreshToken) {
+            const { data, error } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+
+            if (!error && data.session) {
+              console.log('[Auth] Sessão manual estabelecida com sucesso.');
+              // Limpa a URL para evitar loops
+              window.history.replaceState(null, '', window.location.pathname);
+              // Não retornamos aqui, deixamos o fluxo seguir para carregar o usuário
+            } else {
+              console.error('[Auth] Falha ao definir sessão manual:', error);
+            }
+          }
+        }
+
+        // 2. Verifica sessão atual (seja recuperada do storage ou do setSession acima)
         const { data: { session } } = await supabase.auth.getSession();
-        
+
         if (mounted) {
           if (session?.user) {
+            console.log('[Auth] Usuário autenticado:', session.user.email);
             setUser(session.user);
             await fetchProfile(session.user.id, session.user.email);
           } else {
+            console.log('[Auth] Nenhuma sessão ativa.');
             setUser(null);
             setProfile(null);
           }
         }
       } catch (error) {
-        console.error('Erro ao inicializar sessão:', error);
+        console.error('[Auth] Erro crítico na inicialização:', error);
       } finally {
-        if (mounted) {
-          setLoading(false);
-        }
+        if (mounted) setLoading(false);
       }
     };
 
-    initSession();
+    initializeAuth();
 
-    // Listener de mudanças de estado (Login, Logout, OAuth Callback)
+    // 3. Listener para mudanças futuras (Logout, troca de tab, etc)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[Auth] Evento:', event);
-      
+      console.log(`[Auth] Evento: ${event}`);
       if (!mounted) return;
 
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        setLoading(true); // Bloqueia UI enquanto carrega perfil
         setUser(session?.user ?? null);
         if (session?.user) {
+          // Só mostra loading se não tivermos perfil ainda
+          if (!profile) setLoading(true);
           await fetchProfile(session.user.id, session.user.email);
+          setLoading(false);
         }
-        setLoading(false);
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setProfile(null);
         setLoading(false);
-      } else if (event === 'INITIAL_SESSION') {
-        // Evento disparado quando o Supabase termina de carregar a sessão inicial
-        // Útil para garantir que o loading pare
-        if (!session) {
-             setLoading(false);
-        }
       }
     });
 
@@ -134,6 +170,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const clearSessionData = () => {
     mockStorage.clearAll();
     localStorage.clear();
+    sessionStorage.clear();
   };
 
   const signOut = async () => {
@@ -145,16 +182,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setProfile(null);
     } finally {
       setLoading(false);
-      window.location.href = '/#/login'; // Força navegação limpa
+      window.location.href = '/#/login';
     }
   };
 
   const signInWithGoogle = async () => {
+    // Usa window.location.origin para garantir que volte para a raiz do domínio
+    const redirectUrl = window.location.origin;
+    console.log('[Auth] Iniciando OAuth Google. Redirect:', redirectUrl);
+    
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { 
-        redirectTo: window.location.origin, // Redireciona para a raiz, o Supabase trata o resto
-        queryParams: { access_type: 'offline', prompt: 'select_account' }
+        redirectTo: redirectUrl,
+        queryParams: { 
+          access_type: 'offline', 
+          prompt: 'select_account' 
+        }
       }
     });
     if (error) throw error;
