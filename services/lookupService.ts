@@ -61,38 +61,61 @@ export const lookupService = {
 
   /**
    * Busca dados de Placa.
-   * NOTA: APIs de placa gratuitas são escassas/instáveis devido a dados sensíveis.
-   * Para Produção Real, recomenda-se: APIBrasil, Infosimples ou OlhoNoCarro.
-   * 
-   * AQUI: Simulamos uma resposta realista baseada no final da placa para UX testing.
+   * Algoritmo de Mock Determinístico: Gera dados consistentes para qualquer placa válida
+   * para garantir que o usuário sempre tenha uma experiência positiva no modo Demo/Teste.
    */
   async fetchPlate(plate: string): Promise<PlateData | null> {
     const cleanPlate = plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    
+    // Validação básica de formato (Mercosul ou Antiga: 7 chars)
     if (cleanPlate.length !== 7) return null;
 
     // Simulação de delay de rede (UX Realista)
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await new Promise(resolve => setTimeout(resolve, 800));
 
-    // Lógica determinística para testes baseada no último dígito
-    const lastChar = cleanPlate.slice(-1);
-    const isNumber = !isNaN(parseInt(lastChar));
-    
-    // Base de dados simulada para testes ricos
-    const mockDB: Record<string, PlateData> = {
-      '1': { brand: 'TOYOTA', model: 'COROLLA XEI 2.0', year: '2023', color: 'BRANCA', chassi: '9BR...X882' },
-      '2': { brand: 'HONDA', model: 'CIVIC TOURING 1.5T', year: '2022', color: 'PRATA', chassi: '93H...Y112' },
-      '3': { brand: 'FIAT', model: 'STRADA VOLCANO', year: '2024', color: 'CINZA', chassi: '9BD...Z331' },
-      '4': { brand: 'VOLKSWAGEN', model: 'T-CROSS HIGHLINE', year: '2023', color: 'AZUL', chassi: '9BW...A445' },
-      '5': { brand: 'JEEP', model: 'COMPASS LIMITED', year: '2022', color: 'PRETO', chassi: '988...B556' },
-      '6': { brand: 'HYUNDAI', model: 'HB20 PLATINUM', year: '2024', color: 'BRANCA', chassi: '9BH...C667' },
-      '7': { brand: 'CHEVROLET', model: 'ONIX PREMIER', year: '2023', color: 'VERMELHO', chassi: '9BG...D778' },
-      '8': { brand: 'RENAULT', model: 'KWID OUTSIDER', year: '2024', color: 'LARANJA', chassi: '93Y...E889' },
-      '9': { brand: 'FORD', model: 'RANGER RAPTOR', year: '2023', color: 'AZUL', chassi: '8AF...F990' },
-      '0': { brand: 'BYD', model: 'DOLPHIN EV', year: '2024', color: 'CINZA', chassi: 'LBV...G001' },
+    // Base de dados de Mock
+    const brands = ['TOYOTA', 'HONDA', 'VOLKSWAGEN', 'FIAT', 'CHEVROLET', 'FORD', 'HYUNDAI', 'JEEP', 'RENAULT', 'NISSAN', 'BMW', 'MERCEDES-BENZ'];
+    const modelsByBrand: Record<string, string[]> = {
+      'TOYOTA': ['COROLLA XEI 2.0', 'YARIS XS', 'HILUX SRV', 'COROLLA CROSS'],
+      'HONDA': ['CIVIC TOURING', 'HR-V EXL', 'CITY EX', 'CR-V'],
+      'VOLKSWAGEN': ['T-CROSS HIGHLINE', 'NIVUS', 'POLO TRACK', 'VIRTUS'],
+      'FIAT': ['STRADA VOLCANO', 'TORO FREEDOM', 'PULSE', 'FASTBACK'],
+      'CHEVROLET': ['ONIX PREMIER', 'TRACKER', 'S10 LTZ', 'CRUZE'],
+      'FORD': ['RANGER LIMITED', 'MAVERICK', 'TERRITORY', 'MUSTANG'],
+      'HYUNDAI': ['HB20 PLATINUM', 'CRETA ULTIMATE', 'TUCSON', 'HB20S'],
+      'JEEP': ['COMPASS LIMITED', 'RENEGADE', 'COMMANDER', 'WRANGLER'],
+      'RENAULT': ['KWID OUTSIDER', 'DUSTER ICONIC', 'OROCH', 'KARDIAN'],
+      'NISSAN': ['KICKS EXCLUSIVE', 'VERSA', 'SENTRA', 'FRONTIER'],
+      'BMW': ['320I M SPORT', 'X1', 'X3', 'X5'],
+      'MERCEDES-BENZ': ['C300 AMG LINE', 'GLA 200', 'GLC 300', 'A200']
     };
+    const colors = ['BRANCA', 'PRETO', 'PRATA', 'CINZA', 'VERMELHO', 'AZUL', 'LARANJA'];
 
-    // Fallback genérico ou específico
-    const key = isNumber ? lastChar : '1'; // Se terminar em letra (Mercosul), usa lógica do '1'
-    return mockDB[key] || mockDB['1'];
+    // Gerar seed numérico baseado na placa para garantir consistência (mesma placa = mesmo carro)
+    const seed = cleanPlate.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    
+    // Selecionar dados baseados no seed
+    const brandIndex = seed % brands.length;
+    const brand = brands[brandIndex];
+    
+    const availableModels = modelsByBrand[brand];
+    const modelIndex = seed % availableModels.length;
+    const model = availableModels[modelIndex];
+    
+    const color = colors[seed % colors.length];
+    const year = (2020 + (seed % 5)).toString(); // Anos entre 2020 e 2024
+    
+    // Gerar Chassi Fake realista
+    const chassiPrefix = '9' + brand.substring(0, 2) + cleanPlate.substring(0, 3);
+    const chassiSuffix = seed.toString().padStart(6, '0');
+    const chassi = (chassiPrefix + chassiSuffix).substring(0, 17).padEnd(17, '0');
+
+    return {
+      brand,
+      model,
+      year,
+      color,
+      chassi: chassi.toUpperCase()
+    };
   }
 };

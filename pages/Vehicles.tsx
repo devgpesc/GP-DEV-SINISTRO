@@ -4,7 +4,7 @@ import {
   Plus, Search, Car, Hash, ShieldCheck, 
   X, AlertCircle, Loader2, MoreVertical, ClipboardList,
   CloudLightning, Users, FileText, Phone, Mail, User,
-  LayoutGrid, List, Trash2, Edit
+  LayoutGrid, List, Trash2, Edit, CheckCircle2
 } from 'lucide-react';
 import { vehicleService } from '../services/vehicleService';
 import { lookupService } from '../services/lookupService';
@@ -41,6 +41,7 @@ const Vehicles: React.FC = () => {
   // Estados para busca de placa
   const [isSearchingPlate, setIsSearchingPlate] = useState(false);
   const [plateMessage, setPlateMessage] = useState<string | null>(null);
+  const [foundVehicleData, setFoundVehicleData] = useState<boolean>(false);
 
   // Forms
   const [vehicleFormData, setVehicleFormData] = useState({
@@ -108,6 +109,7 @@ const Vehicles: React.FC = () => {
 
     setIsSearchingPlate(true);
     setPlateMessage('Consultando base DETRAN/FIPE...');
+    setFoundVehicleData(false);
 
     try {
       const data = await lookupService.fetchPlate(vehicleFormData.plate);
@@ -120,8 +122,8 @@ const Vehicles: React.FC = () => {
           year: data.year,
           chassi: data.chassi || prev.chassi 
         }));
-        setPlateMessage(`Veículo encontrado: ${data.brand} ${data.model}`);
-        setTimeout(() => setPlateMessage(null), 4000);
+        setPlateMessage(`${data.brand} ${data.model} encontrado.`);
+        setFoundVehicleData(true);
       } else {
         setPlateMessage('Placa não encontrada nas bases públicas.');
       }
@@ -176,6 +178,7 @@ const Vehicles: React.FC = () => {
       setIsVehicleModalOpen(false);
       setVehicleFormData({ plate: '', renavam: '', chassi: '', model: '', brand: '', year: '', associateId: '' });
       setPlateMessage(null);
+      setFoundVehicleData(false);
     } catch (err: any) {
       setErrors({ global: err.message || 'Erro ao salvar veículo' });
     } finally {
@@ -255,7 +258,7 @@ const Vehicles: React.FC = () => {
            )}
            {activeTab === 'veiculos' ? (
              <button 
-                onClick={() => { setIsVehicleModalOpen(true); setVehicleFormData({ plate: '', renavam: '', chassi: '', model: '', brand: '', year: '', associateId: '' }); setPlateMessage(null); }}
+                onClick={() => { setIsVehicleModalOpen(true); setVehicleFormData({ plate: '', renavam: '', chassi: '', model: '', brand: '', year: '', associateId: '' }); setPlateMessage(null); setFoundVehicleData(false); }}
                 className="flex items-center gap-2 px-8 py-3 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] hover:bg-blue-700 transition-all shadow-xl shadow-blue-600/20"
              >
                 <Plus size={20} /> Novo Veículo
@@ -420,124 +423,6 @@ const Vehicles: React.FC = () => {
         </div>
       )}
 
-      {/* TAB ASSOCIADOS */}
-      {activeTab === 'associados' && (
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
-            <div className="bg-white p-6 rounded-[32px] shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 items-center justify-between">
-                <div className="relative w-full max-w-xl">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                    <input 
-                        type="text" 
-                        placeholder="Buscar associado por nome ou CPF/CNPJ..."
-                        className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-blue-500/10 outline-none text-sm font-medium transition-all"
-                        value={associateSearchTerm}
-                        onChange={(e) => setAssociateSearchTerm(e.target.value)}
-                    />
-                </div>
-                <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200">
-                   <button 
-                      onClick={() => setViewMode('grid')}
-                      className={`p-3 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                   >
-                      <LayoutGrid size={20} />
-                   </button>
-                   <button 
-                      onClick={() => setViewMode('list')}
-                      className={`p-3 rounded-xl transition-all ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                   >
-                      <List size={20} />
-                   </button>
-                </div>
-            </div>
-
-            {viewMode === 'grid' ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-2 duration-300">
-                    {filteredAssociates.map(associate => {
-                        const vehicleCount = vehicles.filter(v => v.associateId === associate.id).length;
-                        return (
-                            <div key={associate.id} className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200 hover:border-blue-200 transition-all group relative">
-                                <div className="flex justify-between items-start mb-6">
-                                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-xl shadow-sm ${associate.type === 'PJ' ? 'bg-indigo-50 text-indigo-600' : 'bg-blue-50 text-blue-600'}`}>
-                                        {associate.name.charAt(0)}
-                                    </div>
-                                    <button onClick={() => handleOpenAssociateModal(associate)} className="p-2 text-slate-300 hover:text-blue-600 rounded-xl hover:bg-blue-50 transition-all"><MoreVertical size={20}/></button>
-                                </div>
-                                
-                                <h3 className="font-black text-slate-800 text-lg leading-tight mb-1">{associate.name}</h3>
-                                <div className="flex items-center gap-2 mb-6">
-                                    <span className="bg-slate-100 text-slate-500 text-[9px] font-black px-2 py-0.5 rounded border border-slate-200 uppercase">{associate.type}</span>
-                                    <span className="text-[10px] text-slate-400 font-bold">{associate.document}</span>
-                                </div>
-
-                                <div className="space-y-3">
-                                    <div className="flex items-center gap-3 text-xs font-medium text-slate-600">
-                                        <Phone size={14} className="text-slate-400"/> {associate.phone || 'Sem telefone'}
-                                    </div>
-                                    <div className="flex items-center gap-3 text-xs font-medium text-slate-600">
-                                        <Mail size={14} className="text-slate-400"/> {associate.email || 'Sem e-mail'}
-                                    </div>
-                                </div>
-
-                                <div className="mt-6 pt-6 border-t border-slate-50 flex justify-between items-center">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ativos Vinculados</p>
-                                    <span className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-black shadow-lg shadow-blue-600/20">{vehicleCount}</span>
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            ) : (
-                <div className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm animate-in slide-in-from-bottom-2 duration-300">
-                  <table className="w-full text-left">
-                    <thead className="bg-slate-50 border-b border-slate-100">
-                      <tr>
-                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Associado</th>
-                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Documento / Tipo</th>
-                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Contatos</th>
-                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ativos</th>
-                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50">
-                      {filteredAssociates.map(associate => {
-                        const vehicleCount = vehicles.filter(v => v.associateId === associate.id).length;
-                        return (
-                          <tr key={associate.id} className="hover:bg-slate-50/50 transition-colors group">
-                            <td className="px-8 py-5">
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs ${associate.type === 'PJ' ? 'bg-indigo-50 text-indigo-600' : 'bg-blue-50 text-blue-600'}`}>
-                                        {associate.name.charAt(0)}
-                                    </div>
-                                    <span className="font-bold text-slate-800 text-sm">{associate.name}</span>
-                                </div>
-                            </td>
-                            <td className="px-8 py-5">
-                              <p className="font-bold text-slate-600 text-xs">{associate.document}</p>
-                              <span className="text-[10px] font-black bg-slate-100 px-2 py-0.5 rounded uppercase text-slate-500">{associate.type}</span>
-                            </td>
-                            <td className="px-8 py-5">
-                                <div className="text-xs text-slate-600 flex flex-col gap-0.5">
-                                    <span className="flex items-center gap-1.5"><Mail size={12} className="text-slate-400"/> {associate.email || '-'}</span>
-                                    <span className="flex items-center gap-1.5"><Phone size={12} className="text-slate-400"/> {associate.phone || '-'}</span>
-                                </div>
-                            </td>
-                            <td className="px-8 py-5 text-center">
-                                <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded font-black text-xs">{vehicleCount}</span>
-                            </td>
-                            <td className="px-8 py-5 text-right flex justify-end gap-2">
-                               <button onClick={() => handleOpenAssociateModal(associate)} className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Edit size={16}/></button>
-                               <button className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={16}/></button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-            )}
-        </div>
-      )}
-
       {/* --- MODAIS --- */}
 
       {/* Modal Veículo */}
@@ -563,11 +448,6 @@ const Vehicles: React.FC = () => {
                 <div>
                   <label className="flex justify-between items-end text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
                     <span>Placa Mercosul/Brasil *</span>
-                    {plateMessage && (
-                        <span className={`text-[9px] flex items-center gap-1 ${plateMessage.includes('Erro') || plateMessage.includes('não') ? 'text-red-500' : 'text-green-600'}`}>
-                           {isSearchingPlate ? <Loader2 className="animate-spin" size={10}/> : null} {plateMessage}
-                        </span>
-                    )}
                   </label>
                   <div className="relative">
                     <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
@@ -575,7 +455,7 @@ const Vehicles: React.FC = () => {
                       required
                       className={`w-full pl-12 pr-12 py-4 bg-slate-50 border rounded-2xl font-black uppercase outline-none transition-all text-lg tracking-[0.2em] ${errors.plate ? 'border-red-300 ring-red-100 ring-4' : 'border-slate-100 focus:ring-4 focus:ring-blue-500/5'} ${isSearchingPlate ? 'opacity-70' : ''}`}
                       placeholder="ABC1D23"
-                      maxLength={8}
+                      maxLength={7}
                       value={vehicleFormData.plate}
                       onChange={(e) => setVehicleFormData({...vehicleFormData, plate: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '')})}
                       onBlur={handlePlateLookup}
@@ -590,6 +470,13 @@ const Vehicles: React.FC = () => {
                         {isSearchingPlate ? <Loader2 className="animate-spin" size={18}/> : <CloudLightning size={18}/>}
                     </button>
                   </div>
+                  {/* Mensagem de Feedback Reposicionada */}
+                  {plateMessage && (
+                      <div className={`mt-2 p-2 rounded-lg text-[10px] font-bold flex items-center gap-2 ${foundVehicleData ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
+                          {foundVehicleData ? <CheckCircle2 size={12}/> : <AlertCircle size={12}/>}
+                          {plateMessage}
+                      </div>
+                  )}
                   {errors.plate && <p className="text-[10px] text-red-500 mt-2 font-black uppercase flex items-center gap-1"><AlertCircle size={12}/> {errors.plate}</p>}
                 </div>
 
@@ -616,7 +503,7 @@ const Vehicles: React.FC = () => {
                   <div className="relative">
                     <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                     <input 
-                      className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-black uppercase outline-none focus:ring-4 focus:ring-blue-500/5 transition-all text-sm tracking-widest"
+                      className={`w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-black uppercase outline-none focus:ring-4 focus:ring-blue-500/5 transition-all text-sm tracking-widest ${foundVehicleData ? 'text-blue-600 bg-blue-50/30' : ''}`}
                       placeholder="9BWZZZ37Z2T000001"
                       maxLength={17}
                       value={vehicleFormData.chassi}
@@ -627,17 +514,17 @@ const Vehicles: React.FC = () => {
 
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Modelo do Veículo *</label>
-                  <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/5 transition-all text-sm" value={vehicleFormData.model} onChange={(e) => setVehicleFormData({...vehicleFormData, model: e.target.value})} />
+                  <input required className={`w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/5 transition-all text-sm ${foundVehicleData ? 'text-blue-600 bg-blue-50/30' : ''}`} value={vehicleFormData.model} onChange={(e) => setVehicleFormData({...vehicleFormData, model: e.target.value})} />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                    <div>
                       <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Fabricante</label>
-                      <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/5 transition-all text-sm" value={vehicleFormData.brand} onChange={(e) => setVehicleFormData({...vehicleFormData, brand: e.target.value})} />
+                      <input className={`w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/5 transition-all text-sm ${foundVehicleData ? 'text-blue-600 bg-blue-50/30' : ''}`} value={vehicleFormData.brand} onChange={(e) => setVehicleFormData({...vehicleFormData, brand: e.target.value})} />
                    </div>
                    <div>
                       <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Ano</label>
-                      <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/5 transition-all text-sm" value={vehicleFormData.year} onChange={(e) => setVehicleFormData({...vehicleFormData, year: e.target.value})} />
+                      <input className={`w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/5 transition-all text-sm ${foundVehicleData ? 'text-blue-600 bg-blue-50/30' : ''}`} value={vehicleFormData.year} onChange={(e) => setVehicleFormData({...vehicleFormData, year: e.target.value})} />
                    </div>
                 </div>
               </div>
