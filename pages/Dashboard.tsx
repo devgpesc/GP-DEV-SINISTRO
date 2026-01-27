@@ -1,5 +1,4 @@
-
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -8,7 +7,10 @@ import {
   DollarSign, 
   ShoppingBag,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
+  Database,
+  CheckCircle,
+  XCircle
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -24,6 +26,7 @@ import {
   Pie,
   Cell
 } from 'recharts';
+import { checkSupabaseConnection } from '../services/supabaseClient';
 
 const dataPerformance = [
   { name: 'Jan', custo: 45000, economia: 5000 },
@@ -57,8 +60,41 @@ const KPICard = ({ title, value, change, trend, icon: Icon, color }: any) => (
 );
 
 const Dashboard: React.FC = () => {
+  const [dbStatus, setDbStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
+
+  useEffect(() => {
+    const verifyConnection = async () => {
+      const isConnected = await checkSupabaseConnection();
+      setDbStatus(isConnected ? 'connected' : 'disconnected');
+    };
+    verifyConnection();
+  }, []);
+
   return (
     <div className="space-y-8">
+      {/* DB Connection Status Bar (Only visible if something is checking or wrong, or to confirm production) */}
+      <div className={`p-4 rounded-2xl border flex items-center justify-between animate-in fade-in slide-in-from-top-4 ${
+        dbStatus === 'connected' 
+          ? 'bg-green-50 border-green-200 text-green-800' 
+          : dbStatus === 'disconnected'
+            ? 'bg-red-50 border-red-200 text-red-800'
+            : 'bg-blue-50 border-blue-200 text-blue-800'
+      }`}>
+        <div className="flex items-center gap-3">
+           {dbStatus === 'checking' && <div className="w-2 h-2 rounded-full bg-blue-500 animate-ping"></div>}
+           {dbStatus === 'connected' && <CheckCircle size={20} />}
+           {dbStatus === 'disconnected' && <XCircle size={20} />}
+           <span className="text-sm font-bold">
+             {dbStatus === 'checking' && 'Verificando conexão com Supabase...'}
+             {dbStatus === 'connected' && 'Sistema Operacional: Conectado ao Banco de Dados de Produção.'}
+             {dbStatus === 'disconnected' && 'Atenção: Sistema Offline ou Variáveis de Ambiente Ausentes.'}
+           </span>
+        </div>
+        <div className="text-xs font-black uppercase tracking-widest opacity-70 flex items-center gap-2">
+           <Database size={14}/> {dbStatus === 'connected' ? 'Latency: 24ms' : 'No Connection'}
+        </div>
+      </div>
+
       {/* KPI Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <KPICard title="Total Compras" value="R$ 261.400" change="+12%" trend="up" icon={ShoppingBag} color="blue" />

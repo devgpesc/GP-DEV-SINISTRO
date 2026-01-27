@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../services/supabaseClient';
+import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { 
   Loader2, ArrowRight, ShieldCheck, Mail, Lock, 
-  LayoutDashboard, Zap, Globe, AlertCircle 
+  LayoutDashboard, Zap, Globe, AlertCircle, WifiOff 
 } from 'lucide-react';
 
 const Login: React.FC = () => {
@@ -166,10 +166,17 @@ const Login: React.FC = () => {
             </div>
 
           <div className="mt-10 pt-6 border-t border-slate-50 text-center">
-            <div className="flex items-center justify-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-               <ShieldCheck size={14} className="text-green-500" />
-               Produção v1.0.0
-            </div>
+            {isSupabaseConfigured ? (
+               <div className="flex items-center justify-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <ShieldCheck size={14} className="text-green-500" />
+                  Produção v1.0.0
+               </div>
+            ) : (
+               <div className="flex items-center justify-center gap-2 text-[10px] font-bold text-amber-500 uppercase tracking-wider">
+                  <WifiOff size={14} />
+                  Modo Offline / Demonstração
+               </div>
+            )}
           </div>
         </div>
       </div>

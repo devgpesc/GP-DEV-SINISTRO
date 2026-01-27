@@ -1,12 +1,12 @@
-
 import React, { useState } from 'react';
 import { Link, useLocation, Outlet } from 'react-router-dom';
 import { 
   LayoutDashboard, FileText, ShoppingCart, Users, Truck, 
   BarChart3, Settings, Package, Car, Bell, Search, UserCircle, X, ShoppingBag, Clock, Trash2, CheckCheck,
-  Globe, ShieldCheck
+  Globe, ShieldCheck, Wifi, WifiOff
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { isSupabaseConfigured } from '../services/supabaseClient';
 
 interface LayoutProps {
   children?: React.ReactNode;
@@ -56,7 +56,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               </div>
             )}
 
-            <p className="px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 mt-2">Operacional</p>
+            <p className="px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Operacional</p>
             <NavItem to="/" icon={LayoutDashboard} label="Dashboard" active={location.pathname === '/'} />
             <NavItem to="/eventos" icon={FileText} label="Eventos" active={location.pathname === '/eventos'} />
             <NavItem to="/cotacoes" icon={Search} label="Cotações" active={location.pathname === '/cotacoes'} />
@@ -73,6 +73,15 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </div>
         
         <div className="mt-auto p-4 border-t border-slate-800">
+          {/* Indicador de Status do Ambiente */}
+          <div className={`mb-4 px-3 py-2 rounded-lg border flex items-center gap-2 ${isSupabaseConfigured ? 'bg-green-500/10 border-green-500/20 text-green-400' : 'bg-amber-500/10 border-amber-500/20 text-amber-400'}`}>
+             {isSupabaseConfigured ? <Wifi size={14} /> : <WifiOff size={14} />}
+             <div>
+                <p className="text-[10px] font-black uppercase tracking-widest">{isSupabaseConfigured ? 'Produção Online' : 'Modo Offline'}</p>
+                <p className="text-[9px] opacity-70">{isSupabaseConfigured ? 'Conectado ao DB' : 'Dados Locais'}</p>
+             </div>
+          </div>
+
           <div className="flex items-center gap-3 px-2 py-3">
             {profile?.avatar_url ? (
                 <img src={profile.avatar_url} className="w-10 h-10 rounded-full border-2 border-slate-700" alt="Avatar" />
