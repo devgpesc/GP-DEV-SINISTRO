@@ -9,9 +9,6 @@ import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
 import { GoogleGenAI } from "@google/genai";
-// import OpenAI from 'openai'; // Descomentar em produção
-// import Anthropic from '@anthropic-ai/sdk'; // Descomentar em produção
-// import Groq from 'groq-sdk'; // Descomentar em produção
 
 const app = express();
 app.use(cors());
@@ -22,87 +19,216 @@ const PORT = process.env.PORT || 3000;
 
 // Chaves carregadas do ambiente (Secure)
 const KEYS = {
-  PLATE_API: process.env.PLATE_API_TOKEN,
+  APIBRASIL_TOKEN: process.env.APIBRASIL_TOKEN,
+  DETRAN_KEY: process.env.DETRAN_API_KEY,
   GEMINI: process.env.GEMINI_API_KEY,
   OPENAI: process.env.OPENAI_API_KEY,
   ANTHROPIC: process.env.ANTHROPIC_API_KEY,
   GROQ: process.env.GROQ_API_KEY
 };
 
-// --- ENDPOINT 1: CONSULTA VEICULAR ---
+// URLs Base
+const URLS = {
+  APIBRASIL: process.env.APIBRASIL_URL || 'https://gateway.apibrasil.com.br/api/v2/vehicles',
+  DETRAN: process.env.DETRAN_API_URL || 'https://api.mock.detran'
+};
+
+// --- CACHE EM MEMÓRIA (Simples) ---
+// Em produção, use Redis.
+const plateCache = new Map();
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 horas
+
+// --- ADAPTERS (Normalização de Dados) ---
+const normalizeVehicleData = (source, provider) => {
+  if (provider === 'apibrasil') {
+    // Exemplo de mapeamento para APIBrasil
+    return {
+      plate: source.placa,
+      brand: source.marca,
+      model: source.modelo,
+      yearFab: source.ano_fabricacao,
+      yearModel: source.ano_modelo,
+      color: source.cor,
+      fuel: source.combustivel,
+      chassi: source.chassi, // Muitas vezes mascarado no plano free
+      renavam: source.renavam, // Muitas vezes mascarado
+      uf: source.uf,
+      city: source.municipio,
+      status: source.situacao || 'Regular',
+      provider: 'APIBrasil'
+    };
+  }
+  
+  if (provider === 'detran') {
+    return {
+      plate: source.plate,
+      brand: source.brand_name,
+      model: source.model_name,
+      yearFab: source.manufacturing_year,
+      yearModel: source.model_year,
+      color: source.color_name,
+      fuel: source.fuel_type,
+      chassi: source.vin,
+      renavam: source.renavam_code,
+      uf: source.state,
+      city: source.city,
+      status: source.status,
+      provider: 'Detran-SP'
+    };
+  }
+
+  // Fallback Mock
+  return {
+    plate: source.plate,
+    brand: source.brand,
+    model: source.model,
+    yearFab: source.yearFab,
+    yearModel: source.yearModel,
+    color: source.color,
+    fuel: source.fuel,
+    provider: 'Mock/Fallback'
+  };
+};
+
+// --- PROVIDERS IMPLEMENTATION ---
+
+async function fetchAPIBrasil(plate) {
+  if (!KEYS.APIBRASIL_TOKEN) throw new Error('Credenciais APIBrasil não configuradas');
+  
+  try {
+    const response = await axios.post(`${URLS.APIBRASIL}/dados`, 
+      { placa: plate },
+      { 
+        headers: { 'Authorization': `Bearer ${KEYS.APIBRASIL_TOKEN}` },
+        timeout: 5000 
+      }
+    );
+    
+    if (response.data && !response.data.error) {
+      return normalizeVehicleData(response.data, 'apibrasil');
+    }
+    throw new Error('Placa não encontrada na APIBrasil');
+  } catch (error) {
+    // Repassar erro 404 (não encontrado) ou lançar erro genérico para trigger fallback
+    if (error.response?.status === 404) return null; // Não existe, não adianta tentar outro provider se a base for nacional
+    throw error; 
+  }
+}
+
+async function fetchDetran(plate) {
+  // NOTA: Integração Real com Detran exige Certificado Digital (e-CNPJ) e VPN na maioria dos casos.
+  // Aqui simulamos uma chamada REST para fins de arquitetura.
+  if (!KEYS.DETRAN_KEY) throw new Error('Credenciais Detran não configuradas');
+
+  try {
+    // Simulação de chamada
+    // const agent = new https.Agent({ pfx: fs.readFileSync(process.env.DETRAN_CERT_PATH) });
+    // const response = await axios.get(`${URLS.DETRAN}/consulta/${plate}`, { httpsAgent: agent });
+    
+    // MOCK RESPONSE para o exemplo
+    if (plate === 'DETRAN1') throw new Error('Simulação de Erro Detran');
+    
+    return normalizeVehicleData({
+        plate: plate,
+        brand_name: 'HONDA',
+        model_name: 'CIVIC TOURING',
+        manufacturing_year: '2023',
+        model_year: '2023',
+        color_name: 'BRANCA',
+        fuel_type: 'GASOLINA',
+        vin: '93H...........',
+        renavam_code: '123456789',
+        state: 'SP',
+        city: 'SANTOS',
+        status: 'EM CIRCULAÇÃO'
+    }, 'detran');
+
+  } catch (error) {
+    throw error;
+  }
+}
+
+async function fetchMock(plate) {
+  await new Promise(r => setTimeout(r, 600));
+  if (plate === 'AAA0000') return null; // Simula não encontrado
+
+  return normalizeVehicleData({
+      plate: plate,
+      brand: 'TOYOTA',
+      model: 'COROLLA XEI',
+      yearFab: '2023',
+      yearModel: '2024',
+      color: 'PRATA',
+      fuel: 'FLEX',
+  }, 'mock');
+}
+
+// --- ENDPOINT: CONSULTA VEICULAR (MULTI-PROVIDER) ---
 app.get('/api/vehicles/lookup', async (req, res) => {
-  const { plate } = req.query;
+  const { plate, provider = 'auto' } = req.query;
 
   if (!plate || plate.length < 7) {
     return res.status(400).json({ error: 'Placa inválida.' });
   }
 
-  try {
-    // Exemplo de integração com API Real (ex: API Placas, BrasilAPI paga, etc)
-    // URL Mockada para exemplo - substitua pela URL real do fornecedor
-    const apiUrl = `${process.env.PLATE_API_URL || 'https://api.placas.dev/v1'}/consultar/${plate}`;
-    
-    // Chamada Real (Descomentar com credenciais reais)
-    /*
-    const response = await axios.get(apiUrl, {
-      headers: { 'Authorization': `Bearer ${KEYS.PLATE_API}` },
-      timeout: 5000
-    });
-    const data = response.data;
-    */
+  const cleanPlate = plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-    // MOCK SERVER-SIDE (Para demonstração sem gastar créditos)
-    // Simula delay de rede
-    await new Promise(r => setTimeout(r, 800));
-    
-    // Verifica se a placa "existe" na base mockada
-    if (plate.toUpperCase() === 'AAA0000') {
-        return res.status(404).json({ error: 'Veículo não encontrado.' });
+  // 1. Check Cache
+  const cached = plateCache.get(cleanPlate);
+  if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
+    console.log(`[Lookup] Cache hit para ${cleanPlate}`);
+    return res.json({ ...cached.data, cached: true });
+  }
+
+  let result = null;
+  let errors = [];
+
+  try {
+    // LÓGICA DE FALLBACK / SELEÇÃO
+    if (provider === 'apibrasil') {
+        result = await fetchAPIBrasil(cleanPlate);
+    } else if (provider === 'detran') {
+        result = await fetchDetran(cleanPlate);
+    } else {
+        // AUTO MODE: Tenta APIBrasil -> Se falhar (erro técnico/limite), tenta Detran -> Se falhar, Mock
+        try {
+            console.log(`[Lookup] Tentando Primário (APIBrasil)...`);
+            result = await fetchAPIBrasil(cleanPlate);
+        } catch (e) {
+            console.warn(`[Lookup] Primário falhou: ${e.message}. Tentando Secundário (Detran)...`);
+            errors.push(`APIBrasil: ${e.message}`);
+            try {
+                result = await fetchDetran(cleanPlate);
+            } catch (e2) {
+                console.warn(`[Lookup] Secundário falhou: ${e2.message}. Usando Mock.`);
+                errors.push(`Detran: ${e2.message}`);
+                result = await fetchMock(cleanPlate); // Último recurso (Mock para MVP)
+            }
+        }
     }
 
-    // Normalização de Dados (Adapter Pattern)
-    const normalizedData = {
-      plate: plate.toUpperCase(),
-      brand: 'TOYOTA',
-      model: 'COROLLA XEI',
-      version: '2.0 FLEX AUTOMÁTICO',
-      yearFab: '2023',
-      yearModel: '2024',
-      color: 'PRATA',
-      fuel: 'FLEX',
-      type: 'AUTOMOVEL',
-      chassi: `9BG${Math.random().toString(36).substr(2, 14).toUpperCase()}`,
-      renavam: Math.floor(10000000000 + Math.random() * 90000000000).toString(),
-      uf: 'SP',
-      city: 'SÃO PAULO',
-      extra: {
-        fipe_price: 145000.00,
-        situation: 'EM CIRCULAÇÃO'
-      }
-    };
+    if (!result) {
+        return res.status(404).json({ error: 'Veículo não encontrado em nenhuma base.', details: errors });
+    }
 
-    return res.json(normalizedData);
+    // Save to Cache
+    plateCache.set(cleanPlate, { data: result, timestamp: Date.now() });
+
+    return res.json(result);
 
   } catch (error) {
     console.error('[Lookup Error]', error.message);
-    if (error.response?.status === 404) return res.status(404).json({ error: 'Placa não encontrada.' });
-    if (error.response?.status === 429) return res.status(429).json({ error: 'Limite de requisições excedido.' });
-    return res.status(500).json({ error: 'Erro interno na consulta veicular.' });
+    return res.status(500).json({ error: 'Erro interno na consulta veicular.', details: errors });
   }
 });
 
 // --- ENDPOINT 2: CONSULTA CNPJ ---
 app.get('/api/cnpj/lookup', async (req, res) => {
   const { cnpj } = req.query;
-
-  if (!cnpj || cnpj.length < 14) {
-    return res.status(400).json({ error: 'CNPJ inválido.' });
-  }
+  if (!cnpj || cnpj.length < 14) return res.status(400).json({ error: 'CNPJ inválido.' });
 
   try {
-     // Mock response simulando ReceitaWS ou similar
      await new Promise(r => setTimeout(r, 600));
-
      return res.json({
        name: 'AUTO PEÇAS DEMO LTDA',
        fantasy: 'AUTO PEÇAS DEMO',
@@ -118,12 +244,10 @@ app.get('/api/cnpj/lookup', async (req, res) => {
 // --- ENDPOINT 3: UNIFIED LLM GATEWAY ---
 app.post('/api/llm/generate', async (req, res) => {
   const { provider, model, prompt, systemInstruction, maxTokens } = req.body;
-
   if (!prompt) return res.status(400).json({ error: 'Prompt é obrigatório.' });
 
   try {
     let resultText = '';
-
     switch (provider) {
       case 'google':
         if (!KEYS.GEMINI) throw new Error('Chave Gemini não configurada.');
@@ -139,32 +263,13 @@ app.post('/api/llm/generate', async (req, res) => {
         });
         resultText = response.text;
         break;
-
-      case 'openai':
-        if (!KEYS.OPENAI) throw new Error('Chave OpenAI não configurada.');
-        // const openai = new OpenAI({ apiKey: KEYS.OPENAI });
-        // const completion = await openai.chat.completions.create({ ... });
-        resultText = "Simulação OpenAI: " + prompt.substring(0, 50) + "..."; 
-        break;
-
-      case 'anthropic':
-        if (!KEYS.ANTHROPIC) throw new Error('Chave Anthropic não configurada.');
-        // const anthropic = new Anthropic({ apiKey: KEYS.ANTHROPIC });
-        resultText = "Simulação Claude: " + prompt.substring(0, 50) + "...";
-        break;
-
-      case 'groq':
-        if (!KEYS.GROQ) throw new Error('Chave Groq não configurada.');
-        // const groq = new Groq({ apiKey: KEYS.GROQ });
-        resultText = "Simulação Groq: " + prompt.substring(0, 50) + "...";
-        break;
-
+      // ... Outros providers
       default:
-        return res.status(400).json({ error: 'Provedor de IA desconhecido.' });
+        // Mock fallback
+        resultText = "Simulação IA: " + prompt.substring(0, 50) + "..."; 
+        break;
     }
-
     return res.json({ text: resultText, provider, model });
-
   } catch (error) {
     console.error('[LLM Error]', error);
     return res.status(500).json({ error: error.message || 'Erro ao processar IA.' });

@@ -14,14 +14,15 @@ const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || '/api';
 export const lookupService = {
   /**
    * Consulta placa no backend seguro.
+   * Suporta strategy 'auto' (padrão), 'apibrasil', ou 'detran'.
    */
-  async fetchPlate(plate: string): Promise<Partial<Vehicle> | null> {
+  async fetchPlate(plate: string, provider: 'auto' | 'apibrasil' | 'detran' = 'auto'): Promise<Partial<Vehicle> | null> {
     const cleanPlate = plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (cleanPlate.length !== 7) return null;
 
     try {
       // Chamada ao Backend (Não chama API externa direto)
-      const response = await fetch(`${API_BASE}/vehicles/lookup?plate=${cleanPlate}`);
+      const response = await fetch(`${API_BASE}/vehicles/lookup?plate=${cleanPlate}&provider=${provider}`);
       
       if (!response.ok) {
         if (response.status === 404) console.warn('Veículo não encontrado.');
@@ -30,7 +31,7 @@ export const lookupService = {
 
       const data = await response.json();
 
-      // Mapeamento para o formato Vehicle do Frontend
+      // Mapeamento para o formato Vehicle do Frontend (Já normalizado pelo Backend, mas garantindo tipagem)
       return {
         plate: data.plate,
         brand: data.brand,
