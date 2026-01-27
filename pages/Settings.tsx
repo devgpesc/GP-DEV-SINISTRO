@@ -490,22 +490,477 @@ const Settings: React.FC = () => {
             </div>
           )}
 
-          {/* ... OUTRAS ABAS MANTIDAS IGUAIS (Simplificadas para o XML) ... */}
-          {activeTab === 'empresa' && (/* Código Empresa */ <div/>)}
-          {activeTab === 'usuarios' && (/* Código Usuários */ <div/>)}
-          {activeTab === 'categorias' && (/* Código Categorias */ <div/>)}
-          {activeTab === 'templates' && (/* Código Templates */ <div/>)}
-          {activeTab === 'metas' && (/* Código Metas */ <div/>)}
-          {activeTab === 'sistema' && (/* Código Regras */ <div/>)}
-          {activeTab === 'seguranca' && (/* Código Segurança */ <div/>)}
+          {/* ABA EMPRESA */}
+          {activeTab === 'empresa' && (
+            <div className="space-y-8 animate-in fade-in duration-300">
+               <div className="flex items-center gap-2 mb-2">
+                 <Building className="text-blue-500" size={20}/>
+                 <h3 className="text-lg font-black text-slate-800">Perfil da Organização</h3>
+               </div>
+               
+               <div className="flex gap-8 items-start">
+                  <div className="text-center">
+                    <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Logotipo Interno</p>
+                    <div 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-32 h-32 rounded-3xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 hover:border-blue-300 transition-all overflow-hidden relative group"
+                    >
+                       {companyInfo.logo ? (
+                         <img src={companyInfo.logo} className="w-full h-full object-contain p-2" alt="Logo" />
+                       ) : (
+                         <Upload className="text-slate-300" size={24}/>
+                       )}
+                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-bold transition-opacity">Alterar</div>
+                    </div>
+                    <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleLogoUpload} />
+                    <p className="text-[9px] text-slate-400 mt-2">Max 500KB</p>
+                  </div>
+
+                  <div className="flex-1 grid grid-cols-2 gap-6">
+                    <div className="col-span-2">
+                      <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Razão Social / Nome Fantasia</label>
+                      <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold text-slate-700" 
+                        value={companyInfo.name} onChange={e => setCompanyInfo({...companyInfo, name: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">CNPJ Principal</label>
+                      <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold text-slate-700" 
+                        value={companyInfo.cnpj} onChange={e => setCompanyInfo({...companyInfo, cnpj: e.target.value})} />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Endereço da Matriz</label>
+                      <textarea className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl h-24 outline-none font-bold text-slate-700 resize-none" 
+                        value={companyInfo.address} onChange={e => setCompanyInfo({...companyInfo, address: e.target.value})} />
+                    </div>
+                 </div>
+               </div>
+            </div>
+          )}
+
+          {/* ABA USUARIOS */}
+          {activeTab === 'usuarios' && (
+            <div className="space-y-8 animate-in fade-in duration-300">
+               <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+                  <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Users size={20}/> Gestão de Colaboradores</h3>
+                  <button onClick={() => handleOpenUserModal()} className="bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-xs font-black uppercase flex items-center gap-2 hover:bg-blue-100 transition-all tracking-widest">
+                    <UserPlus size={16}/> Convidar
+                  </button>
+               </div>
+               <div className="grid grid-cols-1 gap-4">
+                  {users.map((u) => (
+                    <div key={u.id} className="flex items-center justify-between p-5 bg-slate-50/50 border border-slate-100 rounded-3xl hover:bg-white hover:shadow-md transition-all group">
+                       <div className="flex items-center gap-4">
+                          <div className={`w-12 h-12 bg-${u.color}-100 text-${u.color}-600 rounded-2xl flex items-center justify-center font-black text-lg uppercase`}>{u.name.charAt(0)}</div>
+                          <div>
+                            <p className="font-black text-slate-800">{u.name}</p>
+                            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{u.email}</p>
+                          </div>
+                       </div>
+                       <div className="flex items-center gap-6">
+                         <span className="text-[10px] text-slate-500 font-bold bg-white px-2 py-1 rounded border border-slate-200">{u.role}</span>
+                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => handleOpenUserModal(u)} className="p-2 text-slate-300 hover:text-blue-600 rounded-lg"><Edit size={18}/></button>
+                            <button onClick={() => handleRequestDeleteUser(u)} className="p-2 text-slate-300 hover:text-red-600 rounded-lg"><Trash2 size={18}/></button>
+                         </div>
+                       </div>
+                    </div>
+                  ))}
+               </div>
+            </div>
+          )}
+
+          {/* ABA CATEGORIAS */}
+          {activeTab === 'categorias' && (
+            <div className="space-y-8 animate-in fade-in duration-300">
+               <div className="flex items-center gap-2 border-b border-slate-100 pb-4">
+                 <Tag className="text-blue-500" size={20}/>
+                 <h3 className="text-lg font-black text-slate-800">Categorização BI</h3>
+               </div>
+               <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                  <div className="flex gap-4">
+                     <input type="text" placeholder="Nome da categoria..." className="flex-1 p-4 bg-white border border-slate-200 rounded-2xl outline-none font-bold text-slate-700" value={newCatName} onChange={e => setNewCatName(e.target.value)} />
+                     <button onClick={handleSaveCategory} className="bg-blue-600 text-white px-8 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center gap-2 shadow-lg shadow-blue-500/20">{editingCategory ? <Save size={18}/> : <Plus size={18}/>} {editingCategory ? 'Salvar' : 'Adicionar'}</button>
+                  </div>
+               </div>
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {categories.map(cat => (
+                    <div key={cat.id} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl shadow-sm group hover:border-blue-200 transition-all">
+                       <div className="flex items-center gap-3">
+                          <div className={`w-4 h-4 rounded-full bg-${cat.color}-500 shadow-sm`}></div>
+                          <p className="font-black text-slate-700 text-sm tracking-tight">{cat.name}</p>
+                       </div>
+                       <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => { setEditingCategory(cat); setNewCatName(cat.name); setNewCatColor(cat.color); }} className="p-2 text-slate-400 hover:text-blue-600"><Edit size={16}/></button>
+                          <button onClick={() => setCategories(categories.filter(c => c.id !== cat.id))} className="p-2 text-slate-400 hover:text-red-600"><Trash2 size={16}/></button>
+                       </div>
+                    </div>
+                  ))}
+               </div>
+            </div>
+          )}
+
+          {/* ABA TEMPLATES */}
+          {activeTab === 'templates' && (
+            <div className="space-y-8 animate-in fade-in duration-300">
+               <div className="flex items-center gap-2 border-b border-slate-100 pb-4">
+                 <MessageSquare className="text-blue-500" size={20}/>
+                 <h3 className="text-lg font-black text-slate-800">Templates de Comunicação</h3>
+               </div>
+               <div className="space-y-4">
+                  {templates.map((t) => {
+                    const IconComponent = ICON_MAP[t.icon] || MessageSquare;
+                    return (
+                    <div key={t.id} className="p-6 bg-slate-50 border border-slate-100 rounded-3xl group hover:border-blue-200 transition-all">
+                       <div className="flex justify-between items-start mb-2">
+                          <div className="flex items-center gap-3">
+                             <div className="p-2 bg-white rounded-xl shadow-sm text-slate-400"><IconComponent size={18}/></div>
+                             <div><p className="font-black text-slate-800 text-sm">{t.title}</p><span className="text-[10px] font-bold text-slate-400 uppercase">{t.channel}</span></div>
+                          </div>
+                          <button onClick={() => setEditingTemplate(t)} className="text-[10px] font-black uppercase text-blue-600 hover:bg-blue-50 px-3 py-1 rounded-lg">Configurar</button>
+                       </div>
+                       <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed italic border-l-2 border-slate-200 pl-3">"{t.body}"</p>
+                    </div>
+                  )})}
+               </div>
+            </div>
+          )}
+
+          {/* ABA METAS FINANCEIRAS */}
+          {activeTab === 'metas' && (
+            <div className="space-y-8 animate-in fade-in duration-300">
+               <div className="flex items-center gap-2 border-b border-slate-100 pb-4">
+                 <Target className="text-green-500" size={20}/>
+                 <h3 className="text-lg font-black text-slate-800">Metas Financeiras & Operacionais</h3>
+               </div>
+
+               {/* Calculadora de ROI (Simulação) */}
+               <div className="bg-gradient-to-r from-slate-900 to-slate-800 p-8 rounded-[32px] text-white shadow-xl relative overflow-hidden">
+                  <div className="absolute right-0 top-0 opacity-10"><Calculator size={120}/></div>
+                  <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-8">
+                     <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-300 mb-2">Budget Anual Projetado</p>
+                        <p className="text-3xl font-black">R$ {(goals.monthlyBudget * 12).toLocaleString('pt-BR')}</p>
+                     </div>
+                     <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-green-300 mb-2">Economia Alvo ({goals.savingsTarget}%)</p>
+                        <p className="text-3xl font-black text-green-400">R$ {((goals.monthlyBudget * 12) * (goals.savingsTarget / 100)).toLocaleString('pt-BR')}</p>
+                     </div>
+                     <div className="md:border-l md:border-white/10 md:pl-8">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-2">Status da Meta</p>
+                        <div className="flex items-center gap-2">
+                           <div className="h-2 flex-1 bg-white/20 rounded-full overflow-hidden">
+                              <div className="h-full bg-green-500 w-[65%] rounded-full"></div>
+                           </div>
+                           <span className="text-xs font-bold">Em curso</span>
+                        </div>
+                     </div>
+                  </div>
+               </div>
+
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  {/* Configurações Financeiras */}
+                  <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
+                     <h4 className="font-black text-slate-800 flex items-center gap-2">
+                        <div className="p-2 bg-green-50 text-green-600 rounded-lg"><TrendingUp size={18}/></div>
+                        Parâmetros de Custo
+                     </h4>
+                     
+                     <div>
+                       <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Budget Mensal (Teto)</label>
+                       <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">R$</span>
+                          <input 
+                            type="number" 
+                            className="w-full pl-10 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-black text-lg text-slate-700 outline-none focus:ring-2 focus:ring-green-500/20 transition-all"
+                            value={goals.monthlyBudget} 
+                            onChange={e => setGoals({...goals, monthlyBudget: Number(e.target.value)})} 
+                          />
+                       </div>
+                     </div>
+
+                     <div>
+                       <div className="flex justify-between mb-3">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Meta de Savings</label>
+                          <span className="text-xs font-black text-green-600 bg-green-50 px-2 py-0.5 rounded">{goals.savingsTarget}%</span>
+                       </div>
+                       <input 
+                          type="range" 
+                          min="1" 
+                          max="50" 
+                          className="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-green-600"
+                          value={goals.savingsTarget}
+                          onChange={e => setGoals({...goals, savingsTarget: Number(e.target.value)})}
+                       />
+                       <p className="text-[10px] text-slate-400 mt-2">Percentual de economia desejada sobre o preço de referência (FIPE/Mercado).</p>
+                     </div>
+                  </div>
+
+                  {/* Configurações Operacionais (SLA) */}
+                  <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
+                     <h4 className="font-black text-slate-800 flex items-center gap-2">
+                        <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><Hourglass size={18}/></div>
+                        Regras de SLA & Compliance
+                     </h4>
+
+                     <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">SLA Máximo de Cotação (Horas)</label>
+                        <div className="flex items-center gap-4">
+                           <input 
+                              type="number" 
+                              className="w-24 p-3 bg-slate-50 border border-slate-100 rounded-xl font-black text-center text-slate-700 outline-none"
+                              value={goals.maxSlaHours || 48}
+                              onChange={e => setGoals({...goals, maxSlaHours: Number(e.target.value)})}
+                           />
+                           <p className="text-xs text-slate-500 font-medium leading-tight">Tempo limite para fornecedores responderem antes de alerta crítico.</p>
+                        </div>
+                     </div>
+
+                     <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Mínimo de Fornecedores por Cotação</label>
+                        <div className="flex gap-2">
+                           {[1, 2, 3, 4, 5].map(num => (
+                              <button 
+                                 key={num}
+                                 onClick={() => setGoals({...goals, minSuppliersPerQuote: num})}
+                                 className={`flex-1 py-3 rounded-xl font-black text-xs transition-all ${goals.minSuppliersPerQuote === num ? 'bg-slate-800 text-white shadow-lg' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}
+                              >
+                                 {num}
+                              </button>
+                           ))}
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-2 text-center">Define a rigidez da matriz comparativa.</p>
+                     </div>
+                  </div>
+               </div>
+            </div>
+          )}
+
+          {/* ABA REGRAS E AUDITORIA */}
+          {activeTab === 'sistema' && (
+            <div className="space-y-8 animate-in fade-in duration-300">
+               <div className="flex items-center gap-2 border-b border-slate-100 pb-4">
+                 <ShieldAlert className="text-indigo-500" size={20}/>
+                 <h3 className="text-lg font-black text-slate-800">Regras de Negócio & Auditoria</h3>
+               </div>
+               
+               <div className="space-y-6">
+                  {/* Alçada Financeira Card */}
+                  <div className="bg-gradient-to-br from-indigo-900 to-slate-900 p-8 rounded-[32px] text-white shadow-xl relative overflow-hidden">
+                     <div className="absolute right-0 top-0 opacity-10"><CreditCard size={150}/></div>
+                     
+                     <div className="relative z-10 flex flex-col md:flex-row justify-between gap-8 items-center">
+                        <div className="flex-1">
+                            <h4 className="text-xl font-black mb-2 flex items-center gap-2">
+                                <Gavel size={24} className="text-indigo-400"/> Alçada de Aprovação Automática
+                            </h4>
+                            <p className="text-indigo-200 text-sm font-medium leading-relaxed max-w-md">
+                                Pedidos de compra abaixo deste valor não exigem aprovação de um gerente sênior, agilizando o fluxo operacional.
+                            </p>
+                        </div>
+                        <div className="bg-white/10 backdrop-blur-md p-4 rounded-3xl border border-white/10">
+                            <label className="block text-[10px] font-black uppercase text-indigo-300 mb-2 tracking-widest text-center">Valor Limite (R$)</label>
+                            <input 
+                                type="number" 
+                                className="bg-transparent text-4xl font-black text-center w-48 outline-none border-b-2 border-indigo-400/50 focus:border-indigo-400 text-white placeholder-indigo-500/50"
+                                value={rules.approvalLimit}
+                                onChange={e => setRules({...rules, approvalLimit: Number(e.target.value)})}
+                            />
+                        </div>
+                     </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                     {/* Auditoria & Compliance */}
+                     <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
+                        <h4 className="font-black text-slate-800 mb-6 flex items-center gap-2 text-sm uppercase tracking-wider">
+                            <FileSearch size={18} className="text-blue-600"/> Auditoria & Logs
+                        </h4>
+                        <div className="space-y-2">
+                            <ToggleSwitch 
+                                checked={rules.audit.logs} 
+                                onChange={(val: boolean) => setRules({...rules, audit: {...rules.audit, logs: val}})}
+                                icon={Database}
+                                label="Log de Acessos Detalhado"
+                                subLabel="Registra IP, navegador e horário de cada login."
+                            />
+                            <ToggleSwitch 
+                                checked={rules.audit.justifyLow} 
+                                onChange={(val: boolean) => setRules({...rules, audit: {...rules.audit, justifyLow: val}})}
+                                icon={MessageSquare}
+                                label="Justificativa Obrigatória"
+                                subLabel="Exigir comentário ao escolher preço acima da média."
+                            />
+                            <ToggleSwitch 
+                                checked={rules.audit.priceView} 
+                                onChange={(val: boolean) => setRules({...rules, audit: {...rules.audit, priceView: val}})}
+                                icon={Eye}
+                                label="Ocultar Valores Sensíveis"
+                                subLabel="Esconde margens e custos para perfis básicos."
+                            />
+                        </div>
+                     </div>
+
+                     {/* Notificações do Sistema */}
+                     <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
+                        <h4 className="font-black text-slate-800 mb-6 flex items-center gap-2 text-sm uppercase tracking-wider">
+                            <Bell size={18} className="text-amber-500"/> Notificações Automáticas
+                        </h4>
+                        <div className="space-y-2">
+                            <ToggleSwitch 
+                                checked={rules.notifications.quotes} 
+                                onChange={(val: boolean) => setRules({...rules, notifications: {...rules.notifications, quotes: val}})}
+                                icon={MessageCircle}
+                                label="Alertas de Nova Cotação"
+                                subLabel="Notificar equipe quando um fornecedor responder."
+                            />
+                            <ToggleSwitch 
+                                checked={rules.notifications.pendingOC} 
+                                onChange={(val: boolean) => setRules({...rules, notifications: {...rules.notifications, pendingOC: val}})}
+                                icon={Clock}
+                                label="OCs Pendentes > 24h"
+                                subLabel="Alerta de gargalo para aprovação financeira."
+                            />
+                            <ToggleSwitch 
+                                checked={rules.notifications.sla} 
+                                onChange={(val: boolean) => setRules({...rules, notifications: {...rules.notifications, sla: val}})}
+                                icon={ShieldAlert}
+                                label="Violação de SLA"
+                                subLabel="Avisar gestor se um sinistro estourar o prazo."
+                            />
+                        </div>
+                     </div>
+                  </div>
+
+                  {/* Zona de Perigo */}
+                  <div className="p-6 border border-red-200 bg-red-50/50 rounded-[28px] flex flex-col md:flex-row items-center justify-between gap-4 mt-4">
+                     <div className="flex items-center gap-4">
+                        <div className="p-3 bg-red-100 text-red-600 rounded-2xl"><Trash2 size={24}/></div>
+                        <div>
+                            <h4 className="text-red-900 font-black text-sm uppercase tracking-wide">Zona de Perigo</h4>
+                            <p className="text-xs text-red-700/80 max-w-sm mt-1">
+                                Ações irreversíveis que afetam a integridade dos dados locais. Use com extrema cautela.
+                            </p>
+                        </div>
+                     </div>
+                     <button 
+                        onClick={handleResetDatabase}
+                        className="bg-white border-2 border-red-100 text-red-600 px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest shadow-sm hover:bg-red-50 hover:border-red-200 hover:shadow-red-200/50 transition-all flex items-center gap-2"
+                     >
+                        <RefreshCcw size={16}/> Resetar Dados Locais
+                     </button>
+                  </div>
+               </div>
+            </div>
+          )}
+
+          {/* ABA SEGURANÇA */}
+          {activeTab === 'seguranca' && (
+            <div className="space-y-8 animate-in fade-in duration-300">
+               <div className="flex items-center gap-2 border-b border-slate-100 pb-4">
+                 <Shield className="text-red-500" size={20}/>
+                 <h3 className="text-lg font-black text-slate-800">Segurança da Informação</h3>
+               </div>
+               
+               <div className="grid grid-cols-1 gap-6">
+                  <div className="p-6 bg-white border border-slate-200 rounded-3xl flex items-center justify-between">
+                     <div className="flex items-center gap-4">
+                        <div className="p-3 bg-slate-50 rounded-2xl"><Smartphone size={24} className="text-slate-600"/></div>
+                        <div>
+                           <p className="font-bold text-slate-800">Autenticação de Dois Fatores (2FA)</p>
+                           <p className="text-xs text-slate-400">Forçar uso de 2FA para administradores</p>
+                        </div>
+                     </div>
+                     <label className="relative inline-flex items-center cursor-pointer">
+                       <input type="checkbox" className="sr-only peer" checked={security.enforce2FA} onChange={e => setSecurity({...security, enforce2FA: e.target.checked})} />
+                       <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                     </label>
+                  </div>
+
+                  <div className="p-6 bg-white border border-slate-200 rounded-3xl flex items-center justify-between">
+                     <div className="flex items-center gap-4">
+                        <div className="p-3 bg-slate-50 rounded-2xl"><Key size={24} className="text-slate-600"/></div>
+                        <div>
+                           <p className="font-bold text-slate-800">Rotação de Senhas</p>
+                           <p className="text-xs text-slate-400">Dias para expiração obrigatória</p>
+                        </div>
+                     </div>
+                     <input type="number" className="w-20 p-2 bg-slate-50 border border-slate-200 rounded-xl text-center font-bold outline-none" 
+                        value={security.passwordExpiry} onChange={e => setSecurity({...security, passwordExpiry: Number(e.target.value)})} />
+                  </div>
+
+                  <div className="p-6 bg-white border border-slate-200 rounded-3xl flex items-center justify-between">
+                     <div className="flex items-center gap-4">
+                        <div className="p-3 bg-slate-50 rounded-2xl"><Clock size={24} className="text-slate-600"/></div>
+                        <div>
+                           <p className="font-bold text-slate-800">Timeout de Sessão</p>
+                           <p className="text-xs text-slate-400">Minutos de inatividade para logout</p>
+                        </div>
+                     </div>
+                     <input type="number" className="w-20 p-2 bg-slate-50 border border-slate-200 rounded-xl text-center font-bold outline-none" 
+                        value={security.sessionTimeout} onChange={e => setSecurity({...security, sessionTimeout: Number(e.target.value)})} />
+                  </div>
+
+                  <div className="p-6 bg-red-50 border border-red-100 rounded-3xl">
+                     <div className="flex items-center gap-2 mb-3">
+                        <ShieldAlert size={18} className="text-red-600"/>
+                        <p className="font-black text-red-900 text-sm uppercase">Whitelist de IP</p>
+                     </div>
+                     <textarea 
+                        className="w-full p-4 bg-white border border-red-200 rounded-2xl text-xs font-mono text-slate-600 outline-none h-24 resize-none"
+                        placeholder="Insira os IPs permitidos separados por vírgula..."
+                        value={security.ipWhitelist}
+                        onChange={e => setSecurity({...security, ipWhitelist: e.target.value})}
+                     />
+                  </div>
+               </div>
+            </div>
+          )}
 
         </div>
       </div>
 
-      {/* Modais (Usuário, Template, Confirmação) - Mantidos do original */}
-      {isUserModalOpen && (/* Modal Usuário */ <div/>)}
-      {userToDelete && (/* Modal Delete */ <div/>)}
-      {editingTemplate && (/* Modal Template */ <div/>)}
+      {/* --- MODAIS --- */}
+
+      {/* Modal Usuário */}
+      {isUserModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => !createdUserCreds && setIsUserModalOpen(false)}></div>
+          <div className="relative bg-white w-full max-w-lg rounded-[40px] shadow-2xl p-8 animate-in zoom-in duration-200">
+             
+             {createdUserCreds ? (
+                <div className="text-center space-y-6">
+                    <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4"><CheckCheck size={40} /></div>
+                    <div><h3 className="text-2xl font-black text-slate-800 mb-2">Usuário Criado!</h3><p className="text-sm text-slate-500 font-medium">Copie as credenciais abaixo.</p></div>
+                    <div className="bg-slate-50 p-6 rounded-3xl border border-slate-200 text-left space-y-4">
+                        <div><p className="text-[10px] font-black uppercase text-slate-400 mb-1 tracking-widest">E-mail</p><p className="text-lg font-bold text-slate-800">{createdUserCreds.email}</p></div>
+                        <div><p className="text-[10px] font-black uppercase text-slate-400 mb-1 tracking-widest">Senha</p><p className="text-2xl font-black text-blue-600">{createdUserCreds.pass}</p></div>
+                    </div>
+                    <button onClick={handleCopyCreds} className="w-full py-4 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 bg-slate-900 text-white hover:bg-slate-800">{copied ? <Check size={18}/> : <Copy size={18}/>} {copied ? 'Copiado!' : 'Copiar Credenciais'}</button>
+                    <button onClick={() => setIsUserModalOpen(false)} className="text-slate-400 font-bold text-xs hover:text-slate-600">Fechar</button>
+                </div>
+             ) : (
+                <form onSubmit={handleSaveUser} className="space-y-4">
+                    <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold" placeholder="Nome" value={userFormData.name} onChange={e => setUserFormData({...userFormData, name: e.target.value})} />
+                    <input required type="email" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold" placeholder="E-mail" value={userFormData.email} onChange={e => setUserFormData({...userFormData, email: e.target.value})} />
+                    <button type="submit" className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest mt-4">Salvar</button>
+                </form>
+             )}
+          </div>
+        </div>
+      )}
+
+      {editingTemplate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setEditingTemplate(null)}></div>
+          <div className="relative bg-white w-full max-w-2xl rounded-[40px] shadow-2xl p-8 animate-in zoom-in duration-200">
+             <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-2"><Edit2 size={24} className="text-blue-500"/> Editar Template</h3>
+             <div className="space-y-4">
+                <textarea className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-medium h-40 resize-none text-sm" value={editingTemplate.body} onChange={e => setEditingTemplate({...editingTemplate, body: e.target.value})} />
+                <div className="flex justify-end gap-3 pt-4"><button onClick={() => setEditingTemplate(null)} className="px-6 py-3 text-slate-400 font-bold text-xs uppercase">Cancelar</button><button onClick={handleSaveTemplate} className="px-8 py-3 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase">Salvar</button></div>
+             </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
