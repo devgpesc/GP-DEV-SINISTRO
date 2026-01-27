@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'https://esm.sh/react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
 import { Car, Mail, Lock, User, Loader2, ArrowLeft, ShieldCheck } from 'lucide-react';
 
