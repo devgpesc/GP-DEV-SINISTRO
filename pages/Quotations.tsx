@@ -4,7 +4,7 @@ import {
   Plus, Search, ChevronRight, ArrowLeft, Send, CheckCircle, 
   FileText, Package, Users, BarChart3, Clock, Trash2, Settings,
   Zap, Mail, MessageCircle, FileDown, Rocket, LayoutGrid, List,
-  Eye, MoreVertical
+  Eye, MoreVertical, ShieldAlert
 } from 'lucide-react';
 import { MOCK_SUPPLIERS, MOCK_EVENTS } from '../constants';
 import MatrixTable from '../components/MatrixTable';
@@ -25,21 +25,32 @@ const Quotations: React.FC = () => {
     sendMode: 'auto' as 'auto' | 'manual'
   });
 
+  // State para cotações (com dados iniciais)
+  const [quotes, setQuotes] = useState([
+    { id: '1', code: 'COT-2024-0001', eventRef: 'EVT-2024-001', status: 'Em Aberto', date: '12/05/2024', suppliers: 3 },
+    { id: '2', code: 'COT-2024-0002', eventRef: 'EVT-2024-015', status: 'Finalizada', date: '10/05/2024', suppliers: 2 },
+    { id: '3', code: 'COT-2024-0003', eventRef: 'EVT-2024-022', status: 'Em Aberto', date: '14/05/2024', suppliers: 4 },
+  ]);
+  
+  // State para exclusão
+  const [quoteToDelete, setQuoteToDelete] = useState<any>(null);
+
   useEffect(() => {
     const saved = mockStorage.get('events') || MOCK_EVENTS;
     setRealEvents(saved);
   }, []);
 
-  const mockQuotes = [
-    { id: '1', code: 'COT-2024-0001', eventRef: 'EVT-2024-001', status: 'Em Aberto', date: '12/05/2024', suppliers: 3 },
-    { id: '2', code: 'COT-2024-0002', eventRef: 'EVT-2024-015', status: 'Finalizada', date: '10/05/2024', suppliers: 2 },
-    { id: '3', code: 'COT-2024-0003', eventRef: 'EVT-2024-022', status: 'Em Aberto', date: '14/05/2024', suppliers: 4 },
-  ];
-
-  const filteredQuotes = mockQuotes.filter(q => 
+  const filteredQuotes = quotes.filter(q => 
     q.code.toLowerCase().includes(searchTerm.toLowerCase()) || 
     q.eventRef.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const handleDelete = () => {
+    if (quoteToDelete) {
+      setQuotes(prev => prev.filter(q => q.id !== quoteToDelete.id));
+      setQuoteToDelete(null);
+    }
+  };
 
   const catalogMock = [
     { id: '1', name: 'Parachoque Dianteiro Corolla', type: 'Peça' },
@@ -103,9 +114,18 @@ const Quotations: React.FC = () => {
             <div key={quote.id} className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200 hover:border-blue-200 transition-all group cursor-pointer relative overflow-hidden" onClick={() => setStep(3)}>
               <div className="flex justify-between items-start mb-6">
                 <div className="bg-blue-50 text-blue-600 p-4 rounded-3xl shadow-sm"><BarChart3 size={28} /></div>
-                <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-[0.2em] border ${quote.status === 'Finalizada' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
-                  {quote.status}
-                </span>
+                <div className="flex flex-col items-end gap-2">
+                    <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-[0.2em] border ${quote.status === 'Finalizada' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
+                    {quote.status}
+                    </span>
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); setQuoteToDelete(quote); }}
+                        className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all opacity-0 group-hover:opacity-100"
+                        title="Excluir Cotação"
+                    >
+                        <Trash2 size={16} />
+                    </button>
+                </div>
               </div>
               <h3 className="font-black text-slate-800 text-xl tracking-tight leading-none mb-1">{quote.code}</h3>
               <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-6">Ref: {quote.eventRef}</p>
@@ -156,8 +176,8 @@ const Quotations: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-8 py-5 text-right flex justify-end gap-1">
-                     <button className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Eye size={18}/></button>
-                     <button className="p-2 text-slate-300 hover:text-slate-600 hover:bg-slate-50 rounded-xl transition-all"><MoreVertical size={18}/></button>
+                     <button onClick={(e) => { e.stopPropagation(); setStep(3); }} className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Eye size={18}/></button>
+                     <button onClick={(e) => { e.stopPropagation(); setQuoteToDelete(quote); }} className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18}/></button>
                   </td>
                 </tr>
               ))}
@@ -255,6 +275,26 @@ const Quotations: React.FC = () => {
               </div>
            </div>
            <MatrixTable />
+        </div>
+      )}
+
+      {/* Modal de Exclusão "Caixa Bonita" */}
+      {quoteToDelete && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setQuoteToDelete(null)}></div>
+          <div className="relative bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden p-8 animate-in zoom-in duration-200 text-center">
+            <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Trash2 size={40} />
+            </div>
+            <h3 className="text-xl font-black text-slate-800 mb-2">Excluir Cotação?</h3>
+            <p className="text-sm text-slate-500 font-medium mb-8 leading-relaxed">
+              Você tem certeza que deseja excluir a cotação <span className="font-black text-slate-800">{quoteToDelete.code}</span>? Esta ação é irreversível.
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <button onClick={() => setQuoteToDelete(null)} className="py-3 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-slate-200 transition-all">Cancelar</button>
+              <button onClick={handleDelete} className="py-3 bg-red-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-red-600 transition-all shadow-xl shadow-red-500/20">Excluir</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
