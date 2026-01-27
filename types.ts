@@ -144,3 +144,23 @@ export interface AppSettings {
   currency: string;
   autoApprovalLimit: number;
 }
+
+// Interfaces SaaS
+export interface SaasPlan {
+  id: string;
+  name: string;
+  price: number;
+  max_users: number;
+  max_events: number;
+  features: any;
+}
+
+export interface SaasTenant {
+  id: string;
+  name: string;
+  document: string;
+  plan_id: string;
+  status: 'active' | 'suspended' | 'blocked';
+  created_at: string;
+  saas_plans?: SaasPlan; // Join
+}

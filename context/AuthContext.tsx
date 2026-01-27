@@ -10,6 +10,7 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   clearSessionData: () => void;
   isSuperAdmin: boolean;
+  tenantId: string | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -34,12 +35,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .maybeSingle();
 
       const userEmail = email || user?.email;
-      // Define se é super admin baseado no email hardcoded
       const isSuper = SUPER_ADMIN_EMAILS.includes(userEmail);
       const targetRole = isSuper ? 'super_admin' : 'user';
 
       if (existingProfile) {
-        // Se perfil existe, verificamos se precisamos atualizar a role para Super Admin
+        // Atualiza para Super Admin se necessário, mantendo o tenant_id existente
         if (isSuper && existingProfile.role !== 'super_admin') {
             const { data: updated } = await supabase.from('profiles').update({ role: 'super_admin' }).eq('id', userId).select().single();
             setProfile(updated);
@@ -47,7 +47,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setProfile(existingProfile);
         }
       } else {
-        // Se não existe, cria (UPSERT para garantir)
+        // Se não existe, cria (UPSERT)
         const { data: authUser } = await supabase.auth.getUser();
         const meta = authUser.user?.user_metadata;
         
@@ -56,12 +56,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           full_name: meta?.full_name || meta?.name || 'Usuário',
           email: userEmail,
           role: targetRole,
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          // tenant_id será null inicialmente até que um Super Admin vincule ou crie uma empresa
         };
 
         const { data: createdProfile, error: insertError } = await supabase
           .from('profiles')
-          .upsert([newProfile]) // Upsert corrige conflitos de IDs antigos
+          .upsert([newProfile]) 
           .select()
           .single();
 
@@ -70,8 +71,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (err) {
       console.error("Erro ao sincronizar perfil:", err);
-      // Fallback local para não travar o app
-      setProfile({ id: userId, email: email, role: SUPER_ADMIN_EMAILS.includes(email || '') ? 'super_admin' : 'user' });
+      // Fallback local
+      setProfile({ id: userId, email: email, role: SUPER_ADMIN_EMAILS.includes(email || '') ? 'super_admin' : 'user', tenant_id: null });
     }
   }, []);
 
@@ -85,19 +86,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (isOAuthReturn) {
         console.log('[Auth] Token OAuth detectado. Iniciando processamento...');
         setLoading(true);
-
-        // Delay para garantir que o Supabase Client processe o token da URL
         await new Promise(r => setTimeout(r, 800));
 
         try {
             const { data: { session }, error } = await supabase.auth.getSession();
             
             if (session && mounted) {
-                console.log('[Auth] Sessão recuperada. Configurando usuário...');
+                console.log('[Auth] Sessão recuperada.');
                 setUser(session.user);
                 await fetchProfile(session.user.id, session.user.email);
                 
-                // Limpeza segura da URL
                 window.history.replaceState(null, '', window.location.pathname);
                 window.location.hash = '/';
                 
@@ -109,7 +107,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // Verificação padrão de sessão
       const { data: { session } } = await supabase.auth.getSession();
       if (mounted) {
         if (session?.user) {
@@ -123,7 +120,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     handleHashConflict();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[Auth] Mudança de estado:', event);
       if (!mounted) return;
       
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
@@ -191,9 +187,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const isSuperAdmin = profile?.role === 'super_admin';
+  const tenantId = profile?.tenant_id || null;
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signOut, signInWithGoogle, clearSessionData, isSuperAdmin }}>
+    <AuthContext.Provider value={{ user, profile, loading, signOut, signInWithGoogle, clearSessionData, isSuperAdmin, tenantId }}>
       {children}
     </AuthContext.Provider>
   );
