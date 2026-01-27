@@ -5,7 +5,7 @@ import { supabase } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { 
   Loader2, ArrowRight, ShieldCheck, 
-  LayoutDashboard, Bell, Lock, AlertCircle, RefreshCw
+  LayoutDashboard, Lock, AlertCircle, RefreshCw
 } from 'lucide-react';
 
 const Login: React.FC = () => {
@@ -14,40 +14,41 @@ const Login: React.FC = () => {
   const [localLoading, setLocalLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Timer para mostrar o botão de "Reset" se demorar muito
   const [showResetButton, setShowResetButton] = useState(false);
   
   const navigate = useNavigate();
   const { user, loading: authLoading, signInWithGoogle, clearSessionData } = useAuth();
 
-  const isHashTokenPresent = window.location.hash.includes('access_token') || 
-                             window.location.hash.includes('type=recovery');
+  // Verifica se a URL tem indícios de callback (Hash ou Query Params)
+  // BrowserRouter usa query param (?code=...) para PKCE flow
+  const isAuthCallback = window.location.hash.includes('access_token') || 
+                         window.location.hash.includes('type=recovery') ||
+                         window.location.search.includes('code=');
 
   useEffect(() => {
-    // Redireciona se o usuário já estiver autenticado
     if (user && !authLoading) {
-      console.log('[Login] Usuário detectado, redirecionando para dashboard...');
+      console.log('[Login] Usuário autenticado, redirecionando...');
+      // Substitui o histórico para evitar voltar ao login
       navigate('/', { replace: true });
     }
   }, [user, authLoading, navigate]);
 
-  // Ativa o botão de reset após 8 segundos de espera se estiver travado carregando
   useEffect(() => {
     let timer: any;
-    if (authLoading || isHashTokenPresent || localLoading) {
+    // Se estiver carregando globalmente, processando callback ou carregando localmente
+    if (authLoading || isAuthCallback || localLoading) {
         timer = setTimeout(() => setShowResetButton(true), 8000);
     } else {
         setShowResetButton(false);
     }
     return () => clearTimeout(timer);
-  }, [authLoading, isHashTokenPresent, localLoading]);
+  }, [authLoading, isAuthCallback, localLoading]);
 
   const handleForceReset = () => {
-      console.log('[Login] Forçando reset da sessão...');
+      console.log('[Login] Reset forçado...');
       clearSessionData();
-      // Remove hash da URL e recarrega
+      // Limpa a URL completamente (remove query e hash)
       window.history.replaceState(null, '', window.location.pathname);
-      window.location.hash = '/login';
       window.location.reload();
   };
 
@@ -79,7 +80,6 @@ const Login: React.FC = () => {
     setError(null);
     try {
       await signInWithGoogle();
-      // Não setamos loading false aqui pois o redirect acontecerá
     } catch (err: any) {
       console.error(err);
       setError("Erro ao iniciar Google Auth: " + (err.message || 'Erro desconhecido'));
@@ -87,8 +87,9 @@ const Login: React.FC = () => {
     }
   };
 
-  // Tela de Loading (Global ou Local)
-  if (authLoading || isHashTokenPresent || (localLoading && !error)) {
+  // Se o contexto ainda está carregando OU a URL indica que estamos num callback, mostre o Loading.
+  // Isso evita que o form de login pisque antes do redirecionamento.
+  if (authLoading || isAuthCallback || (localLoading && !error)) {
     return (
       <div className="min-h-screen bg-[#0A1628] flex flex-col items-center justify-center font-sans relative overflow-hidden">
         <div className="absolute inset-0 bg-[linear-gradient(rgba(10,22,40,0.9),rgba(10,22,40,0.9)),url('https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop')] bg-cover bg-center"></div>
@@ -104,18 +105,18 @@ const Login: React.FC = () => {
                <div className="flex items-center gap-2">
                  <Loader2 className="animate-spin" size={16} />
                  <span>
-                    {isHashTokenPresent ? 'Processando credenciais seguras...' : 'Autenticando acesso...'}
+                    {isAuthCallback ? 'Finalizando autenticação segura...' : 'Verificando credenciais...'}
                  </span>
                </div>
                
                {showResetButton && (
                    <div className="flex flex-col items-center gap-2 mt-4 animate-in fade-in">
-                     <p className="text-xs text-red-300">O processo está demorando mais que o esperado.</p>
+                     <p className="text-xs text-red-300">Tempo limite excedido.</p>
                      <button 
                        onClick={handleForceReset}
                        className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-xs font-bold uppercase tracking-widest flex items-center gap-2 transition-all cursor-pointer"
                      >
-                       <RefreshCw size={14}/> Reiniciar Login
+                       <RefreshCw size={14}/> Tentar Novamente
                      </button>
                    </div>
                )}
@@ -128,11 +129,10 @@ const Login: React.FC = () => {
 
   return (
     <div className="min-h-screen flex font-sans bg-[#F8FAFC]">
-      {/* LADO ESQUERDO: Identidade Visual ESC Solutions (Mantido igual) */}
+      {/* LADO ESQUERDO */}
       <div className="hidden lg:flex w-1/2 bg-[#0A1628] relative flex-col justify-between p-16 overflow-hidden">
         <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5"></div>
         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-[#0A1628] via-[#0f224a] to-[#0A1628] z-0"></div>
-        <div className="absolute bottom-0 left-0 w-full h-1/2 bg-gradient-to-t from-blue-900/20 to-transparent"></div>
         
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-12">
@@ -167,13 +167,9 @@ const Login: React.FC = () => {
               </div>
            </div>
         </div>
-
-        <div className="relative z-10 text-slate-500 text-xs font-medium">
-          © 2026 ESC Solutions. Todos os direitos reservados.
-        </div>
       </div>
 
-      {/* LADO DIREITO: Formulário de Login */}
+      {/* LADO DIREITO */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-12 relative">
         <div className="w-full max-w-md bg-white p-8 md:p-10 rounded-[32px] shadow-2xl shadow-slate-200/50 border border-slate-100 animate-in slide-in-from-right-8 duration-500">
           
@@ -248,13 +244,6 @@ const Login: React.FC = () => {
                   )}
                </button>
             </form>
-          </div>
-
-          <div className="mt-8 pt-6 border-t border-slate-100 text-center">
-             <div className="flex items-center justify-center gap-2 text-xs text-slate-400 font-medium">
-                <Lock size={12} />
-                <span>Ambiente Seguro com SSL/TLS</span>
-             </div>
           </div>
         </div>
       </div>

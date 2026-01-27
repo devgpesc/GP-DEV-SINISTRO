@@ -25,23 +25,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<any>(null);
   
-  // INICIALIZA COMO TRUE. O app não deve renderizar rotas protegidas até que isso vire false.
+  // INICIALIZA COMO TRUE
   const [loading, setLoading] = useState(true);
 
-  // Função isolada para buscar/criar perfil, desacoplada do efeito principal
+  // Função isolada para buscar/criar perfil
   const fetchProfile = useCallback(async (currentUser: User) => {
     if (!isSupabaseConfigured || !currentUser) return null;
 
     try {
-      // 1. Tenta buscar perfil existente
-      const { data: existingProfile, error } = await supabase
+      const { data: existingProfile } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', currentUser.id)
         .maybeSingle();
 
       if (existingProfile) {
-        // Lógica de Super Admin Hardcoded
         if (SUPER_ADMIN_EMAILS.includes(currentUser.email || '') && existingProfile.role !== 'super_admin') {
            const { data: updated } = await supabase.from('profiles').update({ role: 'super_admin' }).eq('id', currentUser.id).select().single();
            return updated || existingProfile;
@@ -49,7 +47,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return existingProfile;
       } 
       
-      // 2. Se não existe, cria (Upsert)
       const meta = currentUser.user_metadata;
       const newProfile = { 
         id: currentUser.id, 
@@ -67,9 +64,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (insertError) {
         console.warn("[Auth] Erro ao criar perfil, usando dados locais:", insertError);
-        return newProfile; // Fallback para permitir login mesmo se DB falhar
+        return newProfile; 
       }
-      
       return createdProfile;
 
     } catch (err) {
@@ -78,36 +74,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // EFEITO PRINCIPAL DE AUTENTICAÇÃO
   useEffect(() => {
     let mounted = true;
 
-    // 1. Função para carregar sessão inicial
+    // DETECÇÃO DE CALLBACK:
+    // Verifica se a URL contém indícios de um retorno de OAuth (PKCE usa 'code', Implicit usa 'access_token')
+    // Se isso for verdade, NÃO podemos setar loading=false se getSession retornar null inicialmente.
+    // Precisamos esperar o evento SIGNED_IN do onAuthStateChange.
+    const isRedirectCallback = window.location.href.includes('code=') || 
+                               window.location.hash.includes('access_token') ||
+                               window.location.href.includes('type=recovery');
+
     const initSession = async () => {
       try {
-        // getSession recupera do LocalStorage ou da URL (graças ao detectSessionInUrl: true)
+        // getSession tenta recuperar a sessão do storage ou da URL
         const { data: { session: initialSession } } = await supabase.auth.getSession();
 
         if (mounted) {
           if (initialSession) {
+            // Sessão encontrada imediatamente
             setSession(initialSession);
             setUser(initialSession.user);
-            // Busca o perfil em paralelo para não travar UI, mas idealmente esperamos
             const userProfile = await fetchProfile(initialSession.user);
             if (mounted) setProfile(userProfile);
+            setLoading(false); 
+          } else if (!isRedirectCallback) {
+            // Sem sessão e SEM indícios de callback -> Usuário deslogado
+            setLoading(false);
+          } else {
+            // Sem sessão inicial, MAS parece ser um callback.
+            // MANTÉM LOADING = TRUE e espera o listener ou timeout.
+            console.log('[Auth] Callback de OAuth detectado. Aguardando processamento da sessão...');
           }
         }
       } catch (error) {
         console.error("[Auth] Erro na inicialização da sessão:", error);
-      } finally {
-        // CRUCIAL: Só liberamos o loading após a primeira verificação completa
-        if (mounted) setLoading(false);
+        if (mounted && !isRedirectCallback) setLoading(false);
       }
     };
 
     initSession();
 
-    // 2. Listener para mudanças de estado (Login, Logout, Refresh, OAuth Callback)
+    // Listener para mudanças de estado (Login, Logout, Refresh, OAuth Callback)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
       console.log(`[Auth] Evento: ${event}`);
       
@@ -117,17 +125,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(currentSession?.user ?? null);
 
       if (currentSession?.user) {
-        // Se mudou o usuário ou logou, garante que temos o perfil atualizado
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-           // Não setamos loading=true aqui para não piscar a tela em refreshes silenciosos
+        // Login sucedido (seja via sessão existente ou novo callback processado)
+        if (!profile) { // Evita refetch desnecessário
            const userProfile = await fetchProfile(currentSession.user);
            if (mounted) setProfile(userProfile);
         }
+        setLoading(false); // Libera o app
       } else if (event === 'SIGNED_OUT') {
+        // Logout explícito
         setProfile(null);
         clearSessionData();
+        setLoading(false);
+      } else {
+         // Outros eventos (ex: INITIAL_SESSION sem usuário). 
+         // Se não estivermos esperando um callback, libera o loading.
+         if (!isRedirectCallback && loading) {
+             setLoading(false);
+         }
       }
     });
+
+    // FAILSAFE TIMEOUT
+    // Se estamos em um callback mas nada aconteceu em 10 segundos, libera o loading para não travar a tela.
+    if (isRedirectCallback) {
+        setTimeout(() => {
+            if (mounted) {
+                // Verificação dentro do timeout usando functional update ou ref seria ideal, 
+                // mas aqui confiamos que se o user estivesse logado, o listener teria limpado o loading.
+                // Se ainda estiver "loading" visualmente, forçamos o fim.
+                setLoading((prevLoading) => {
+                    if (prevLoading) {
+                        console.warn('[Auth] Timeout no processamento do OAuth. Liberando UI.');
+                        return false;
+                    }
+                    return prevLoading;
+                });
+            }
+        }, 10000);
+    }
 
     return () => {
       mounted = false;
@@ -137,7 +172,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const clearSessionData = () => {
     mockStorage.clearAll();
-    // Não limpamos localStorage do supabase aqui, o signOut já faz isso
   };
 
   const signOut = async () => {
@@ -150,7 +184,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signInWithGoogle = async () => {
-    const redirectUrl = window.location.origin; // Retorna para a raiz limpa
+    const redirectUrl = window.location.origin; 
+    console.log('[Auth] Iniciando OAuth para:', redirectUrl);
+    
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { 
