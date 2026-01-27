@@ -102,6 +102,17 @@ export interface Vehicle {
   city?: string;          // Município de registro
 }
 
+// --- ASSOCIADO ---
+export interface Associate {
+  id: string;
+  name: string;
+  document: string; // CPF ou CNPJ
+  type: 'PF' | 'PJ';
+  email?: string;
+  phone?: string;
+  createdAt: string;
+}
+
 // --- LLM & AI ---
 export type LLMProvider = 'google' | 'openai' | 'anthropic' | 'groq';
 
@@ -122,7 +133,6 @@ export interface AIConfig {
   maxTokens?: number;
 }
 
-// Interfaces Antigas (Mantidas para compatibilidade se necessário)
 export interface Event {
   id: string;
   protocol: string;
@@ -130,8 +140,11 @@ export interface Event {
   priority: Priority;
   status: EventStatus;
   category: string;
+  
+  // Vínculos Obrigatórios (Banco de Dados e Regra de Negócio)
   vehicleId: string;
   associateId: string;
+  
   createdAt: string;
   createdBy: string;
   description: string;
