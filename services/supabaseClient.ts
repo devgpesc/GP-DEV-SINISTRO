@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@^2.49.1';
 
 /**
@@ -12,7 +13,6 @@ const getEnv = (key: string): string => {
   
   if (!val) {
     if (key === 'VITE_SUPABASE_URL') return 'https://yxawavenbognqiihaesh.supabase.co';
-    // Chave anon pública do projeto yxawavenbognqiihaesh
     if (key === 'VITE_SUPABASE_ANON_KEY') return 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4YXdhdmVuYm9nbnFpaWhhZXNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDEyMzE0MTksImV4cCI6MjA1NjgwNzQxOX0.y3X_uY3W3_Y3W3_Y3W3_Y3W3_Y3W3_Y3W3_Y3W3_Y3W'; 
   }
   
@@ -24,16 +24,18 @@ export const supabaseAnonKey = getEnv('VITE_SUPABASE_ANON_KEY');
 
 export const isSupabaseConfigured = !!supabaseUrl && supabaseUrl.includes('supabase.co');
 
-// Inicialização com persistência explícita e detecção de URL desativada para evitar conflito com HashRouter
+// Inicialização NATIVA: removemos hacks manuais.
+// O Supabase v2 detecta automaticamente tokens na URL se usarmos BrowserRouter.
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false // IMPORTANTE: Desativado para gerenciar manualmente no AuthContext
+    detectSessionInUrl: true // Padrão TRUE. Essencial para OAuth funcionar nativamente.
   }
 });
 
-const STORAGE_PREFIX = 'autoclaims_';
+// Mantemos o mockStorage apenas para dados da aplicação, não para Auth do Supabase
+const STORAGE_PREFIX = 'autoclaims_app_data_';
 export const mockStorage = {
   get: (key: string) => {
     const data = localStorage.getItem(`${STORAGE_PREFIX}${key}`);
@@ -46,8 +48,9 @@ export const mockStorage = {
     localStorage.removeItem(`${STORAGE_PREFIX}${key}`);
   },
   clearAll: () => {
+    // Limpa apenas dados do app, preserva a sessão do Supabase (sb-*)
     Object.keys(localStorage).forEach(key => {
-      if (key.startsWith(STORAGE_PREFIX) || key.includes('supabase.auth.token')) {
+      if (key.startsWith(STORAGE_PREFIX)) {
         localStorage.removeItem(key);
       }
     });
