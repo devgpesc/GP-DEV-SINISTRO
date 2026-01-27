@@ -30,7 +30,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) throw error;
       
-      if (!data) {
+      if (data) {
+        setProfile(data);
+      } else {
         const { data: { user: authUser } } = await supabase.auth.getUser();
         if (authUser) {
           const { data: createdProfile } = await supabase
@@ -45,29 +47,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .single();
           setProfile(createdProfile);
         }
-      } else {
-        setProfile(data);
       }
     } catch (err) {
       console.error("Erro ao sincronizar perfil:", err);
-      setProfile(null);
     }
   }, []);
 
   useEffect(() => {
     let mounted = true;
 
-    // Função única para inicializar
     const initializeAuth = async () => {
       try {
+        // getSession é o método que lê o hash da URL (#access_token)
         const { data: { session } } = await supabase.auth.getSession();
+        
         if (mounted) {
           const currentUser = session?.user ?? null;
           setUser(currentUser);
-          if (currentUser) await fetchProfile(currentUser.id);
+          if (currentUser) {
+            await fetchProfile(currentUser.id);
+          }
           setLoading(false);
         }
       } catch (err) {
+        console.error("Falha ao inicializar sessão:", err);
         if (mounted) setLoading(false);
       }
     };
@@ -75,16 +78,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initializeAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+      
       const currentUser = session?.user ?? null;
-      if (mounted) {
-        setUser(currentUser);
-        if (event === 'SIGNED_IN' && currentUser) {
-          await fetchProfile(currentUser.id);
-        } else if (event === 'SIGNED_OUT') {
-          setProfile(null);
-        }
-        setLoading(false);
+      setUser(currentUser);
+
+      if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+        if (currentUser) await fetchProfile(currentUser.id);
+      } else if (event === 'SIGNED_OUT') {
+        setProfile(null);
       }
+      
+      setLoading(false);
     });
 
     return () => {
@@ -96,6 +101,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const clearSessionData = () => {
     mockStorage.clearAll();
     sessionStorage.clear();
+    // Limpeza profunda de cookies para evitar loops de redirecionamento
     const cookies = document.cookie.split(";");
     for (let i = 0; i < cookies.length; i++) {
         const cookie = cookies[i];
@@ -114,16 +120,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(null);
       setProfile(null);
       setLoading(false);
-      window.location.href = window.location.origin + window.location.pathname + '#/login';
+      window.location.hash = '/login';
       window.location.reload();
     }
   };
 
   const signInWithGoogle = async () => {
-    await supabase.auth.signInWithOAuth({
+    // IMPORTANTE: Removi a barra final para bater com o print do seu dashboard
+    // No print está: https://eventos.escsistemas.com
+    const redirectUrl = window.location.origin;
+    
+    const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin }
+      options: { 
+        redirectTo: redirectUrl,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'select_account', // Garante que a tela do Gmail sempre apareça
+        }
+      }
     });
+
+    if (error) throw error;
   };
 
   return (

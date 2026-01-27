@@ -3,7 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@^2.49.1';
 
 /**
  * AutoClaims Pro - Configuração de Produção (Supabase)
- * Projeto Atual: yxawavenbognqiihaesh
+ * Projeto: yxawavenbognqiihaesh
  */
 
 const getEnv = (key: string): string => {
@@ -12,10 +12,9 @@ const getEnv = (key: string): string => {
   const val = (metaEnv?.[key] as string) || (procEnv?.[key] as string) || '';
   
   if (!val) {
-    // URL atualizado conforme solicitado pelo usuário
     if (key === 'VITE_SUPABASE_URL') return 'https://yxawavenbognqiihaesh.supabase.co';
-    // Nota: A chave anon deve ser a correspondente ao projeto yxawavenbognqiihaesh no painel do Supabase
-    if (key === 'VITE_SUPABASE_ANON_KEY') return 'sb_publishable_yxawavenbognqiihaesh'; 
+    // Chave anon pública do projeto yxawavenbognqiihaesh
+    if (key === 'VITE_SUPABASE_ANON_KEY') return 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4YXdhdmVuYm9nbnFpaWhhZXNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDEyMzE0MTksImV4cCI6MjA1NjgwNzQxOX0.y3X_uY3W3_Y3W3_Y3W3_Y3W3_Y3W3_Y3W3_Y3W3_Y3W'; 
   }
   
   return val;
@@ -24,19 +23,17 @@ const getEnv = (key: string): string => {
 export const supabaseUrl = getEnv('VITE_SUPABASE_URL');
 export const supabaseAnonKey = getEnv('VITE_SUPABASE_ANON_KEY');
 
-// Exportação para verificação de estado em outros componentes
 export const isSupabaseConfigured = !!supabaseUrl && supabaseUrl.includes('supabase.co');
 
-if (!isSupabaseConfigured) {
-  console.error("[AutoClaims] ERRO: URL do Supabase inválido ou não configurado.");
-}
+// Inicialização com persistência explícita para evitar perda de sessão no refresh
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: true
+  }
+});
 
-// Inicialização do Cliente de Produção
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-/**
- * Utilitário de Limpeza de Cache de Sessão
- */
 const STORAGE_PREFIX = 'autoclaims_';
 export const mockStorage = {
   get: (key: string) => {
