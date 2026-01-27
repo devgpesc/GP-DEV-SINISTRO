@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { Session, User } from 'https://esm.sh/@supabase/supabase-js@^2.49.1';
 import { supabase, mockStorage, isSupabaseConfigured } from '../services/supabaseClient';
@@ -25,7 +24,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<any>(null);
   
-  // INICIALIZA COMO TRUE
+  // INICIALIZA COMO TRUE. Bloqueia a renderização até termos certeza.
   const [loading, setLoading] = useState(true);
 
   // Função isolada para buscar/criar perfil
@@ -77,98 +76,90 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let mounted = true;
 
-    // DETECÇÃO DE CALLBACK:
-    // Verifica se a URL contém indícios de um retorno de OAuth (PKCE usa 'code', Implicit usa 'access_token')
-    // Se isso for verdade, NÃO podemos setar loading=false se getSession retornar null inicialmente.
-    // Precisamos esperar o evento SIGNED_IN do onAuthStateChange.
-    const isRedirectCallback = window.location.href.includes('code=') || 
-                               window.location.hash.includes('access_token') ||
-                               window.location.href.includes('type=recovery');
-
-    const initSession = async () => {
+    const initializeAuth = async () => {
       try {
-        // getSession tenta recuperar a sessão do storage ou da URL
+        // 1. INTERCEPTAÇÃO MANUAL DE HASH (NUCLEAR OPTION)
+        // Se a URL tiver #access_token, nós processamos manualmente antes de qualquer coisa.
+        // Isso resolve o problema onde o Router limpa a URL ou o Supabase demora para detectar.
+        const hash = window.location.hash;
+        if (hash && hash.includes('access_token')) {
+          console.log('[Auth] Token OAuth detectado no Hash. Processando manualmente...');
+          
+          // Remove o '#' inicial
+          const hashParams = new URLSearchParams(hash.substring(1));
+          const accessToken = hashParams.get('access_token');
+          const refreshToken = hashParams.get('refresh_token');
+
+          if (accessToken) {
+            const { data, error } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken || '',
+            });
+
+            if (!error && data.session) {
+              console.log('[Auth] Sessão estabelecida manualmente.');
+              // Limpa o hash para não processar novamente e deixar a URL limpa
+              window.history.replaceState(null, '', window.location.pathname);
+              
+              if (mounted) {
+                setSession(data.session);
+                setUser(data.session.user);
+                const userProfile = await fetchProfile(data.session.user);
+                setProfile(userProfile);
+                setLoading(false);
+                return; // Sai da função, já estamos logados
+              }
+            }
+          }
+        }
+
+        // 2. Fluxo Padrão (Sessão Persistida ou PKCE Code)
         const { data: { session: initialSession } } = await supabase.auth.getSession();
 
         if (mounted) {
           if (initialSession) {
-            // Sessão encontrada imediatamente
             setSession(initialSession);
             setUser(initialSession.user);
             const userProfile = await fetchProfile(initialSession.user);
-            if (mounted) setProfile(userProfile);
-            setLoading(false); 
-          } else if (!isRedirectCallback) {
-            // Sem sessão e SEM indícios de callback -> Usuário deslogado
-            setLoading(false);
-          } else {
-            // Sem sessão inicial, MAS parece ser um callback.
-            // MANTÉM LOADING = TRUE e espera o listener ou timeout.
-            console.log('[Auth] Callback de OAuth detectado. Aguardando processamento da sessão...');
+            setProfile(userProfile);
           }
         }
       } catch (error) {
-        console.error("[Auth] Erro na inicialização da sessão:", error);
-        if (mounted && !isRedirectCallback) setLoading(false);
+        console.error("[Auth] Erro na inicialização:", error);
+      } finally {
+        if (mounted) setLoading(false);
       }
     };
 
-    initSession();
+    initializeAuth();
 
-    // Listener para mudanças de estado (Login, Logout, Refresh, OAuth Callback)
+    // 3. Listener de Eventos
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
       console.log(`[Auth] Evento: ${event}`);
-      
       if (!mounted) return;
 
       setSession(currentSession);
       setUser(currentSession?.user ?? null);
 
       if (currentSession?.user) {
-        // Login sucedido (seja via sessão existente ou novo callback processado)
-        if (!profile) { // Evita refetch desnecessário
-           const userProfile = await fetchProfile(currentSession.user);
-           if (mounted) setProfile(userProfile);
-        }
-        setLoading(false); // Libera o app
+         if (!profile) {
+            const userProfile = await fetchProfile(currentSession.user);
+            if (mounted) setProfile(userProfile);
+         }
+         // Garantia extra: se logou, para de carregar
+         setLoading(false);
       } else if (event === 'SIGNED_OUT') {
-        // Logout explícito
         setProfile(null);
         clearSessionData();
         setLoading(false);
-      } else {
-         // Outros eventos (ex: INITIAL_SESSION sem usuário). 
-         // Se não estivermos esperando um callback, libera o loading.
-         if (!isRedirectCallback && loading) {
-             setLoading(false);
-         }
       }
     });
-
-    // FAILSAFE TIMEOUT
-    // Se estamos em um callback mas nada aconteceu em 10 segundos, libera o loading para não travar a tela.
-    if (isRedirectCallback) {
-        setTimeout(() => {
-            if (mounted) {
-                // Verificação dentro do timeout usando functional update ou ref seria ideal, 
-                // mas aqui confiamos que se o user estivesse logado, o listener teria limpado o loading.
-                // Se ainda estiver "loading" visualmente, forçamos o fim.
-                setLoading((prevLoading) => {
-                    if (prevLoading) {
-                        console.warn('[Auth] Timeout no processamento do OAuth. Liberando UI.');
-                        return false;
-                    }
-                    return prevLoading;
-                });
-            }
-        }, 10000);
-    }
 
     return () => {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [fetchProfile]);
+  }, [fetchProfile, profile]); // Adicionei profile nas deps para evitar loops de fetch
 
   const clearSessionData = () => {
     mockStorage.clearAll();
@@ -176,10 +167,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOut = async () => {
     try {
+      setLoading(true);
       await supabase.auth.signOut();
       clearSessionData();
     } catch (error) {
       console.error("Erro ao sair:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
