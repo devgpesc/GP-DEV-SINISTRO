@@ -16,9 +16,8 @@ const Login: React.FC = () => {
   const navigate = useNavigate();
   const { user, loading: authLoading, clearSessionData, signInWithGoogle } = useAuth();
 
-  // Detecta se há um token na URL para manter o estado de carregamento
-  const hasAuthToken = window.location.hash.includes('access_token') || 
-                       window.location.href.includes('access_token');
+  // Se detectar token, forçamos um estado visual de carregamento rápido
+  const hasAuthToken = window.location.hash.includes('access_token');
 
   useEffect(() => {
     if (user && !authLoading) {
@@ -69,7 +68,7 @@ const Login: React.FC = () => {
     }
   };
 
-  // Carregamento de transição para o Google OAuth
+  // Tela de Transição (Melhorada para não travar)
   if (hasAuthToken || (authLoading && !localLoading)) {
     return (
       <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center font-sans">
@@ -88,11 +87,11 @@ const Login: React.FC = () => {
   return (
     <div className="min-h-screen bg-white flex font-sans overflow-hidden">
       {/* LADO ESQUERDO: Branding Institucional (Limpo) */}
-      <div className="hidden lg:flex w-1/2 bg-[#020617] relative flex-col justify-between p-20 overflow-hidden border-r border-slate-900">
+      <div className="hidden lg:flex w-1/2 bg-[#020617] relative flex-col justify-between p-20 overflow-hidden border-r border-slate-900 shadow-2xl z-10">
         <div className="absolute top-[-10%] left-[-10%] w-[80%] h-[80%] bg-blue-600/10 rounded-full blur-[160px]"></div>
         
         <div className="relative z-10">
-          {/* Logo e Nome no Topo */}
+          {/* Logo Superior e Nome da Empresa */}
           <div className="flex items-center gap-4 mb-24">
             <div className="p-3 bg-blue-600 rounded-2xl text-white shadow-xl shadow-blue-600/30">
               <Car size={32} />
@@ -100,7 +99,7 @@ const Login: React.FC = () => {
             <div className="h-10 w-[1px] bg-slate-800 mx-1"></div>
             <div className="flex flex-col">
               <span className="text-2xl font-black text-white tracking-tighter uppercase leading-none">Esc Solutions</span>
-              <span className="text-[10px] font-black text-blue-500 uppercase tracking-[0.5em] mt-1">Sistemas</span>
+              <span className="text-[10px] font-black text-blue-500 uppercase tracking-[0.5em] mt-1">Sistemas de Alta Performance</span>
             </div>
           </div>
 
@@ -111,7 +110,7 @@ const Login: React.FC = () => {
             </h1>
             <div className="h-1.5 w-24 bg-blue-600 rounded-full"></div>
             <p className="text-slate-500 text-xl font-medium leading-relaxed max-w-sm">
-              Gestão inteligente de sinistros e suprimentos.
+              Gestão de sinistros e suprimentos em uma plataforma unificada.
             </p>
           </div>
         </div>
@@ -122,18 +121,21 @@ const Login: React.FC = () => {
       </div>
 
       {/* LADO DIREITO: Formulário de Acesso */}
-      <div className="flex-1 flex flex-col items-center justify-center p-8 md:p-16 bg-[#F8FAFC] lg:bg-white">
+      <div className="flex-1 flex flex-col items-center justify-center p-8 md:p-16 bg-[#F8FAFC] lg:bg-white relative">
         <div className="w-full max-w-sm space-y-12">
           
-          {/* Topo Institucional Mobile/Direito */}
+          {/* Topo Institucional - Esc Solutions */}
           <div className="text-center lg:text-left">
              <div className="inline-flex items-center gap-3 mb-8 lg:mb-12">
                 <div className="p-2.5 bg-slate-900 rounded-xl text-white">
                   <Car size={24} />
                 </div>
-                <span className="font-black text-slate-900 uppercase tracking-tight text-lg">Esc Solutions</span>
+                <div className="flex flex-col items-start">
+                    <span className="font-black text-slate-900 uppercase tracking-tight text-lg leading-none">Esc Solutions</span>
+                    <span className="text-[9px] font-black text-blue-600 uppercase tracking-[0.2em] mt-1">Portal Oficial</span>
+                </div>
              </div>
-             <h3 className="text-4xl font-black text-slate-900 tracking-tighter">Entrar no Sistema</h3>
+             <h3 className="text-4xl font-black text-slate-900 tracking-tighter">Acesse o Sistema</h3>
           </div>
 
           {error && (
@@ -163,7 +165,7 @@ const Login: React.FC = () => {
             <div className="space-y-2">
               <div className="flex justify-between items-center px-2">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Senha</label>
-                <button type="button" className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline">Esqueci a senha</button>
+                <button type="button" className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline">Recuperar acesso</button>
               </div>
               <div className="relative group">
                 <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-600 transition-colors" size={20} />
@@ -185,7 +187,7 @@ const Login: React.FC = () => {
             >
               {localLoading ? <Loader2 className="animate-spin" size={24} /> : (
                 <>
-                  Entrar na Produção <ArrowRight size={18} className="group-hover:translate-x-1.5 transition-transform" />
+                  Entrar no Sistema <ArrowRight size={18} className="group-hover:translate-x-1.5 transition-transform" />
                 </>
               )}
             </button>
@@ -193,7 +195,7 @@ const Login: React.FC = () => {
 
           <div className="relative flex items-center justify-center py-4">
             <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-100"></div></div>
-            <span className="relative bg-white px-6 text-[9px] font-black text-slate-300 uppercase tracking-[0.4em]">Ou acessar com</span>
+            <span className="relative bg-white px-6 text-[9px] font-black text-slate-300 uppercase tracking-[0.4em]">Ou utilizar</span>
           </div>
 
           <button 

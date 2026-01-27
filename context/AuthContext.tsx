@@ -58,25 +58,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const initializeAuth = async () => {
       try {
-        // Verifica se há tokens na URL antes de decidir que o usuário não está logado
-        const hash = window.location.hash;
-        const hasToken = hash.includes('access_token') || hash.includes('error_description');
-        
-        const { data: { session } } = await supabase.auth.getSession();
+        // 1. Verifica sessão atual (especialmente importante para retornos de OAuth)
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
         if (mounted) {
           const currentUser = session?.user ?? null;
           setUser(currentUser);
+          
           if (currentUser) {
             await fetchProfile(currentUser.id);
+            // Se entramos via OAuth, limpamos a URL para não confundir o HashRouter
+            if (window.location.hash.includes('access_token')) {
+              window.location.hash = '/';
+            }
           }
           
-          // Se houver token na URL, mantemos o loading um pouco mais para o Supabase processar
-          if (hasToken && !currentUser) {
-            setLoading(true);
-          } else {
-            setLoading(false);
-          }
+          setLoading(false);
         }
       } catch (err) {
         console.error("Erro na inicialização de sessão:", err);
@@ -86,8 +83,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     initializeAuth();
 
+    // Listener para mudanças de estado (Login/Logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[Auth] Evento:', event);
+      console.log('[Auth] Evento Detectado:', event);
       if (!mounted) return;
       
       const currentUser = session?.user ?? null;
@@ -134,7 +132,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signInWithGoogle = async () => {
-    const redirectUrl = window.location.origin + window.location.pathname;
+    // Usamos apenas o origin para evitar conflitos com a hash
+    const redirectUrl = window.location.origin;
     
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
