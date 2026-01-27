@@ -6,7 +6,7 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   profile: any;
-  loading: boolean; // Indica se o SDK ainda está verificando o storage/url
+  loading: boolean;
   signOut: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   isSuperAdmin: boolean;
@@ -20,18 +20,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // Função isolada para buscar perfil, desacoplada do auth state
+  // Função isolada para buscar perfil com Timeout para evitar travamento
   const fetchProfile = useCallback(async (userId: string) => {
     try {
-      const { data, error } = await supabase
+      console.log('[Auth] Buscando perfil para:', userId);
+      
+      // Timeout de segurança
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout ao buscar perfil')), 3000)
+      );
+
+      const requestPromise = supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .maybeSingle();
 
-      if (error) console.error('[Auth] Erro ao buscar perfil:', error.message);
+      // Race condition entre request e timeout
+      const response: any = await Promise.race([requestPromise, timeoutPromise]);
+      const { data, error } = response || {};
+
+      if (error) console.error('[Auth] Erro ao buscar perfil (DB):', error.message);
       
-      // Se não houver perfil no banco, usamos metadados do usuário (failsafe)
       return data || { 
         id: userId, 
         role: 'user', 
@@ -39,50 +49,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     } catch (err) {
       console.error('[Auth] Falha crítica no fetchProfile:', err);
-      return null;
+      return { 
+        id: userId, 
+        role: 'user', 
+        full_name: 'Usuário (Offline)' 
+      };
     }
   }, []);
 
   useEffect(() => {
     let mounted = true;
 
-    // 1. Inicialização: Verifica sessão existente no Storage ou URL (OAuth callback)
     const initializeAuth = async () => {
       try {
-        // getSession() lida com tokens no LocalStorage E hash na URL automaticamente
         const { data: { session: initialSession }, error } = await supabase.auth.getSession();
         
-        if (error) throw error;
+        if (error) {
+            console.error('[Auth] Erro getSession:', error);
+            throw error;
+        }
 
-        if (mounted) {
-          if (initialSession) {
+        if (mounted && initialSession) {
             setSession(initialSession);
             setUser(initialSession.user);
             const p = await fetchProfile(initialSession.user.id);
             if (mounted) setProfile(p);
-          }
         }
       } catch (err) {
         console.error('[Auth] Erro na inicialização:', err);
       } finally {
-        if (mounted) setLoading(false);
+        if (mounted) {
+            // Pequeno delay para evitar flash
+            setTimeout(() => setLoading(false), 500);
+        }
       }
     };
 
     initializeAuth();
 
-    // 2. Listener de Eventos: A ÚNICA fonte da verdade para mudanças de estado
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       console.log(`[Auth Event] ${event}`);
 
       if (!mounted) return;
 
-      // Sincroniza estado local com o estado do SDK
       setSession(newSession);
       setUser(newSession?.user ?? null);
 
       if (newSession?.user) {
-        // Apenas busca perfil se o usuário mudou ou se não temos perfil ainda
+        // Apenas busca perfil se o usuário mudou ou perfil ainda não carregado
         if (!profile || profile.id !== newSession.user.id) {
            const p = await fetchProfile(newSession.user.id);
            if (mounted) setProfile(p);
@@ -90,7 +104,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         setProfile(null);
       }
-
+      
       setLoading(false);
     });
 
@@ -98,27 +112,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [fetchProfile, profile]);
+  }, [fetchProfile]); // Removido 'profile' das dependências para evitar loops
 
   const signInWithGoogle = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        // O redirect deve ser EXATAMENTE o cadastrado no Supabase/Google Cloud
         redirectTo: `${window.location.origin}`, 
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent',
-        },
+        queryParams: { access_type: 'offline', prompt: 'consent' },
       },
     });
     if (error) throw error;
   };
 
   const signOut = async () => {
-    setLoading(true); // Previne flash de conteúdo
+    setLoading(true);
     await supabase.auth.signOut();
-    // O onAuthStateChange disparará 'SIGNED_OUT', limpando o estado
   };
 
   const value = {
@@ -134,16 +143,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <AuthContext.Provider value={value}>
       {!loading && children} 
-      {/* 
-         CRÍTICO: Bloqueia renderização até loading === false.
-         Isso previne que rotas privadas redirecionem para login
-         antes do SDK terminar de checar a sessão.
-      */}
       {loading && (
         <div className="min-h-screen flex items-center justify-center bg-slate-50">
-          <div className="flex flex-col items-center gap-4">
+          <div className="flex flex-col items-center gap-4 animate-in fade-in duration-500">
              <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
              <p className="text-slate-500 font-bold text-sm tracking-widest uppercase">Carregando Sessão...</p>
+             <button 
+                onClick={() => window.location.reload()} 
+                className="mt-4 text-xs text-blue-500 underline hover:text-blue-700"
+             >
+                Demorando muito? Recarregar
+             </button>
           </div>
         </div>
       )}

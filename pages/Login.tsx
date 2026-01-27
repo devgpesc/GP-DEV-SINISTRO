@@ -9,14 +9,13 @@ import {
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
-  const { user, signInWithGoogle } = useAuth();
+  const { user } = useAuth(); // Loading handled by App wrapper mostly
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [localLoading, setLocalLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Redireciona se já estiver logado (e loading do AuthContext já finalizou)
   useEffect(() => {
     if (user) {
       navigate('/', { replace: true });
@@ -32,10 +31,15 @@ const Login: React.FC = () => {
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      // O evento onAuthStateChange no AuthContext detectará o login e atualizará o estado.
-      // O useEffect acima cuidará do redirecionamento.
+      // Sucesso: AuthContext vai detectar e redirecionar
     } catch (err: any) {
-      setError('Credenciais inválidas ou erro no servidor.');
+      console.error(err);
+      if (!isSupabaseConfigured) {
+        // Se estiver em modo offline, o mock client deve ter tratado o login, mas se caiu aqui:
+         setError('Modo Offline: Login simulado falhou.');
+      } else {
+         setError('Credenciais inválidas ou erro no servidor.');
+      }
       setLocalLoading(false);
     }
   };
@@ -43,8 +47,10 @@ const Login: React.FC = () => {
   const handleGoogle = async () => {
     setLocalLoading(true);
     try {
-      await signInWithGoogle();
-      // O redirecionamento acontece externamente para o Google
+      await supabase.auth.signInWithOAuth({
+         provider: 'google',
+         options: { redirectTo: window.location.origin }
+      });
     } catch (err: any) {
       setError('Não foi possível iniciar o login com Google.');
       setLocalLoading(false);
@@ -174,7 +180,7 @@ const Login: React.FC = () => {
             ) : (
                <div className="flex items-center justify-center gap-2 text-[10px] font-bold text-amber-500 uppercase tracking-wider">
                   <WifiOff size={14} />
-                  Modo Offline / Demonstração
+                  Modo Offline / Demo - Use qualquer e-mail/senha
                </div>
             )}
           </div>
