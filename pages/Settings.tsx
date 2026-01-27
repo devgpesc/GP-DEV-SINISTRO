@@ -6,7 +6,7 @@ import {
   MessageSquare, Target, Mail, ShieldAlert, Key, 
   CreditCard, Layout, Zap, UserPlus, MoreVertical, MessageCircle,
   Tag, Plus, Trash2, Edit, Upload, X, Shield, Check, Smartphone, FileText,
-  Clock, Edit2
+  Clock, Edit2, AlertTriangle, RefreshCcw, Copy, CheckCheck
 } from 'lucide-react';
 import { mockStorage } from '../services/supabaseClient';
 import { Category } from '../types';
@@ -50,6 +50,11 @@ const Settings: React.FC = () => {
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<AppUser | null>(null);
   const [userFormData, setUserFormData] = useState<Partial<AppUser>>({ permissions: [] });
+  const [userToDelete, setUserToDelete] = useState<AppUser | null>(null); // Novo estado para exclusão
+  
+  // Estado para exibir credenciais após criação
+  const [createdUserCreds, setCreatedUserCreds] = useState<{email: string, pass: string} | null>(null);
+  const [copied, setCopied] = useState(false);
 
   // Categorias
   const [categories, setCategories] = useState<Category[]>([]);
@@ -148,6 +153,13 @@ const Settings: React.FC = () => {
     setTimeout(() => setSaved(false), 2000);
   };
 
+  const handleResetDatabase = () => {
+    if (confirm('ATENÇÃO: Isso limpará todos os dados locais (associados, veículos, cotações) e recarregará a página. Deseja continuar?')) {
+        localStorage.clear();
+        window.location.reload();
+    }
+  };
+
   // --- HANDLERS ESPECÍFICOS ---
 
   // Empresa & Logo
@@ -165,6 +177,8 @@ const Settings: React.FC = () => {
 
   // Usuários
   const handleOpenUserModal = (user?: AppUser) => {
+    setCreatedUserCreds(null);
+    setCopied(false);
     if (user) {
       setEditingUser(user);
       setUserFormData(user);
@@ -186,7 +200,7 @@ const Settings: React.FC = () => {
       name: userFormData.name!,
       email: userFormData.email!,
       role: userFormData.role || 'Colaborador',
-      status: (userFormData.status as any) || 'Pendente',
+      status: (userFormData.status as any) || 'Ativo',
       color: userFormData.color || 'blue',
       permissions: userFormData.permissions || []
     };
@@ -196,12 +210,29 @@ const Settings: React.FC = () => {
       : [...users, newUser];
     
     setUsers(updated);
-    setIsUserModalOpen(false);
+    mockStorage.set('app_users', updated); // Salva imediatamente
+
+    if (!editingUser) {
+        // Se for novo usuário, gera credenciais e exibe
+        setCreatedUserCreds({
+            email: newUser.email,
+            pass: Math.random().toString(36).slice(-8).toUpperCase()
+        });
+    } else {
+        setIsUserModalOpen(false);
+    }
   };
 
-  const handleDeleteUser = (id: string) => {
-    if (confirm('Remover usuário?')) {
-      setUsers(users.filter(u => u.id !== id));
+  const handleRequestDeleteUser = (user: AppUser) => {
+    setUserToDelete(user);
+  };
+
+  const handleConfirmDeleteUser = () => {
+    if (userToDelete) {
+        const updated = users.filter(u => u.id !== userToDelete.id);
+        setUsers(updated);
+        mockStorage.set('app_users', updated); // Salvar imediatamente
+        setUserToDelete(null);
     }
   };
 
@@ -211,6 +242,15 @@ const Settings: React.FC = () => {
       setUserFormData({ ...userFormData, permissions: current.filter(p => p !== perm) });
     } else {
       setUserFormData({ ...userFormData, permissions: [...current, perm] });
+    }
+  };
+
+  const handleCopyCreds = () => {
+    if (createdUserCreds) {
+        const text = `Acesso AutoClaims Pro\nURL: ${window.location.origin}\nLogin: ${createdUserCreds.email}\nSenha: ${createdUserCreds.pass}`;
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
     }
   };
 
@@ -351,7 +391,7 @@ const Settings: React.FC = () => {
                          <span className={`text-[10px] font-black px-3 py-1 rounded-full border uppercase tracking-widest ${u.status === 'Ativo' ? 'bg-green-50 text-green-600 border-green-100' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>{u.status}</span>
                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button onClick={() => handleOpenUserModal(u)} className="p-2 text-slate-300 hover:text-blue-600 rounded-lg"><Edit size={18}/></button>
-                            <button onClick={() => handleDeleteUser(u.id)} className="p-2 text-slate-300 hover:text-red-600 rounded-lg"><Trash2 size={18}/></button>
+                            <button onClick={() => handleRequestDeleteUser(u)} className="p-2 text-slate-300 hover:text-red-600 rounded-lg"><Trash2 size={18}/></button>
                          </div>
                        </div>
                     </div>
@@ -360,9 +400,11 @@ const Settings: React.FC = () => {
             </div>
           )}
 
-          {/* ABA CATEGORIAS */}
+          {/* ABA CATEGORIAS, REGRAS, TEMPLATES, METAS, SEGURANÇA MANTIDAS IGUAIS... */}
+          {/* ... (O código das outras abas é idêntico ao anterior e não precisa de alteração) ... */}
           {activeTab === 'categorias' && (
             <div className="space-y-8 animate-in fade-in duration-300">
+               {/* ... (conteúdo categorias) */}
                <div className="flex items-center gap-2 border-b border-slate-100 pb-4">
                  <Tag className="text-blue-500" size={20}/>
                  <h3 className="text-lg font-black text-slate-800">Categorização BI</h3>
@@ -419,9 +461,9 @@ const Settings: React.FC = () => {
             </div>
           )}
 
-          {/* ABA REGRAS (SISTEMA) */}
           {activeTab === 'sistema' && (
             <div className="space-y-8 animate-in fade-in duration-300">
+               {/* ... (conteúdo sistema) */}
                <div className="flex items-center gap-2 border-b border-slate-100 pb-4">
                  <ShieldAlert className="text-indigo-500" size={20}/>
                  <h3 className="text-lg font-black text-slate-800">Regras & Auditoria</h3>
@@ -471,13 +513,26 @@ const Settings: React.FC = () => {
                         </div>
                      </div>
                   </div>
+
+                  <div className="p-6 border border-red-200 bg-red-50 rounded-[28px] flex items-center justify-between">
+                     <div>
+                        <h4 className="text-red-800 font-black flex items-center gap-2"><Trash2 size={18}/> Zona de Perigo</h4>
+                        <p className="text-xs text-red-600 mt-1">Isso apagará todos os dados locais (associados, veículos, cotações) e reiniciará a aplicação.</p>
+                     </div>
+                     <button 
+                        onClick={handleResetDatabase}
+                        className="bg-white border border-red-200 text-red-600 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-sm hover:bg-red-50 flex items-center gap-2"
+                     >
+                        <RefreshCcw size={14}/> Resetar Dados
+                     </button>
+                  </div>
                </div>
             </div>
           )}
 
-          {/* ABA TEMPLATES */}
           {activeTab === 'templates' && (
             <div className="space-y-8 animate-in fade-in duration-300">
+               {/* ... (conteúdo templates) */}
                <div className="flex items-center gap-2 border-b border-slate-100 pb-4">
                  <MessageSquare className="text-blue-500" size={20}/>
                  <h3 className="text-lg font-black text-slate-800">Templates de Comunicação</h3>
@@ -502,9 +557,9 @@ const Settings: React.FC = () => {
             </div>
           )}
 
-          {/* ABA METAS */}
           {activeTab === 'metas' && (
             <div className="space-y-8 animate-in fade-in duration-300">
+               {/* ... (conteúdo metas) */}
                <div className="flex items-center gap-2 border-b border-slate-100 pb-4">
                  <Target className="text-green-500" size={20}/>
                  <h3 className="text-lg font-black text-slate-800">Metas & KPIs</h3>
@@ -539,9 +594,9 @@ const Settings: React.FC = () => {
             </div>
           )}
 
-          {/* ABA SEGURANÇA */}
           {activeTab === 'seguranca' && (
             <div className="space-y-8 animate-in fade-in duration-300">
+               {/* ... (conteúdo segurança) */}
                <div className="flex items-center gap-2 border-b border-slate-100 pb-4">
                  <Shield className="text-red-500" size={20}/>
                  <h3 className="text-lg font-black text-slate-800">Segurança da Informação</h3>
@@ -610,40 +665,118 @@ const Settings: React.FC = () => {
       {/* Modal Usuário */}
       {isUserModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsUserModalOpen(false)}></div>
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => !createdUserCreds && setIsUserModalOpen(false)}></div>
           <div className="relative bg-white w-full max-w-lg rounded-[40px] shadow-2xl p-8 animate-in zoom-in duration-200">
-             <div className="flex justify-between items-center mb-6">
-                <h3 className="text-2xl font-black text-slate-800">{editingUser ? 'Editar Usuário' : 'Convidar Colaborador'}</h3>
-                <button onClick={() => setIsUserModalOpen(false)}><X className="text-slate-400 hover:text-slate-600"/></button>
-             </div>
-             <form onSubmit={handleSaveUser} className="space-y-4">
-                <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold" 
-                   placeholder="Nome Completo" value={userFormData.name} onChange={e => setUserFormData({...userFormData, name: e.target.value})} />
-                <input required type="email" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold" 
-                   placeholder="E-mail Corporativo" value={userFormData.email} onChange={e => setUserFormData({...userFormData, email: e.target.value})} />
-                <select className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold text-slate-600"
-                   value={userFormData.role} onChange={e => setUserFormData({...userFormData, role: e.target.value})}>
-                   <option value="">Selecione o Cargo...</option>
-                   <option value="Administrador Senior">Administrador Senior</option>
-                   <option value="Gestor de Compras">Gestor de Compras</option>
-                   <option value="Analista de Sinistros">Analista de Sinistros</option>
-                   <option value="Auditor">Auditor</option>
-                </select>
-                
-                <div className="pt-2">
-                   <p className="text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Permissões de Acesso</p>
-                   <div className="grid grid-cols-2 gap-2">
-                      {['dashboard', 'eventos', 'cotacoes', 'compras', 'financeiro', 'configuracoes'].map(perm => (
-                         <label key={perm} className="flex items-center gap-2 text-xs font-bold text-slate-600 p-2 border border-slate-100 rounded-xl cursor-pointer hover:bg-slate-50">
-                            <input type="checkbox" checked={userFormData.permissions?.includes(perm)} onChange={() => togglePermission(perm)} className="w-4 h-4 rounded text-blue-600"/>
-                            {perm.charAt(0).toUpperCase() + perm.slice(1)}
-                         </label>
-                      ))}
-                   </div>
-                </div>
+             
+             {createdUserCreds ? (
+                <div className="text-center space-y-6">
+                    <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4 animate-in zoom-in duration-300">
+                        <CheckCheck size={40} />
+                    </div>
+                    <div>
+                        <h3 className="text-2xl font-black text-slate-800 mb-2">Usuário Criado!</h3>
+                        <p className="text-sm text-slate-500 font-medium">Copie as credenciais abaixo e envie para o colaborador.</p>
+                    </div>
+                    
+                    <div className="bg-slate-50 p-6 rounded-3xl border border-slate-200 text-left space-y-4 relative">
+                        <div>
+                            <p className="text-[10px] font-black uppercase text-slate-400 mb-1 tracking-widest">E-mail de Acesso</p>
+                            <p className="text-lg font-bold text-slate-800 break-all">{createdUserCreds.email}</p>
+                        </div>
+                        <div>
+                            <p className="text-[10px] font-black uppercase text-slate-400 mb-1 tracking-widest">Senha Temporária</p>
+                            <p className="text-2xl font-black text-blue-600 tracking-wider">{createdUserCreds.pass}</p>
+                        </div>
+                    </div>
 
-                <button type="submit" className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest mt-4">Salvar Usuário</button>
-             </form>
+                    <button 
+                        onClick={handleCopyCreds}
+                        className={`w-full py-4 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 transition-all ${copied ? 'bg-green-600 text-white' : 'bg-slate-900 text-white hover:bg-slate-800'}`}
+                    >
+                        {copied ? <Check size={18}/> : <Copy size={18}/>}
+                        {copied ? 'Copiado!' : 'Copiar Credenciais'}
+                    </button>
+                    
+                    <button 
+                        onClick={() => setIsUserModalOpen(false)}
+                        className="text-slate-400 font-bold text-xs hover:text-slate-600"
+                    >
+                        Fechar Janela
+                    </button>
+                </div>
+             ) : (
+                <>
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-2xl font-black text-slate-800">{editingUser ? 'Editar Usuário' : 'Convidar Colaborador'}</h3>
+                        <button onClick={() => setIsUserModalOpen(false)}><X className="text-slate-400 hover:text-slate-600"/></button>
+                    </div>
+                    <form onSubmit={handleSaveUser} className="space-y-4">
+                        <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold" 
+                        placeholder="Nome Completo" value={userFormData.name} onChange={e => setUserFormData({...userFormData, name: e.target.value})} />
+                        <input required type="email" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold" 
+                        placeholder="E-mail Corporativo" value={userFormData.email} onChange={e => setUserFormData({...userFormData, email: e.target.value})} />
+                        <select className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold text-slate-600"
+                        value={userFormData.role} onChange={e => setUserFormData({...userFormData, role: e.target.value})}>
+                        <option value="">Selecione o Cargo...</option>
+                        <option value="Administrador Senior">Administrador Senior</option>
+                        <option value="Gestor de Compras">Gestor de Compras</option>
+                        <option value="Analista de Sinistros">Analista de Sinistros</option>
+                        <option value="Auditor">Auditor</option>
+                        </select>
+                        
+                        <div className="pt-2">
+                        <p className="text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Permissões de Acesso</p>
+                        <div className="grid grid-cols-2 gap-2">
+                            {['dashboard', 'eventos', 'cotacoes', 'compras', 'financeiro', 'configuracoes'].map(perm => (
+                                <label key={perm} className="flex items-center gap-2 text-xs font-bold text-slate-600 p-2 border border-slate-100 rounded-xl cursor-pointer hover:bg-slate-50">
+                                    <input type="checkbox" checked={userFormData.permissions?.includes(perm)} onChange={() => togglePermission(perm)} className="w-4 h-4 rounded text-blue-600"/>
+                                    {perm.charAt(0).toUpperCase() + perm.slice(1)}
+                                </label>
+                            ))}
+                        </div>
+                        </div>
+
+                        <button type="submit" className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest mt-4">
+                            {editingUser ? 'Salvar Usuário' : 'Criar e Gerar Senha'}
+                        </button>
+                    </form>
+                </>
+             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal Confirmação Exclusão Moderna */}
+      {userToDelete && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setUserToDelete(null)}></div>
+          <div className="relative bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden p-8 animate-in zoom-in duration-200 text-center">
+            
+            <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl shadow-red-500/10">
+              <Trash2 size={40} />
+            </div>
+
+            <h3 className="text-xl font-black text-slate-800 mb-2">Remover Usuário?</h3>
+            
+            <p className="text-sm text-slate-500 font-medium mb-4 leading-relaxed">
+              Você está prestes a revogar o acesso de <span className="font-bold text-slate-800">{userToDelete.name}</span>. Esta ação é irreversível.
+            </p>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <button 
+                onClick={() => setUserToDelete(null)} 
+                className="py-3 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-slate-200 transition-all"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleConfirmDeleteUser} 
+                className="py-3 bg-red-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-red-500/20 hover:bg-red-600 transition-all"
+              >
+                Confirmar
+              </button>
+            </div>
+
           </div>
         </div>
       )}
