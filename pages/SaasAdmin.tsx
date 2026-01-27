@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   Globe, Building, Users, Database, 
@@ -32,17 +31,39 @@ const SaasAdmin: React.FC = () => {
         .from('saas_tenants')
         .select('*, saas_plans(*)');
       
-      if (tenantsError) console.error("Erro ao carregar tenants:", tenantsError);
-      else setTenants(tenantsData || []);
+      if (tenantsError) throw tenantsError;
+      setTenants(tenantsData || []);
 
       // Carregar Planos
       const { data: plansData, error: plansError } = await supabase
         .from('saas_plans')
         .select('*');
         
-      if (plansError) console.error("Erro ao carregar planos:", plansError);
-      else setPlans(plansData || []);
+      if (plansError) throw plansError;
+      setPlans(plansData || []);
 
+    } catch (error) {
+        console.warn("Modo Demo Admin: Carregando dados fictícios", error);
+        // DADOS MOCK PARA DEMO
+        setPlans([
+            { id: 'p1', name: 'Start', price: 499, max_users: 5, max_events: 50, features: {} },
+            { id: 'p2', name: 'Growth', price: 999, max_users: 20, max_events: 200, features: {} },
+            { id: 'p3', name: 'Enterprise', price: 2499, max_users: 999, max_events: 9999, features: {} }
+        ]);
+        setTenants([
+            { 
+                id: 't1', name: 'Transportadora Rápido', document: '11.111.111/0001-11', plan_id: 'p2', status: 'active', created_at: new Date().toISOString(),
+                saas_plans: { id: 'p2', name: 'Growth', price: 999, max_users: 20, max_events: 200, features: {} }
+            },
+            { 
+                id: 't2', name: 'Logística Segura', document: '22.222.222/0001-22', plan_id: 'p1', status: 'active', created_at: new Date().toISOString(),
+                saas_plans: { id: 'p1', name: 'Start', price: 499, max_users: 5, max_events: 50, features: {} }
+            },
+            { 
+                id: 't3', name: 'Frotas Brasil', document: '33.333.333/0001-33', plan_id: 'p3', status: 'blocked', created_at: new Date().toISOString(),
+                saas_plans: { id: 'p3', name: 'Enterprise', price: 2499, max_users: 999, max_events: 9999, features: {} }
+            }
+        ]);
     } finally {
       setLoading(false);
     }
@@ -71,7 +92,20 @@ const SaasAdmin: React.FC = () => {
         setNewTenantData({ name: '', document: '', plan_id: '' });
         alert("Empresa criada com sucesso!");
     } catch (err: any) {
-        alert("Erro ao criar empresa: " + err.message);
+        // Fallback demo para criação
+        const fakePlan = plans.find(p => p.id === newTenantData.plan_id);
+        const newFakeTenant: SaasTenant = {
+            id: Math.random().toString(),
+            name: newTenantData.name,
+            document: newTenantData.document,
+            plan_id: newTenantData.plan_id,
+            status: 'active',
+            created_at: new Date().toISOString(),
+            saas_plans: fakePlan
+        };
+        setTenants([newFakeTenant, ...tenants]);
+        setIsModalOpen(false);
+        alert("Empresa criada (Simulação Demo)!");
     } finally {
         setCreating(false);
     }

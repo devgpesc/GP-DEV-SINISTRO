@@ -3,6 +3,8 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './context/AuthContext.tsx';
 import { PrivateRoute } from './components/PrivateRoute.tsx';
 import Layout from './components/Layout.tsx';
+
+// Pages
 import Dashboard from './pages/Dashboard.tsx';
 import Events from './pages/Events.tsx';
 import Quotations from './pages/Quotations.tsx';
@@ -15,13 +17,12 @@ import Reports from './pages/Reports.tsx';
 import Settings from './pages/Settings.tsx';
 import Login from './pages/Login.tsx';
 import Register from './pages/Register.tsx';
-import AIAssistant from './components/AIAssistant.tsx';
 import SaasAdmin from './pages/SaasAdmin.tsx';
+import AIAssistant from './components/AIAssistant.tsx';
 
-// Rota protegida Admin
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isSuperAdmin, loading } = useAuth();
-  if (loading) return null;
+  const { isSuperAdmin } = useAuth();
+  // Se chegou aqui, user já existe (garantido pelo PrivateRoute)
   if (!isSuperAdmin) return <Navigate to="/" replace />;
   return <>{children}</>;
 };
@@ -36,6 +37,7 @@ const App: React.FC = () => {
     <AuthProvider>
       <Router>
         <Routes>
+          {/* Rotas Públicas */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           
@@ -56,6 +58,7 @@ const App: React.FC = () => {
              </Route>
           </Route>
 
+          {/* Catch-all */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         <AuthOnlyAssistant />

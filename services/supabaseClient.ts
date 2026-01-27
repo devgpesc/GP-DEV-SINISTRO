@@ -1,46 +1,82 @@
-
 import { createClient } from '@supabase/supabase-js';
 
-// Leitura segura de variáveis de ambiente
-const getEnv = (key: string): string => {
-  const metaEnv = (import.meta as any).env;
-  const procEnv = (typeof process !== 'undefined' ? (process.env as any) : {});
-  return (metaEnv?.[key] as string) || (procEnv?.[key] as string) || '';
-};
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-const supabaseUrl = getEnv('VITE_SUPABASE_URL') || 'https://yxawavenbognqiihaesh.supabase.co';
-const supabaseAnonKey = getEnv('VITE_SUPABASE_ANON_KEY') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4YXdhdmVuYm9nbnFpaWhhZXNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDEyMzE0MTksImV4cCI6MjA1NjgwNzQxOX0.y3X_uY3W3_Y3W3_Y3W3_Y3W3_Y3W3_Y3W3_Y3W3_Y3W';
+export const isSupabaseConfigured = !!(supabaseUrl && supabaseAnonKey);
 
-export const isSupabaseConfigured = !!supabaseUrl && supabaseUrl.includes('supabase.co');
-
-// Cliente Supabase Singleton
-// detectSessionInUrl: true delega o parsing de hash/query params para o SDK
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true, 
-  },
-});
-
-// Mock Storage para dados locais da aplicação (Business Logic apenas)
-const STORAGE_PREFIX = 'autoclaims_app_data_';
+// Helper para mock storage local (usado quando Supabase não está configurado ou para dados locais)
 export const mockStorage = {
   get: (key: string) => {
     try {
-      const data = localStorage.getItem(`${STORAGE_PREFIX}${key}`);
-      return data ? JSON.parse(data) : null;
-    } catch { return null; }
+      const item = localStorage.getItem(`autoclaims_${key}`);
+      return item ? JSON.parse(item) : null;
+    } catch (e) {
+      console.warn('Erro ao ler do localStorage', e);
+      return null;
+    }
   },
   set: (key: string, value: any) => {
-    localStorage.setItem(`${STORAGE_PREFIX}${key}`, JSON.stringify(value));
-  },
-  remove: (key: string) => {
-    localStorage.removeItem(`${STORAGE_PREFIX}${key}`);
-  },
-  clearAll: () => {
-    Object.keys(localStorage).forEach(key => {
-      if (key.startsWith(STORAGE_PREFIX)) localStorage.removeItem(key);
-    });
+    try {
+      localStorage.setItem(`autoclaims_${key}`, JSON.stringify(value));
+    } catch (e) {
+      console.warn('Erro ao salvar no localStorage', e);
+    }
+  }
+};
+
+let client;
+
+if (isSupabaseConfigured) {
+  // Configuração Otimizada para React + Vite
+  // auth.persistSession: true (Default) -> Usa LocalStorage automaticamente.
+  // auth.detectSessionInUrl: true (Default) -> O SDK captura o #access_token automaticamente.
+  client = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true,
+      storage: window.localStorage, // Explicito para clareza
+    },
+    // Otimização de Retries em redes instáveis
+    global: {
+      headers: { 'x-application-name': 'autoclaims-pro' },
+    },
+  });
+} else {
+  console.warn('[AutoClaims] Supabase não configurado. Rodando em modo limitado (Mock).');
+  // Cliente Mock Mínimo para evitar crash em chamadas básicas
+  client = {
+    from: () => ({
+      select: () => Promise.resolve({ data: [], error: null }),
+      insert: () => Promise.resolve({ data: null, error: null }),
+      update: () => Promise.resolve({ data: null, error: null }),
+      delete: () => Promise.resolve({ data: null, error: null }),
+      eq: function() { return this; },
+      order: function() { return this; },
+      single: function() { return Promise.resolve({ data: null, error: null }); },
+      maybeSingle: function() { return Promise.resolve({ data: null, error: null }); },
+    }),
+    auth: {
+      getSession: () => Promise.resolve({ data: { session: null }, error: null }),
+      getUser: () => Promise.resolve({ data: { user: null }, error: null }),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+      signInWithPassword: () => Promise.resolve({ error: { message: 'Supabase não configurado' } }),
+      signInWithOAuth: () => Promise.resolve({ error: { message: 'Supabase não configurado' } }),
+      signOut: () => Promise.resolve({ error: null }),
+    }
+  } as any;
+}
+
+export const supabase = client;
+
+// Helper para verificar status da conexão (usado apenas em health checks)
+export const checkSupabaseConnection = async () => {
+  if (!isSupabaseConfigured) return false;
+  try {
+    const { error } = await supabase.from('saas_tenants').select('count', { count: 'exact', head: true });
+    return !error;
+  } catch {
+    return false;
   }
 };

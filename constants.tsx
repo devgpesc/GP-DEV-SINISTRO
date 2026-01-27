@@ -1,4 +1,3 @@
-
 import { EventStatus, EventType, Priority } from './types';
 
 export const COLORS = {
@@ -51,6 +50,6 @@ export const MOCK_ASSOCIATES = [
 ];
 
 export const MOCK_VEHICLES = [
-  { id: 'v1', plate: 'ABC-1234', model: 'Corolla', brand: 'Toyota', year: '2022', associateId: 'a1' },
-  { id: 'v2', plate: 'XYZ-9876', model: 'Sprinter', brand: 'Mercedes-Benz', year: '2021', associateId: 'a2' },
+  { id: 'v1', plate: 'ABC-1234', model: 'Corolla', brand: 'Toyota', year: '2022', associateId: 'a1', createdAt: '2024-01-15T10:00:00Z' },
+  { id: 'v2', plate: 'XYZ-9876', model: 'Sprinter', brand: 'Mercedes-Benz', year: '2021', associateId: 'a2', createdAt: '2024-02-20T14:00:00Z' },
 ];
