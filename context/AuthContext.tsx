@@ -56,75 +56,71 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let mounted = true;
 
-    const initializeAuth = async () => {
-      try {
-        const hash = window.location.hash;
-        // Verifica tokens na URL
-        const isOAuthReturn = hash.includes('access_token') || 
-                              hash.includes('type=recovery') || 
-                              hash.includes('error_description');
-        
-        if (isOAuthReturn) {
-          console.log('[Auth] Token detectado na URL. Iniciando processamento forçado...');
-          setLoading(true);
+    // Função auxiliar para lidar com a bagunça do HashRouter vs OAuth Hash
+    const handleHashConflict = async () => {
+      const hash = window.location.hash;
+      
+      // Se detectarmos um token de acesso na URL (formato do Google/Supabase)
+      if (hash && (hash.includes('access_token') || hash.includes('type=recovery'))) {
+        console.log('[Auth] Token OAuth detectado. Interceptando antes do Router...');
+        setLoading(true);
 
-          // TIMEOUT DE SEGURANÇA:
-          // Se o onAuthStateChange não disparar em 1.5s, forçamos a verificação
-          // e limpamos a URL para o Router não travar.
-          setTimeout(async () => {
-             if (!mounted) return;
-             console.log('[Auth] Timeout de processamento. Verificando sessão manualmente...');
-             
-             const { data: { session } } = await supabase.auth.getSession();
-             
-             if (session) {
-               console.log('[Auth] Sessão encontrada manualmente. Redirecionando...');
-               setUser(session.user);
-               await fetchProfile(session.user.id);
-               // Limpeza agressiva da URL para remover o token e permitir que o HashRouter funcione
-               window.location.hash = '/';
-             } else {
-               console.log('[Auth] Nenhuma sessão encontrada após timeout.');
-             }
-             setLoading(false);
-          }, 1500);
+        try {
+            // Tentativa agressiva de obter a sessão, pois o token já está na URL
+            const { data: { session }, error } = await supabase.auth.getSession();
+            
+            if (error) throw error;
 
-        } else {
-          // Fluxo normal sem token na URL
-          const { data: { session } } = await supabase.auth.getSession();
-          if (mounted) {
-            const currentUser = session?.user ?? null;
-            setUser(currentUser);
-            if (currentUser) {
-              await fetchProfile(currentUser.id);
+            if (session) {
+                console.log('[Auth] Sessão recuperada com sucesso via URL.');
+                if (mounted) {
+                    setUser(session.user);
+                    await fetchProfile(session.user.id);
+                    
+                    // CRÍTICO: Limpar a hash para que o HashRouter não se confunda
+                    // Forçamos a ida para a raiz do app limpo
+                    window.location.hash = ''; 
+                    window.location.href = window.location.origin + window.location.pathname + '#/';
+                    setLoading(false);
+                    return;
+                }
             }
-            setLoading(false);
-          }
+        } catch (e) {
+            console.error('[Auth] Erro ao processar token da URL:', e);
         }
-      } catch (err) {
-        console.error("Erro na inicialização de sessão:", err);
-        if (mounted) setLoading(false);
+      }
+
+      // Fluxo padrão se não houver token na URL
+      const { data: { session } } = await supabase.auth.getSession();
+      if (mounted) {
+        if (session?.user) {
+            setUser(session.user);
+            await fetchProfile(session.user.id);
+        }
+        setLoading(false);
       }
     };
 
-    initializeAuth();
+    handleHashConflict();
 
+    // Listener para mudanças futuras
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[Auth] Evento de Mudança:', event);
+      console.log('[Auth] Evento:', event);
       if (!mounted) return;
       
-      const currentUser = session?.user ?? null;
-      
-      if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        const currentUser = session?.user ?? null;
         setUser(currentUser);
-        if (currentUser) await fetchProfile(currentUser.id);
-        
-        // Se a URL ainda tiver o token (ex: login rápido), limpamos para '/'
-        if (window.location.hash.includes('access_token')) {
-            window.location.hash = '/';
+        if (currentUser) {
+             await fetchProfile(currentUser.id);
         }
-
         setLoading(false);
+        
+        // Se ainda tiver lixo na URL, limpa
+        if (window.location.hash.includes('access_token')) {
+             window.location.hash = '';
+             window.location.href = window.location.origin + window.location.pathname + '#/';
+        }
       } 
       else if (event === 'SIGNED_OUT') {
         setUser(null);
@@ -142,7 +138,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const clearSessionData = () => {
     mockStorage.clearAll();
     sessionStorage.clear();
-    localStorage.clear(); // Limpa tudo para garantir
+    localStorage.clear();
     const cookies = document.cookie.split(";");
     for (let i = 0; i < cookies.length; i++) {
         const cookie = cookies[i];
@@ -161,14 +157,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(null);
       setProfile(null);
       setLoading(false);
-      window.location.hash = '/login';
-      window.location.reload();
+      window.location.href = '/'; // Força reload limpo
     }
   };
 
   const signInWithGoogle = async () => {
+    // Usamos origin pura para garantir que o redirecionamento volte para a raiz
+    // Onde o nosso interceptador acima vai pegar o token
     const redirectUrl = window.location.origin;
-    console.log('[Auth] Login Google -> Redirect:', redirectUrl);
+    
+    console.log('[Auth] Iniciando Google Auth. Callback:', redirectUrl);
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
