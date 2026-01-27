@@ -58,7 +58,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const initializeAuth = async () => {
       try {
-        // getSession é o método que lê o hash da URL (#access_token)
+        // getSession é o método "agressivo" que lê o token da URL assim que o app carrega
         const { data: { session } } = await supabase.auth.getSession();
         
         if (mounted) {
@@ -126,17 +126,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signInWithGoogle = async () => {
-    // IMPORTANTE: Removi a barra final para bater com o print do seu dashboard
-    // No print está: https://eventos.escsistemas.com
+    // IMPORTANTE: Use origin puro sem trailing slashes para bater com a configuração do Supabase
     const redirectUrl = window.location.origin;
     
+    console.log('[Auth] Iniciando OAuth com redirect:', redirectUrl);
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { 
         redirectTo: redirectUrl,
         queryParams: {
           access_type: 'offline',
-          prompt: 'select_account', // Garante que a tela do Gmail sempre apareça
+          prompt: 'select_account', // Força a escolha da conta para garantir a sessão correta
         }
       }
     });
