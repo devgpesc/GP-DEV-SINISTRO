@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase, mockStorage, isSupabaseConfigured } from '../services/supabaseClient';
 
@@ -112,9 +111,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             if (!error && data.session) {
               console.log('[Auth] Sessão criada manualmente via token da URL.');
-              // Limpa o hash para evitar loops e preparar para o HashRouter
-              // Define como '/' para o HashRouter ir para a home
-              window.location.hash = '/'; 
+              // Limpa o hash para evitar loops e preparar para o HashRouter.
+              // Usamos replaceState para limpar sem recarregar e definimos o hash para a raiz '/'
+              window.history.replaceState(null, '', window.location.pathname + '#/');
             } else {
               console.error('[Auth] Erro ao definir sessão manual:', error);
             }
@@ -152,8 +151,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         setUser(session?.user ?? null);
         if (session?.user) {
-           // Se o profile ainda não estiver carregado, mantemos loading visual apenas se desejado, 
-           // mas aqui preferimos não bloquear toda a UI em refresh
+           // Se o profile ainda não estiver carregado, mantemos loading visual apenas se desejado
            if (!profile) await fetchProfile(session.user.id, session.user.email);
         }
       } else if (event === 'SIGNED_OUT') {
@@ -208,7 +206,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const tenantId = profile?.tenant_id || null;
 
   // IMPORTANTE: Bloqueia a renderização dos filhos (Router) enquanto carrega.
-  // Isso impede que o HashRouter tente rotear o access_token da URL.
   if (loading) {
     return (
       <div className="flex h-screen w-screen flex-col items-center justify-center bg-[#0A1628] text-white">
