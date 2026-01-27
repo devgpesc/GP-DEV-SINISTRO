@@ -77,6 +77,24 @@ const normalizeVehicleData = (source, provider) => {
     };
   }
 
+  if (provider === 'detran-go') {
+    return {
+      plate: source.plate,
+      brand: source.brand_name,
+      model: source.model_name,
+      yearFab: source.manufacturing_year,
+      yearModel: source.model_year,
+      color: source.color_name,
+      fuel: source.fuel_type,
+      chassi: source.vin,
+      renavam: source.renavam_code,
+      uf: 'GO',
+      city: source.city,
+      status: source.status,
+      provider: 'Detran-GO'
+    };
+  }
+
   // Fallback Mock
   return {
     plate: source.plate,
@@ -157,6 +175,27 @@ async function fetchDetran(plate, customToken = null) {
   }
 }
 
+async function fetchDetranGO(plate, customToken = null) {
+  // Simulação Detran GO
+  if (customToken === 'invalid') throw new Error('Token Detran-GO inválido');
+  
+  await new Promise(r => setTimeout(r, 800)); // Latência simulada
+
+  return normalizeVehicleData({
+      plate: plate,
+      brand_name: 'HYUNDAI',
+      model_name: 'HB20 1.0 SENSE',
+      manufacturing_year: '2022',
+      model_year: '2022',
+      color_name: 'PRATA',
+      fuel_type: 'FLEX',
+      vin: '9BH...........',
+      renavam_code: '987654321',
+      city: 'GOIÂNIA',
+      status: 'EM CIRCULAÇÃO'
+  }, 'detran-go');
+}
+
 async function fetchMock(plate) {
   await new Promise(r => setTimeout(r, 600));
   if (plate === 'AAA0000') return null; // Simula não encontrado
@@ -201,8 +240,10 @@ app.get('/api/vehicles/lookup', async (req, res) => {
         result = await fetchAPIBrasil(cleanPlate, customToken);
     } else if (provider === 'detran') {
         result = await fetchDetran(cleanPlate, customToken);
+    } else if (provider === 'detran-go') {
+        result = await fetchDetranGO(cleanPlate, customToken);
     } else {
-        // AUTO MODE: Tenta APIBrasil -> Se falhar (erro técnico/limite), tenta Detran -> Se falhar, Mock
+        // AUTO MODE: Tenta APIBrasil -> Se falhar, tenta Detran-SP -> Se falhar, Mock
         try {
             console.log(`[Lookup] Tentando Primário (APIBrasil)...`);
             result = await fetchAPIBrasil(cleanPlate);
@@ -214,7 +255,7 @@ app.get('/api/vehicles/lookup', async (req, res) => {
             } catch (e2) {
                 console.warn(`[Lookup] Secundário falhou: ${e2.message}. Usando Mock.`);
                 errors.push(`Detran: ${e2.message}`);
-                result = await fetchMock(cleanPlate); // Último recurso (Mock para MVP)
+                result = await fetchMock(cleanPlate); // Último recurso
             }
         }
     }
