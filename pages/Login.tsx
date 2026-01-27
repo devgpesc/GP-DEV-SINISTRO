@@ -5,7 +5,7 @@ import { supabase } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { 
   Loader2, ArrowRight, ShieldCheck, 
-  LayoutDashboard, Bell, Lock, AlertCircle, CheckCircle2
+  LayoutDashboard, Bell, Lock, AlertCircle, RefreshCw
 } from 'lucide-react';
 
 const Login: React.FC = () => {
@@ -14,12 +14,12 @@ const Login: React.FC = () => {
   const [localLoading, setLocalLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
+  // Timer para mostrar o botão de "Reset" se demorar muito
+  const [showResetButton, setShowResetButton] = useState(false);
+  
   const navigate = useNavigate();
-  const { user, loading: authLoading, signInWithGoogle } = useAuth();
+  const { user, loading: authLoading, signInWithGoogle, clearSessionData } = useAuth();
 
-  // Lógica crítica para evitar o "Flash" da tela de login:
-  // Se a URL tem 'access_token', significa que o Google acabou de responder.
-  // Devemos mostrar o Loader até que o AuthContext processe isso e nos redirecione ou atualize 'user'.
   const isHashTokenPresent = window.location.hash.includes('access_token') || 
                              window.location.hash.includes('type=recovery');
 
@@ -28,6 +28,23 @@ const Login: React.FC = () => {
       navigate('/', { replace: true });
     }
   }, [user, authLoading, navigate]);
+
+  // Ativa o botão de reset após 5 segundos de espera
+  useEffect(() => {
+    let timer: any;
+    if (authLoading || isHashTokenPresent || localLoading) {
+        timer = setTimeout(() => setShowResetButton(true), 5000);
+    } else {
+        setShowResetButton(false);
+    }
+    return () => clearTimeout(timer);
+  }, [authLoading, isHashTokenPresent, localLoading]);
+
+  const handleForceReset = () => {
+      clearSessionData();
+      window.location.hash = '/login';
+      window.location.reload();
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,18 +74,15 @@ const Login: React.FC = () => {
     setError(null);
     try {
       await signInWithGoogle();
-      // Não definimos localLoading=false aqui porque a página vai redirecionar
     } catch (err: any) {
       setError("Erro ao iniciar Google Auth: " + err.message);
       setLocalLoading(false);
     }
   };
 
-  // Se estiver carregando globalmente, localmente, ou se houver um token na URL sendo processado
   if (authLoading || isHashTokenPresent || (localLoading && !error)) {
     return (
       <div className="min-h-screen bg-[#0A1628] flex flex-col items-center justify-center font-sans relative overflow-hidden">
-        {/* Background Effects */}
         <div className="absolute inset-0 bg-[linear-gradient(rgba(10,22,40,0.9),rgba(10,22,40,0.9)),url('https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop')] bg-cover bg-center"></div>
         <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500 animate-shimmer bg-[length:200%_100%]"></div>
         
@@ -78,9 +92,20 @@ const Login: React.FC = () => {
            </div>
            <div className="text-center">
              <h2 className="text-2xl font-bold text-white tracking-tight">ESC Solutions</h2>
-             <div className="flex items-center gap-3 mt-4 text-blue-200 text-sm font-medium">
-               <Loader2 className="animate-spin" size={16} />
-               <span>Autenticando acesso seguro...</span>
+             <div className="flex flex-col items-center gap-3 mt-4 text-blue-200 text-sm font-medium">
+               <div className="flex items-center gap-2">
+                 <Loader2 className="animate-spin" size={16} />
+                 <span>Autenticando acesso seguro...</span>
+               </div>
+               
+               {showResetButton && (
+                   <button 
+                     onClick={handleForceReset}
+                     className="mt-4 px-4 py-2 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-xs font-bold uppercase tracking-widest flex items-center gap-2 transition-all animate-in fade-in"
+                   >
+                     <RefreshCw size={14}/> Demorando muito? Reiniciar
+                   </button>
+               )}
              </div>
            </div>
         </div>
