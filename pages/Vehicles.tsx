@@ -1,10 +1,11 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, Search, Car, Hash, ShieldCheck, 
-  X, AlertCircle, Loader2, MoreVertical, ClipboardList
+  X, AlertCircle, Loader2, MoreVertical, ClipboardList,
+  CloudLightning
 } from 'lucide-react';
 import { vehicleService } from '../services/vehicleService';
+import { lookupService } from '../services/lookupService';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 import { Vehicle } from '../types';
 
@@ -13,6 +14,10 @@ const Vehicles: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Estados para busca de placa
+  const [isSearchingPlate, setIsSearchingPlate] = useState(false);
+  const [plateMessage, setPlateMessage] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     plate: '',
@@ -42,6 +47,36 @@ const Vehicles: React.FC = () => {
       setLoading(false);
     }
   }
+
+  const handlePlateLookup = async () => {
+    if (formData.plate.length < 7) return;
+
+    setIsSearchingPlate(true);
+    setPlateMessage('Consultando base DETRAN/FIPE...');
+
+    try {
+      const data = await lookupService.fetchPlate(formData.plate);
+      
+      if (data) {
+        setFormData(prev => ({
+          ...prev,
+          model: data.model,
+          brand: data.brand,
+          year: data.year,
+          chassi: data.chassi || prev.chassi // Algumas APIs gratuitas nao devolvem chassi completo
+        }));
+        setPlateMessage(`Veículo encontrado: ${data.brand} ${data.model}`);
+        // Limpa mensagem de sucesso após alguns segundos
+        setTimeout(() => setPlateMessage(null), 4000);
+      } else {
+        setPlateMessage('Placa não encontrada nas bases públicas.');
+      }
+    } catch (err) {
+      setPlateMessage('Erro ao consultar placa.');
+    } finally {
+      setIsSearchingPlate(false);
+    }
+  };
 
   const validateForm = async () => {
     const newErrors: Record<string, string> = {};
@@ -90,6 +125,7 @@ const Vehicles: React.FC = () => {
       await loadVehicles();
       setIsModalOpen(false);
       setFormData({ plate: '', renavam: '', chassi: '', model: '', brand: '', year: '', associateId: 'a1' });
+      setPlateMessage(null);
     } catch (err: any) {
       setErrors({ global: err.message || 'Erro ao salvar veículo' });
     } finally {
@@ -116,7 +152,7 @@ const Vehicles: React.FC = () => {
              </div>
            )}
            <button 
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => { setIsModalOpen(true); setFormData({ plate: '', renavam: '', chassi: '', model: '', brand: '', year: '', associateId: 'a1' }); setPlateMessage(null); }}
             className="flex items-center gap-2 px-8 py-3 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] hover:bg-blue-700 transition-all shadow-xl shadow-blue-600/20"
           >
             <Plus size={20} /> Novo Veículo
@@ -199,16 +235,34 @@ const Vehicles: React.FC = () => {
             <form onSubmit={handleSave} className="p-10 space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Placa Mercosul/Brasil *</label>
+                  <label className="flex justify-between items-end text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
+                    <span>Placa Mercosul/Brasil *</span>
+                    {plateMessage && (
+                        <span className={`text-[9px] flex items-center gap-1 ${plateMessage.includes('Erro') || plateMessage.includes('não') ? 'text-red-500' : 'text-green-600'}`}>
+                           {isSearchingPlate ? <Loader2 className="animate-spin" size={10}/> : null} {plateMessage}
+                        </span>
+                    )}
+                  </label>
                   <div className="relative">
                     <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                     <input 
                       required
-                      className={`w-full pl-12 pr-4 py-4 bg-slate-50 border rounded-2xl font-black uppercase outline-none transition-all text-lg tracking-[0.2em] ${errors.plate ? 'border-red-300 ring-red-100 ring-4' : 'border-slate-100 focus:ring-4 focus:ring-blue-500/5'}`}
+                      className={`w-full pl-12 pr-12 py-4 bg-slate-50 border rounded-2xl font-black uppercase outline-none transition-all text-lg tracking-[0.2em] ${errors.plate ? 'border-red-300 ring-red-100 ring-4' : 'border-slate-100 focus:ring-4 focus:ring-blue-500/5'} ${isSearchingPlate ? 'opacity-70' : ''}`}
                       placeholder="ABC1D23"
+                      maxLength={8}
                       value={formData.plate}
-                      onChange={(e) => setFormData({...formData, plate: e.target.value.toUpperCase()})}
+                      onChange={(e) => setFormData({...formData, plate: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '')})}
+                      onBlur={handlePlateLookup}
                     />
+                    <button 
+                        type="button" 
+                        onClick={handlePlateLookup}
+                        disabled={isSearchingPlate}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors" 
+                        title="Buscar Placa"
+                    >
+                        {isSearchingPlate ? <Loader2 className="animate-spin" size={18}/> : <CloudLightning size={18}/>}
+                    </button>
                   </div>
                   {errors.plate && <p className="text-[10px] text-red-500 mt-2 font-black uppercase flex items-center gap-1"><AlertCircle size={12}/> {errors.plate}</p>}
                 </div>
@@ -246,9 +300,15 @@ const Vehicles: React.FC = () => {
                   <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/5 transition-all text-sm" value={formData.model} onChange={(e) => setFormData({...formData, model: e.target.value})} />
                 </div>
 
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Fabricante</label>
-                  <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/5 transition-all text-sm" value={formData.brand} onChange={(e) => setFormData({...formData, brand: e.target.value})} />
+                <div className="grid grid-cols-2 gap-4">
+                   <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Fabricante</label>
+                      <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/5 transition-all text-sm" value={formData.brand} onChange={(e) => setFormData({...formData, brand: e.target.value})} />
+                   </div>
+                   <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Ano</label>
+                      <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/5 transition-all text-sm" value={formData.year} onChange={(e) => setFormData({...formData, year: e.target.value})} />
+                   </div>
                 </div>
               </div>
 

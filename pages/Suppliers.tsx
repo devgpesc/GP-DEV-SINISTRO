@@ -1,12 +1,12 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, Search, Star, MessageCircle, MapPin, X, 
   LayoutGrid, List, Edit, Trash2, Shield, Loader2, 
-  TrendingUp, Clock
+  TrendingUp, Clock, Globe
 } from 'lucide-react';
 import { Supplier } from '../types';
 import { mockStorage, isSupabaseConfigured, supabase } from '../services/supabaseClient';
+import { lookupService } from '../services/lookupService';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const Suppliers: React.FC = () => {
@@ -17,7 +17,10 @@ const Suppliers: React.FC = () => {
   const [supplierToEdit, setSupplierToEdit] = useState<Supplier | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Estado específico para o Loading da busca de CNPJ
   const [isLookingUp, setIsLookingUp] = useState(false);
+  const [lookupMessage, setLookupMessage] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
     name: '', cnpj: '', segment: 'Peças' as any, whatsapp: '', email: '', city: '', status: 'Ativo' as any, rating: 5
@@ -54,15 +57,31 @@ const Suppliers: React.FC = () => {
 
   const handleCNPJLookup = async () => {
     const cleanCnpj = formData.cnpj.replace(/\D/g, '');
-    if (cleanCnpj.length !== 11 && cleanCnpj.length !== 14) return;
+    if (cleanCnpj.length < 14) return;
+    
     setIsLookingUp(true);
+    setLookupMessage('Buscando na Receita Federal...');
+    
     try {
-      const response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cleanCnpj}`);
-      if (response.ok) {
-        const data = await response.json();
-        setFormData(prev => ({ ...prev, name: data.razao_social || data.nome_fantasia || prev.name, city: data.municipio || prev.city }));
+      const data = await lookupService.fetchCNPJ(cleanCnpj);
+      if (data) {
+        setFormData(prev => ({
+          ...prev,
+          name: data.name || data.fantasy || prev.name,
+          city: data.city || prev.city,
+          email: data.email || prev.email,
+          whatsapp: data.phone || prev.whatsapp
+        }));
+        setLookupMessage('Dados encontrados!');
+        setTimeout(() => setLookupMessage(null), 3000);
+      } else {
+        setLookupMessage('CNPJ não encontrado na base pública.');
       }
-    } catch (e) {} finally { setIsLookingUp(false); }
+    } catch (e) {
+        setLookupMessage('Erro ao conectar com API.');
+    } finally { 
+      setIsLookingUp(false); 
+    }
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -84,6 +103,7 @@ const Suppliers: React.FC = () => {
     mockStorage.set('suppliers', updated);
     setIsModalOpen(false);
     setSupplierToEdit(null);
+    setLookupMessage(null);
   };
 
   const filtered = useMemo(() => {
@@ -150,30 +170,49 @@ const Suppliers: React.FC = () => {
             <form onSubmit={handleSave} className="p-10 space-y-6">
               <div className="grid grid-cols-2 gap-x-8 gap-y-6">
                 <div className="col-span-2">
-                  <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">CNPJ / CPF *</label>
+                  <label className="flex justify-between items-end text-[10px] font-black uppercase text-slate-400 mb-2">
+                    <span>CNPJ / CPF *</span>
+                    {lookupMessage && <span className={`text-${lookupMessage.includes('Erro') || lookupMessage.includes('não') ? 'red' : 'green'}-500 flex items-center gap-1`}>{isLookingUp && <Loader2 className="animate-spin" size={10}/>} {lookupMessage}</span>}
+                  </label>
                   <div className="relative">
                     <Shield className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                    <input required className="w-full pl-12 pr-12 py-4 bg-[#F8FAFC] border border-slate-100 rounded-2xl font-bold outline-none" value={formData.cnpj} onChange={e => setFormData({...formData, cnpj: e.target.value})} onBlur={handleCNPJLookup} />
+                    <input 
+                        required 
+                        className={`w-full pl-12 pr-12 py-4 bg-[#F8FAFC] border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all ${isLookingUp ? 'opacity-70' : ''}`}
+                        value={formData.cnpj} 
+                        onChange={e => setFormData({...formData, cnpj: e.target.value})} 
+                        onBlur={handleCNPJLookup}
+                        placeholder="00.000.000/0001-00"
+                    />
+                    {isLookingUp ? (
+                       <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                          <Loader2 className="animate-spin text-blue-600" size={18} />
+                       </div>
+                    ) : (
+                       <button type="button" onClick={handleCNPJLookup} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Buscar Dados">
+                          <Globe size={18} />
+                       </button>
+                    )}
                   </div>
                 </div>
                 <div className="col-span-2">
                   <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Razão Social *</label>
-                  <input required className="w-full p-4 bg-[#F8FAFC] border border-slate-100 rounded-2xl font-bold outline-none" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                  <input required className="w-full p-4 bg-[#F8FAFC] border border-slate-100 rounded-2xl font-bold outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
                 </div>
                 <div>
                   <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Cidade de Operação *</label>
-                  <input required className="w-full p-4 bg-[#F8FAFC] border border-slate-100 rounded-2xl font-bold outline-none" value={formData.city} onChange={e => setFormData({...formData, city: e.target.value.toUpperCase()})} />
+                  <input required className="w-full p-4 bg-[#F8FAFC] border border-slate-100 rounded-2xl font-bold outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20" value={formData.city} onChange={e => setFormData({...formData, city: e.target.value.toUpperCase()})} />
                 </div>
                 <div>
                   <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Avaliação (1-5)</label>
                   <div className="flex items-center gap-2 p-4 bg-[#F8FAFC] border border-slate-100 rounded-2xl">
                     <Star className="text-amber-500" fill="currentColor" size={20}/>
-                    <input type="number" step="0.5" min="1" max="5" className="bg-transparent font-black w-full" value={formData.rating} onChange={e => setFormData({...formData, rating: parseFloat(e.target.value)})} />
+                    <input type="number" step="0.5" min="1" max="5" className="bg-transparent font-black w-full outline-none" value={formData.rating} onChange={e => setFormData({...formData, rating: parseFloat(e.target.value)})} />
                   </div>
                 </div>
               </div>
               <div className="flex justify-end gap-6 pt-6 border-t border-slate-50 items-center">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="text-slate-400 font-black uppercase text-[12px] tracking-widest">CANCELAR</button>
+                <button type="button" onClick={() => setIsModalOpen(false)} className="text-slate-400 font-black uppercase text-[12px] tracking-widest hover:text-slate-600 transition-colors">CANCELAR</button>
                 <button type="submit" className="px-12 py-4 bg-blue-600 text-white rounded-full font-black shadow-xl shadow-blue-600/30 uppercase text-xs tracking-widest hover:bg-blue-700 transition-all">FINALIZAR CADASTRO</button>
               </div>
             </form>
