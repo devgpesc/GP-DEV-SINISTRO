@@ -16,12 +16,11 @@ const Login: React.FC = () => {
   const navigate = useNavigate();
   const { user, loading: authLoading, clearSessionData, signInWithGoogle } = useAuth();
 
-  // Detecta se há um token na URL (retorno do Google)
+  // Detecta se há um token na URL para manter o estado de carregamento
   const hasAuthToken = window.location.hash.includes('access_token') || 
                        window.location.href.includes('access_token');
 
   useEffect(() => {
-    // Se o usuário estiver logado, navega imediatamente
     if (user && !authLoading) {
       navigate('/', { replace: true });
     }
@@ -70,7 +69,7 @@ const Login: React.FC = () => {
     }
   };
 
-  // Estado de Transição Crítico para evitar o loop visual
+  // Carregamento de transição para o Google OAuth
   if (hasAuthToken || (authLoading && !localLoading)) {
     return (
       <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center font-sans">
@@ -88,14 +87,12 @@ const Login: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-white flex font-sans overflow-hidden">
-      {/* LADO ESQUERDO: Branding Institucional (Horizontal Split) */}
+      {/* LADO ESQUERDO: Branding Institucional (Limpo) */}
       <div className="hidden lg:flex w-1/2 bg-[#020617] relative flex-col justify-between p-20 overflow-hidden border-r border-slate-900">
-        {/* Gradients de Fundo */}
         <div className="absolute top-[-10%] left-[-10%] w-[80%] h-[80%] bg-blue-600/10 rounded-full blur-[160px]"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-indigo-600/5 rounded-full blur-[140px]"></div>
         
         <div className="relative z-10">
-          {/* Logo e Nome da Empresa no Topo */}
+          {/* Logo e Nome no Topo */}
           <div className="flex items-center gap-4 mb-24">
             <div className="p-3 bg-blue-600 rounded-2xl text-white shadow-xl shadow-blue-600/30">
               <Car size={32} />
@@ -114,7 +111,7 @@ const Login: React.FC = () => {
             </h1>
             <div className="h-1.5 w-24 bg-blue-600 rounded-full"></div>
             <p className="text-slate-500 text-xl font-medium leading-relaxed max-w-sm">
-              Gestão de sinistros e suprimentos em uma plataforma unificada.
+              Gestão inteligente de sinistros e suprimentos.
             </p>
           </div>
         </div>
@@ -126,20 +123,17 @@ const Login: React.FC = () => {
 
       {/* LADO DIREITO: Formulário de Acesso */}
       <div className="flex-1 flex flex-col items-center justify-center p-8 md:p-16 bg-[#F8FAFC] lg:bg-white">
-        <div className="w-full max-w-sm space-y-10">
+        <div className="w-full max-w-sm space-y-12">
           
-          {/* Branding Mobile */}
-          <div className="lg:hidden text-center mb-10">
-             <div className="inline-flex items-center gap-3 p-4 bg-slate-900 rounded-[24px] text-white mb-6">
-                <Car size={28} />
-                <span className="font-black text-sm uppercase tracking-tight">Esc Solutions</span>
+          {/* Topo Institucional Mobile/Direito */}
+          <div className="text-center lg:text-left">
+             <div className="inline-flex items-center gap-3 mb-8 lg:mb-12">
+                <div className="p-2.5 bg-slate-900 rounded-xl text-white">
+                  <Car size={24} />
+                </div>
+                <span className="font-black text-slate-900 uppercase tracking-tight text-lg">Esc Solutions</span>
              </div>
-             <h1 className="text-4xl font-black text-[#020617] tracking-tighter">AutoClaims<span className="text-blue-600">Pro</span></h1>
-          </div>
-
-          <div className="space-y-2">
-            <h3 className="text-4xl font-black text-slate-900 tracking-tighter">Entrar</h3>
-            <p className="text-slate-400 font-bold uppercase tracking-[0.2em] text-[10px]">Identifique-se para continuar</p>
+             <h3 className="text-4xl font-black text-slate-900 tracking-tighter">Entrar no Sistema</h3>
           </div>
 
           {error && (
@@ -159,7 +153,7 @@ const Login: React.FC = () => {
                   required
                   autoFocus
                   className="w-full pl-14 pr-6 py-5 bg-white border border-slate-200 rounded-[20px] focus:ring-[6px] focus:ring-blue-600/5 focus:border-blue-600/20 outline-none font-bold text-slate-800 transition-all placeholder:text-slate-200 text-sm shadow-sm"
-                  placeholder="seu@email.com"
+                  placeholder="exemplo@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
@@ -169,7 +163,7 @@ const Login: React.FC = () => {
             <div className="space-y-2">
               <div className="flex justify-between items-center px-2">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Senha</label>
-                <button type="button" className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline">Esqueci</button>
+                <button type="button" className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline">Esqueci a senha</button>
               </div>
               <div className="relative group">
                 <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-600 transition-colors" size={20} />
@@ -191,7 +185,7 @@ const Login: React.FC = () => {
             >
               {localLoading ? <Loader2 className="animate-spin" size={24} /> : (
                 <>
-                  Acessar Sistema <ArrowRight size={18} className="group-hover:translate-x-1.5 transition-transform" />
+                  Entrar na Produção <ArrowRight size={18} className="group-hover:translate-x-1.5 transition-transform" />
                 </>
               )}
             </button>
@@ -199,7 +193,7 @@ const Login: React.FC = () => {
 
           <div className="relative flex items-center justify-center py-4">
             <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-100"></div></div>
-            <span className="relative bg-white px-6 text-[9px] font-black text-slate-300 uppercase tracking-[0.4em]">Alternativa</span>
+            <span className="relative bg-white px-6 text-[9px] font-black text-slate-300 uppercase tracking-[0.4em]">Ou acessar com</span>
           </div>
 
           <button 
@@ -222,7 +216,7 @@ const Login: React.FC = () => {
               className="flex items-center gap-2 text-[10px] font-black text-slate-300 uppercase tracking-widest hover:text-blue-600 transition-all group"
             >
               <RefreshCw size={14} className="group-hover:rotate-180 transition-transform duration-700" /> 
-              Atualizar Sistema
+              Limpar Sessão
             </button>
             <p className="text-[11px] font-black text-slate-300 uppercase tracking-[0.6em]">Esc Solutions 2026</p>
           </div>

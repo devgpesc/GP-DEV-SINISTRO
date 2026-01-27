@@ -58,7 +58,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const initializeAuth = async () => {
       try {
-        // Tenta capturar sessão ativa imediatamente (importante para redirecionamentos OAuth)
+        // Verifica se há tokens na URL antes de decidir que o usuário não está logado
+        const hash = window.location.hash;
+        const hasToken = hash.includes('access_token') || hash.includes('error_description');
+        
         const { data: { session } } = await supabase.auth.getSession();
         
         if (mounted) {
@@ -67,7 +70,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (currentUser) {
             await fetchProfile(currentUser.id);
           }
-          setLoading(false);
+          
+          // Se houver token na URL, mantemos o loading um pouco mais para o Supabase processar
+          if (hasToken && !currentUser) {
+            setLoading(true);
+          } else {
+            setLoading(false);
+          }
         }
       } catch (err) {
         console.error("Erro na inicialização de sessão:", err);
@@ -78,6 +87,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initializeAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('[Auth] Evento:', event);
       if (!mounted) return;
       
       const currentUser = session?.user ?? null;
@@ -85,11 +95,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
         if (currentUser) await fetchProfile(currentUser.id);
+        setLoading(false);
       } else if (event === 'SIGNED_OUT') {
         setProfile(null);
+        setLoading(false);
       }
-      
-      setLoading(false);
     });
 
     return () => {
@@ -101,7 +111,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const clearSessionData = () => {
     mockStorage.clearAll();
     sessionStorage.clear();
-    // Limpeza rigorosa para evitar loops
     const cookies = document.cookie.split(";");
     for (let i = 0; i < cookies.length; i++) {
         const cookie = cookies[i];
@@ -125,11 +134,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signInWithGoogle = async () => {
-    // Força o redirectTo para a origem limpa, sem a hash do router
-    const redirectUrl = window.location.origin;
+    const redirectUrl = window.location.origin + window.location.pathname;
     
-    console.log('[Auth] Google OAuth Redirect:', redirectUrl);
-
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { 
