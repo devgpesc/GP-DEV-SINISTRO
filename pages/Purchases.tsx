@@ -5,7 +5,7 @@ import {
   CheckCircle2, XCircle, Send, Printer, MoreVertical, 
   Clock, DollarSign, UserCheck, X, ChevronDown, ListFilter,
   Eye, EyeOff, Share2, Download, ShieldCheck, AlertTriangle,
-  Loader2, Info
+  Loader2, Info, Trash2
 } from 'lucide-react';
 import { PurchaseOrder } from '../types';
 import { mockStorage } from '../services/supabaseClient';
@@ -17,6 +17,9 @@ const Purchases: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('Todos');
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
+  
+  // Estado para controlar qual menu está aberto (pelo ID da OC)
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   // Estado para Notificações (Toast)
   const [toast, setToast] = useState<{ show: boolean; title: string; message: string; type: 'success' | 'info' | 'loading' } | null>(null);
@@ -24,7 +27,7 @@ const Purchases: React.FC = () => {
   // Estado para o Modal de Confirmação Moderno
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
-    type: 'approve' | 'cancel' | null;
+    type: 'approve' | 'cancel' | 'delete' | null;
     orderId: string | null;
     orderCode: string | null;
     amount?: number;
@@ -35,6 +38,15 @@ const Purchases: React.FC = () => {
     const savedOrders = mockStorage.get('purchase_orders') || [];
     setOrders(savedOrders);
   }, []);
+
+  // Fechar menu ao clicar fora
+  useEffect(() => {
+    const handleClickOutside = () => setOpenMenuId(null);
+    if (openMenuId) {
+      document.addEventListener('click', handleClickOutside);
+    }
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [openMenuId]);
 
   // Auto-dismiss toast
   useEffect(() => {
@@ -68,6 +80,7 @@ const Purchases: React.FC = () => {
       orderCode: order.code,
       amount: order.total
     });
+    setOpenMenuId(null);
   };
 
   // Abre o modal de cancelamento
@@ -79,6 +92,19 @@ const Purchases: React.FC = () => {
       orderCode: order.code,
       amount: order.total
     });
+    setOpenMenuId(null);
+  };
+
+  // Abre o modal de exclusão
+  const handleRequestDelete = (order: PurchaseOrder) => {
+    setConfirmModal({
+      isOpen: true,
+      type: 'delete',
+      orderId: order.id,
+      orderCode: order.code,
+      amount: order.total
+    });
+    setOpenMenuId(null);
   };
 
   // Executa a ação após confirmação no modal
@@ -87,9 +113,14 @@ const Purchases: React.FC = () => {
       if (confirmModal.type === 'approve') {
         updateOrderStatus(confirmModal.orderId, 'Aprovada');
         setToast({ show: true, title: 'Sucesso', message: `Ordem ${confirmModal.orderCode} aprovada.`, type: 'success' });
-      } else {
+      } else if (confirmModal.type === 'cancel') {
         updateOrderStatus(confirmModal.orderId, 'Cancelada');
         setToast({ show: true, title: 'Cancelado', message: `Ordem ${confirmModal.orderCode} foi cancelada.`, type: 'info' });
+      } else if (confirmModal.type === 'delete') {
+        const updated = orders.filter(o => o.id !== confirmModal.orderId);
+        setOrders(updated);
+        mockStorage.set('purchase_orders', updated);
+        setToast({ show: true, title: 'Excluído', message: `Ordem ${confirmModal.orderCode} removida permanentemente.`, type: 'success' });
       }
       setConfirmModal({ isOpen: false, type: null, orderId: null, orderCode: null });
     }
@@ -300,20 +331,36 @@ const Purchases: React.FC = () => {
                 >
                   <Printer size={20}/>
                 </button>
-                <div className="relative group/more">
-                  <button className="p-3 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-xl transition-all">
+                <div className="relative">
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === order.id ? null : order.id); }}
+                    className={`p-3 rounded-xl transition-all ${openMenuId === order.id ? 'bg-slate-900 text-white' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
+                  >
                     <MoreVertical size={20}/>
                   </button>
-                  <div className="absolute right-0 bottom-full mb-2 w-48 bg-white border border-slate-100 rounded-2xl shadow-2xl hidden group-hover/more:block z-20 animate-in fade-in slide-in-from-bottom-2">
-                    <button className="w-full px-5 py-3 text-left text-xs font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50">
-                      <Eye size={16}/> Visualizar Itens
-                    </button>
-                    {order.status !== 'Cancelada' && (
-                        <button onClick={() => handleRequestCancel(order)} className="w-full px-5 py-3 text-left text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-3">
-                          <XCircle size={16}/> Cancelar OC
+                  
+                  {/* Dropdown Menu - Click Activated */}
+                  {openMenuId === order.id && (
+                    <div className="absolute right-0 bottom-full mb-2 w-56 bg-white border border-slate-100 rounded-2xl shadow-2xl z-20 animate-in fade-in slide-in-from-bottom-2 overflow-hidden">
+                        <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
+                            <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Opções da OC</p>
+                        </div>
+                        <button 
+                            onClick={() => setOpenMenuId(null)}
+                            className="w-full px-5 py-3 text-left text-xs font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50"
+                        >
+                            <Eye size={16}/> Visualizar Itens
                         </button>
-                    )}
-                  </div>
+                        {order.status !== 'Cancelada' && (
+                            <button onClick={() => handleRequestCancel(order)} className="w-full px-5 py-3 text-left text-xs font-bold text-amber-600 hover:bg-amber-50 flex items-center gap-3 border-b border-slate-50">
+                                <XCircle size={16}/> Cancelar OC
+                            </button>
+                        )}
+                        <button onClick={() => handleRequestDelete(order)} className="w-full px-5 py-3 text-left text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-3">
+                            <Trash2 size={16}/> Excluir Registro
+                        </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -345,19 +392,23 @@ const Purchases: React.FC = () => {
             <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 transition-colors ${
               confirmModal.type === 'approve' 
                 ? 'bg-green-50 text-green-500 shadow-xl shadow-green-500/10' 
-                : 'bg-red-50 text-red-500 shadow-xl shadow-red-500/10'
+                : confirmModal.type === 'delete'
+                    ? 'bg-red-50 text-red-500 shadow-xl shadow-red-500/10'
+                    : 'bg-amber-50 text-amber-500 shadow-xl shadow-amber-500/10'
             }`}>
-              {confirmModal.type === 'approve' ? <ShieldCheck size={40} /> : <AlertTriangle size={40} />}
+              {confirmModal.type === 'approve' ? <ShieldCheck size={40} /> : confirmModal.type === 'delete' ? <Trash2 size={40} /> : <AlertTriangle size={40} />}
             </div>
 
             <h3 className="text-xl font-black text-slate-800 mb-2">
-              {confirmModal.type === 'approve' ? 'Aprovar Compra?' : 'Cancelar Ordem?'}
+              {confirmModal.type === 'approve' ? 'Aprovar Compra?' : confirmModal.type === 'delete' ? 'Excluir Definitivamente?' : 'Cancelar Ordem?'}
             </h3>
             
             <p className="text-sm text-slate-500 font-medium mb-4 leading-relaxed">
               {confirmModal.type === 'approve' 
                 ? `Você está prestes a aprovar financeiramente a OC ${confirmModal.orderCode}.`
-                : `Você tem certeza que deseja cancelar a OC ${confirmModal.orderCode}?`
+                : confirmModal.type === 'delete'
+                    ? `Atenção: A OC ${confirmModal.orderCode} será removida do sistema e não poderá ser recuperada.`
+                    : `Você tem certeza que deseja cancelar a OC ${confirmModal.orderCode}?`
               }
             </p>
 
@@ -385,7 +436,7 @@ const Purchases: React.FC = () => {
                     : 'bg-red-500 hover:bg-red-600 shadow-red-500/20'
                 }`}
               >
-                {confirmModal.type === 'approve' ? 'Confirmar Aprovação' : 'Confirmar Cancelamento'}
+                {confirmModal.type === 'approve' ? 'Confirmar Aprovação' : confirmModal.type === 'delete' ? 'Excluir Agora' : 'Confirmar Cancelamento'}
               </button>
             </div>
 
