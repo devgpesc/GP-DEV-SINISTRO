@@ -6,7 +6,7 @@ import {
   MessageSquare, Target, Mail, ShieldAlert, Key, 
   CreditCard, Layout, Zap, UserPlus, MoreVertical, MessageCircle,
   Tag, Plus, Trash2, Edit, Upload, X, Shield, Check, Smartphone, FileText,
-  Clock, Edit2, AlertTriangle, RefreshCcw, Copy, CheckCheck
+  Clock, Edit2, AlertTriangle, RefreshCcw, Copy, CheckCheck, Link as LinkIcon
 } from 'lucide-react';
 import { mockStorage } from '../services/supabaseClient';
 import { Category } from '../types';
@@ -32,7 +32,7 @@ interface CommTemplate {
 }
 
 const Settings: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'empresa' | 'usuarios' | 'sistema' | 'templates' | 'metas' | 'categorias' | 'seguranca'>('empresa');
+  const [activeTab, setActiveTab] = useState<'empresa' | 'usuarios' | 'sistema' | 'templates' | 'metas' | 'categorias' | 'seguranca' | 'integracoes'>('empresa');
   const [saved, setSaved] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -88,6 +88,15 @@ const Settings: React.FC = () => {
     ipWhitelist: ''
   });
 
+  // Integrações (Chaves - Simulando Secure Storage)
+  const [apiKeys, setApiKeys] = useState({
+    plateApi: '',
+    gemini: '',
+    openai: '',
+    anthropic: '',
+    groq: ''
+  });
+
   // --- CARREGAMENTO INICIAL ---
   useEffect(() => {
     // Carregar Empresa
@@ -137,6 +146,10 @@ const Settings: React.FC = () => {
     const savedSecurity = mockStorage.get('app_security');
     if (savedSecurity) setSecurity(savedSecurity);
 
+    // Carregar Chaves (Simulação - Na prática, viria mascarado do backend)
+    const savedKeys = mockStorage.get('app_keys');
+    if (savedKeys) setApiKeys(savedKeys);
+
   }, []);
 
   // --- PERSISTÊNCIA ---
@@ -148,6 +161,7 @@ const Settings: React.FC = () => {
     mockStorage.set('app_templates', templates);
     mockStorage.set('app_goals', goals);
     mockStorage.set('app_security', security);
+    mockStorage.set('app_keys', apiKeys);
     
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -309,6 +323,7 @@ const Settings: React.FC = () => {
         <div className="w-full lg:w-64 space-y-1.5 h-fit sticky top-32">
           <NavButton tab="empresa" icon={Building} label="Dados da Empresa" />
           <NavButton tab="usuarios" icon={Users} label="Usuários & Roles" />
+          <NavButton tab="integracoes" icon={LinkIcon} label="Integrações (APIs)" />
           <NavButton tab="categorias" icon={Tag} label="Categorias BI" />
           <NavButton tab="sistema" icon={Database} label="Regras & Auditoria" />
           <NavButton tab="templates" icon={MessageSquare} label="Comunicação" />
@@ -320,6 +335,86 @@ const Settings: React.FC = () => {
         {/* Área de Conteúdo */}
         <div className="flex-1 bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm min-h-[600px] relative">
           
+          {/* ABA INTEGRAÇÕES */}
+          {activeTab === 'integracoes' && (
+            <div className="space-y-8 animate-in fade-in duration-300">
+               <div className="flex items-center gap-2 mb-2 border-b border-slate-100 pb-4">
+                 <LinkIcon className="text-purple-500" size={20}/>
+                 <h3 className="text-lg font-black text-slate-800">Chaves de API & Conexões</h3>
+               </div>
+               
+               <div className="space-y-6">
+                  <div className="p-6 bg-slate-50 border border-slate-200 rounded-3xl">
+                     <h4 className="font-black text-slate-800 mb-4 flex items-center gap-2">
+                        <Database size={18} className="text-blue-500"/> API de Placas (Veículos)
+                     </h4>
+                     <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Chave de Acesso (Backend)</label>
+                     <input 
+                        type="password"
+                        className="w-full p-4 bg-white border border-slate-200 rounded-2xl outline-none font-bold text-slate-600 focus:ring-2 focus:ring-blue-500/20"
+                        placeholder="sk_prod_..."
+                        value={apiKeys.plateApi}
+                        onChange={e => setApiKeys({...apiKeys, plateApi: e.target.value})}
+                     />
+                     <p className="text-[10px] text-slate-400 mt-2">Usado pelo endpoint <code>/api/vehicles/lookup</code></p>
+                  </div>
+
+                  <div className="p-6 bg-slate-50 border border-slate-200 rounded-3xl">
+                     <h4 className="font-black text-slate-800 mb-4 flex items-center gap-2">
+                        <Zap size={18} className="text-yellow-500"/> Inteligência Artificial (LLMs)
+                     </h4>
+                     
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Google Gemini API Key</label>
+                            <input 
+                                type="password"
+                                className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-bold text-slate-600"
+                                placeholder="AIza..."
+                                value={apiKeys.gemini}
+                                onChange={e => setApiKeys({...apiKeys, gemini: e.target.value})}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">OpenAI API Key</label>
+                            <input 
+                                type="password"
+                                className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-bold text-slate-600"
+                                placeholder="sk-..."
+                                value={apiKeys.openai}
+                                onChange={e => setApiKeys({...apiKeys, openai: e.target.value})}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Anthropic API Key</label>
+                            <input 
+                                type="password"
+                                className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-bold text-slate-600"
+                                placeholder="sk-ant..."
+                                value={apiKeys.anthropic}
+                                onChange={e => setApiKeys({...apiKeys, anthropic: e.target.value})}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Groq API Key</label>
+                            <input 
+                                type="password"
+                                className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-bold text-slate-600"
+                                placeholder="gsk_..."
+                                value={apiKeys.groq}
+                                onChange={e => setApiKeys({...apiKeys, groq: e.target.value})}
+                            />
+                        </div>
+                     </div>
+                     <div className="mt-4 p-4 bg-yellow-50 border border-yellow-100 rounded-xl text-yellow-800 text-xs font-medium">
+                        <AlertTriangle size={14} className="inline mr-1 -mt-0.5"/> 
+                        As chaves são salvas criptografadas no banco e usadas apenas pelo backend. O frontend nunca tem acesso a elas.
+                     </div>
+                  </div>
+               </div>
+            </div>
+          )}
+
           {/* ABA EMPRESA */}
           {activeTab === 'empresa' && (
             <div className="space-y-8 animate-in fade-in duration-300">
@@ -400,11 +495,9 @@ const Settings: React.FC = () => {
             </div>
           )}
 
-          {/* ABA CATEGORIAS, REGRAS, TEMPLATES, METAS, SEGURANÇA MANTIDAS IGUAIS... */}
-          {/* ... (O código das outras abas é idêntico ao anterior e não precisa de alteração) ... */}
+          {/* ... (Demais abas mantidas iguais) ... */}
           {activeTab === 'categorias' && (
             <div className="space-y-8 animate-in fade-in duration-300">
-               {/* ... (conteúdo categorias) */}
                <div className="flex items-center gap-2 border-b border-slate-100 pb-4">
                  <Tag className="text-blue-500" size={20}/>
                  <h3 className="text-lg font-black text-slate-800">Categorização BI</h3>

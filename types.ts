@@ -74,40 +74,55 @@ export interface Delivery {
   receivedAt: string;
 }
 
-export interface QuoteCell {
-  price: number;
-  selected: boolean;
-  deadline?: number;
-}
-
-export interface QuoteItem {
+// --- VEÍCULOS (NOVA ESTRUTURA) ---
+export interface Vehicle {
+  // Campos de Sistema
   id: string;
-  catalogId: string;
-  name: string;
-  quantity: number;
-  prices: Record<string, QuoteCell>; // supplierId -> cell
-}
-
-export interface Quotation {
-  id: string;
-  protocol: string;
-  eventId: string;
-  items: QuoteItem[];
-  suppliers: string[];
-  status: 'Aberta' | 'Fechada' | 'Cancelada';
-  sendMode: 'auto' | 'manual';
   createdAt: string;
+  
+  // Campos Preenchidos pelo Usuário
+  plate: string;          // Placa (Chave de busca)
+  associateId: string;    // Proprietário
+  km: number;             // KM Atual
+  status: 'Ativo' | 'Inativo' | 'Manutenção';
+  notes?: string;
+
+  // Campos Automáticos (Via API / Read-only recommended)
+  brand: string;          // Marca
+  model: string;          // Modelo
+  version?: string;       // Versão
+  yearFab: string;        // Ano Fabricação
+  yearModel: string;      // Ano Modelo
+  color: string;          // Cor
+  fuel: string;           // Combustível
+  type: string;           // Tipo (Automóvel, Moto, etc)
+  chassi?: string;        // Chassi
+  renavam?: string;       // Renavam
+  uf?: string;            // UF de registro
+  city?: string;          // Município de registro
 }
 
-export interface EventHistoryEntry {
-  id: string;
-  fromStatus: EventStatus;
-  toStatus: EventStatus;
-  comment: string;
-  user: string;
-  timestamp: string;
+// --- LLM & AI ---
+export type LLMProvider = 'google' | 'openai' | 'anthropic' | 'groq';
+
+export type LLMModel = 
+  | 'gemini-3-flash-preview' 
+  | 'gemini-3-pro-preview' 
+  | 'gpt-4.1-mini' 
+  | 'gpt-4.1' 
+  | 'claude-3.5-sonnet' 
+  | 'claude-3.5-haiku' 
+  | 'llama-3.3-70b' 
+  | 'mixtral-8x7b';
+
+export interface AIConfig {
+  provider: LLMProvider;
+  model: LLMModel;
+  temperature: number;
+  maxTokens?: number;
 }
 
+// Interfaces Antigas (Mantidas para compatibilidade se necessário)
 export interface Event {
   id: string;
   protocol: string;
@@ -121,33 +136,7 @@ export interface Event {
   createdBy: string;
   description: string;
   attachments: any[];
-  history: EventHistoryEntry[];
-}
-
-export interface Vehicle {
-  id: string;
-  associateId: string;
-  createdAt: string;
-  
-  // Identificação
-  plate: string;
-  chassi?: string;
-  renavam?: string;
-  uf?: string;
-  municipio?: string;
-
-  // Dados Técnicos
-  brand: string;      // Marca
-  model: string;      // Modelo
-  version?: string;   // Versão
-  yearFab?: string;   // Ano Fabricação
-  yearModel?: string; // Ano Modelo
-  color?: string;     // Cor
-  fuel?: string;      // Combustível
-  type?: string;      // Tipo (Carro, Moto...)
-  
-  // Retrocompatibilidade (serão removidos futuramente ou mapeados)
-  year?: string;      // Alias para yearModel
+  history: any[];
 }
 
 export interface AppSettings {
@@ -160,7 +149,6 @@ export interface AppSettings {
   autoApprovalLimit: number;
 }
 
-// Interfaces SaaS
 export interface SaasPlan {
   id: string;
   name: string;
@@ -177,5 +165,5 @@ export interface SaasTenant {
   plan_id: string;
   status: 'active' | 'suspended' | 'blocked';
   created_at: string;
-  saas_plans?: SaasPlan; // Join
+  saas_plans?: SaasPlan;
 }
