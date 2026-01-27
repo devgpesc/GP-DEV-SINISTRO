@@ -92,41 +92,50 @@ const normalizeVehicleData = (source, provider) => {
 
 // --- PROVIDERS IMPLEMENTATION ---
 
-async function fetchAPIBrasil(plate) {
-  if (!KEYS.APIBRASIL_TOKEN) throw new Error('Credenciais APIBrasil não configuradas');
+async function fetchAPIBrasil(plate, customToken = null) {
+  // Prioriza o token customizado (para testes) ou usa o do ambiente
+  const token = customToken || KEYS.APIBRASIL_TOKEN;
+  
+  if (!token) throw new Error('Credenciais APIBrasil não configuradas');
   
   try {
     const response = await axios.post(`${URLS.APIBRASIL}/dados`, 
       { placa: plate },
       { 
-        headers: { 'Authorization': `Bearer ${KEYS.APIBRASIL_TOKEN}` },
-        timeout: 5000 
+        headers: { 'Authorization': `Bearer ${token}` },
+        timeout: 8000 
       }
     );
     
     if (response.data && !response.data.error) {
       return normalizeVehicleData(response.data, 'apibrasil');
     }
+    
+    // Tratamento específico para erro de APIBrasil (ex: token inválido)
+    if (response.data.error) {
+        throw new Error(`APIBrasil: ${response.data.message || 'Erro desconhecido'}`);
+    }
+
     throw new Error('Placa não encontrada na APIBrasil');
   } catch (error) {
+    if (error.response?.status === 401 || error.response?.status === 403) {
+        throw new Error('Token APIBrasil inválido ou expirado.');
+    }
     // Repassar erro 404 (não encontrado) ou lançar erro genérico para trigger fallback
-    if (error.response?.status === 404) return null; // Não existe, não adianta tentar outro provider se a base for nacional
+    if (error.response?.status === 404) return null; 
     throw error; 
   }
 }
 
-async function fetchDetran(plate) {
-  // NOTA: Integração Real com Detran exige Certificado Digital (e-CNPJ) e VPN na maioria dos casos.
-  // Aqui simulamos uma chamada REST para fins de arquitetura.
-  if (!KEYS.DETRAN_KEY) throw new Error('Credenciais Detran não configuradas');
+async function fetchDetran(plate, customToken = null) {
+  const token = customToken || KEYS.DETRAN_KEY;
+  // NOTA: Integração Real com Detran exige Certificado Digital (e-CNPJ) e VPN.
+  if (!token && !KEYS.DETRAN_KEY) throw new Error('Credenciais Detran não configuradas');
 
   try {
-    // Simulação de chamada
-    // const agent = new https.Agent({ pfx: fs.readFileSync(process.env.DETRAN_CERT_PATH) });
-    // const response = await axios.get(`${URLS.DETRAN}/consulta/${plate}`, { httpsAgent: agent });
-    
     // MOCK RESPONSE para o exemplo
     if (plate === 'DETRAN1') throw new Error('Simulação de Erro Detran');
+    if (customToken === 'invalid') throw new Error('Credenciais inválidas'); // Simulação de teste falho
     
     return normalizeVehicleData({
         plate: plate,
@@ -166,6 +175,7 @@ async function fetchMock(plate) {
 // --- ENDPOINT: CONSULTA VEICULAR (MULTI-PROVIDER) ---
 app.get('/api/vehicles/lookup', async (req, res) => {
   const { plate, provider = 'auto' } = req.query;
+  const customToken = req.headers['x-provider-token']; // Permite testar chave direto do frontend
 
   if (!plate || plate.length < 7) {
     return res.status(400).json({ error: 'Placa inválida.' });
@@ -173,11 +183,13 @@ app.get('/api/vehicles/lookup', async (req, res) => {
 
   const cleanPlate = plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-  // 1. Check Cache
-  const cached = plateCache.get(cleanPlate);
-  if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
-    console.log(`[Lookup] Cache hit para ${cleanPlate}`);
-    return res.json({ ...cached.data, cached: true });
+  // 1. Check Cache (Skip cache if testing/customToken is present)
+  if (!customToken) {
+      const cached = plateCache.get(cleanPlate);
+      if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
+        console.log(`[Lookup] Cache hit para ${cleanPlate}`);
+        return res.json({ ...cached.data, cached: true });
+      }
   }
 
   let result = null;
@@ -186,9 +198,9 @@ app.get('/api/vehicles/lookup', async (req, res) => {
   try {
     // LÓGICA DE FALLBACK / SELEÇÃO
     if (provider === 'apibrasil') {
-        result = await fetchAPIBrasil(cleanPlate);
+        result = await fetchAPIBrasil(cleanPlate, customToken);
     } else if (provider === 'detran') {
-        result = await fetchDetran(cleanPlate);
+        result = await fetchDetran(cleanPlate, customToken);
     } else {
         // AUTO MODE: Tenta APIBrasil -> Se falhar (erro técnico/limite), tenta Detran -> Se falhar, Mock
         try {
@@ -211,14 +223,17 @@ app.get('/api/vehicles/lookup', async (req, res) => {
         return res.status(404).json({ error: 'Veículo não encontrado em nenhuma base.', details: errors });
     }
 
-    // Save to Cache
-    plateCache.set(cleanPlate, { data: result, timestamp: Date.now() });
+    // Save to Cache (Only if not testing)
+    if (!customToken) {
+        plateCache.set(cleanPlate, { data: result, timestamp: Date.now() });
+    }
 
     return res.json(result);
 
   } catch (error) {
     console.error('[Lookup Error]', error.message);
-    return res.status(500).json({ error: 'Erro interno na consulta veicular.', details: errors });
+    const status = error.message.includes('inválido') ? 401 : 500;
+    return res.status(status).json({ error: error.message, details: errors });
   }
 });
 
