@@ -3,7 +3,7 @@ import {
   ShoppingCart, Search, Filter, FileText, 
   CheckCircle2, XCircle, Send, Printer, MoreVertical, 
   Clock, DollarSign, UserCheck, X, ChevronDown, ListFilter,
-  Eye, EyeOff, Share2, Download
+  Eye, EyeOff, Share2, Download, ShieldCheck, AlertTriangle
 } from 'lucide-react';
 import { PurchaseOrder } from '../types';
 import { mockStorage } from '../services/supabaseClient';
@@ -15,6 +15,15 @@ const Purchases: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('Todos');
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
+
+  // Estado para o Modal de Confirmação Moderno
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    type: 'approve' | 'cancel' | null;
+    orderId: string | null;
+    orderCode: string | null;
+    amount?: number;
+  }>({ isOpen: false, type: null, orderId: null, orderCode: null });
 
   useEffect(() => {
     // Carregar dados iniciais ou do storage
@@ -71,19 +80,41 @@ const Purchases: React.FC = () => {
     mockStorage.set('purchase_orders', updated);
   };
 
-  const handleApprove = (id: string) => {
+  // Abre o modal de aprovação
+  const handleRequestApprove = (order: PurchaseOrder) => {
     if (!canApprove) {
       alert("Apenas administradores ou gestores podem aprovar ordens de compra.");
       return;
     }
-    if (confirm('Confirma a aprovação financeira desta OC?')) {
-        updateOrderStatus(id, 'Aprovada');
-    }
+    setConfirmModal({
+      isOpen: true,
+      type: 'approve',
+      orderId: order.id,
+      orderCode: order.code,
+      amount: order.total
+    });
   };
 
-  const handleCancel = (id: string) => {
-    if (confirm('Tem certeza que deseja cancelar esta Ordem de Compra? Esta ação não pode ser desfeita.')) {
-        updateOrderStatus(id, 'Cancelada');
+  // Abre o modal de cancelamento
+  const handleRequestCancel = (order: PurchaseOrder) => {
+    setConfirmModal({
+      isOpen: true,
+      type: 'cancel',
+      orderId: order.id,
+      orderCode: order.code,
+      amount: order.total
+    });
+  };
+
+  // Executa a ação após confirmação no modal
+  const executeAction = () => {
+    if (confirmModal.orderId && confirmModal.type) {
+      if (confirmModal.type === 'approve') {
+        updateOrderStatus(confirmModal.orderId, 'Aprovada');
+      } else {
+        updateOrderStatus(confirmModal.orderId, 'Cancelada');
+      }
+      setConfirmModal({ isOpen: false, type: null, orderId: null, orderCode: null });
     }
   };
 
@@ -237,7 +268,7 @@ const Purchases: React.FC = () => {
             <div className="flex items-center gap-3 w-full md:w-auto justify-end border-t md:border-t-0 pt-4 md:pt-0">
               {order.status === 'Gerada' && (
                 <button 
-                  onClick={() => handleApprove(order.id)}
+                  onClick={() => handleRequestApprove(order)}
                   className={`flex items-center gap-2 px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-xl ${canApprove ? 'bg-green-600 text-white shadow-green-600/20 hover:bg-green-700' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
                 >
                   <UserCheck size={18} /> Aprovar
@@ -261,7 +292,7 @@ const Purchases: React.FC = () => {
                       <Eye size={16}/> Visualizar Itens
                     </button>
                     {order.status !== 'Cancelada' && (
-                        <button onClick={() => handleCancel(order.id)} className="w-full px-5 py-3 text-left text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-3">
+                        <button onClick={() => handleRequestCancel(order)} className="w-full px-5 py-3 text-left text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-3">
                           <XCircle size={16}/> Cancelar OC
                         </button>
                     )}
@@ -287,6 +318,64 @@ const Purchases: React.FC = () => {
            <p className="text-xs font-black uppercase tracking-widest">Modo Restrito: Valores financeiros ocultos para seu perfil.</p>
         </div>
       )}
+
+      {/* --- MODAL DE CONFIRMAÇÃO MODERNO --- */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}></div>
+          <div className="relative bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden p-8 animate-in zoom-in duration-200 text-center">
+            
+            <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 transition-colors ${
+              confirmModal.type === 'approve' 
+                ? 'bg-green-50 text-green-500 shadow-xl shadow-green-500/10' 
+                : 'bg-red-50 text-red-500 shadow-xl shadow-red-500/10'
+            }`}>
+              {confirmModal.type === 'approve' ? <ShieldCheck size={40} /> : <AlertTriangle size={40} />}
+            </div>
+
+            <h3 className="text-xl font-black text-slate-800 mb-2">
+              {confirmModal.type === 'approve' ? 'Aprovar Compra?' : 'Cancelar Ordem?'}
+            </h3>
+            
+            <p className="text-sm text-slate-500 font-medium mb-4 leading-relaxed">
+              {confirmModal.type === 'approve' 
+                ? `Você está prestes a aprovar financeiramente a OC ${confirmModal.orderCode}.`
+                : `Você tem certeza que deseja cancelar a OC ${confirmModal.orderCode}?`
+              }
+            </p>
+
+            {confirmModal.type === 'approve' && canSeeValues && (
+              <div className="mb-8 bg-slate-50 py-3 px-4 rounded-2xl border border-slate-100 inline-block">
+                <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Valor Total</p>
+                <p className="text-lg font-black text-slate-800">
+                  R$ {confirmModal.amount?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </p>
+              </div>
+            )}
+            
+            <div className="grid grid-cols-2 gap-4">
+              <button 
+                onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })} 
+                className="py-3 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-slate-200 transition-all"
+              >
+                Voltar
+              </button>
+              <button 
+                onClick={executeAction} 
+                className={`py-3 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all shadow-xl ${
+                  confirmModal.type === 'approve' 
+                    ? 'bg-green-600 hover:bg-green-700 shadow-green-600/20' 
+                    : 'bg-red-500 hover:bg-red-600 shadow-red-500/20'
+                }`}
+              >
+                {confirmModal.type === 'approve' ? 'Confirmar Aprovação' : 'Confirmar Cancelamento'}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
