@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext.tsx';
@@ -18,6 +19,7 @@ import Settings from './pages/Settings.tsx';
 import Login from './pages/Login.tsx';
 import Register from './pages/Register.tsx';
 import SaasAdmin from './pages/SaasAdmin.tsx';
+import Associates from './pages/Associates.tsx';
 import AIAssistant from './components/AIAssistant.tsx';
 
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -50,6 +52,7 @@ const App: React.FC = () => {
                 <Route path="/compras" element={<Purchases />} />
                 <Route path="/entregas" element={<Deliveries />} />
                 <Route path="/fornecedores" element={<Suppliers />} />
+                <Route path="/associados" element={<Associates />} />
                 <Route path="/veiculos" element={<Vehicles />} />
                 <Route path="/catalogo" element={<Catalog />} />
                 <Route path="/relatorios" element={<Reports />} />

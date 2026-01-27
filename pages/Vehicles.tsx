@@ -26,6 +26,7 @@ const Vehicles: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSearchingPlate, setIsSearchingPlate] = useState(false);
+  const [lookupError, setLookupError] = useState<string | null>(null);
   
   const [formData, setFormData] = useState<Partial<Vehicle>>({
     plate: '',
@@ -58,6 +59,7 @@ const Vehicles: React.FC = () => {
   const handlePlateLookup = async () => {
     if (!formData.plate || formData.plate.length < 7) return;
     setIsSearchingPlate(true);
+    setLookupError(null);
     
     try {
       const data = await lookupService.fetchPlate(formData.plate);
@@ -67,10 +69,11 @@ const Vehicles: React.FC = () => {
           ...data // Preenche automaticamente os campos técnicos
         }));
       } else {
-        alert('Placa não encontrada na base nacional.');
+        setLookupError('Placa não encontrada na base nacional. Verifique os dados ou preencha manualmente.');
       }
     } catch (e) {
       console.error(e);
+      setLookupError('Erro de conexão ao buscar placa. Tente novamente.');
     } finally {
       setIsSearchingPlate(false);
     }
@@ -96,6 +99,7 @@ const Vehicles: React.FC = () => {
         mockStorage.set('vehicles', updated);
         setIsModalOpen(false);
         setFormData({ plate: '', associateId: '', km: 0, status: 'Ativo', notes: '' });
+        setLookupError(null);
     } finally {
         setIsSubmitting(false);
     }
@@ -159,10 +163,23 @@ const Vehicles: React.FC = () => {
             <div className="relative bg-white w-full max-w-3xl rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in duration-200">
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center">
                     <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><Car className="text-blue-600"/> Cadastro Inteligente</h3>
-                    <button onClick={() => setIsModalOpen(false)}><X className="text-slate-400"/></button>
+                    <button onClick={() => setIsModalOpen(false)}><X className="text-slate-400 hover:text-slate-600"/></button>
                 </div>
                 
                 <form onSubmit={handleSave} className="p-8 space-y-8">
+                    
+                    {/* Alerta de Erro */}
+                    {lookupError && (
+                        <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 animate-in fade-in slide-in-from-top-2">
+                            <AlertCircle className="shrink-0" size={20} />
+                            <div className="flex-1">
+                                <p className="text-xs font-black uppercase tracking-wide">Erro na Busca</p>
+                                <p className="text-sm font-medium">{lookupError}</p>
+                            </div>
+                            <button type="button" onClick={() => setLookupError(null)} className="text-red-400 hover:text-red-600"><X size={18}/></button>
+                        </div>
+                    )}
+
                     {/* Seção 1: Entrada do Usuário */}
                     <section>
                         <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">1. Identificação Básica</h4>
@@ -170,21 +187,24 @@ const Vehicles: React.FC = () => {
                             <div className="relative">
                                 <label className="block text-xs font-bold text-slate-600 mb-1">Placa *</label>
                                 <input 
-                                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black text-xl uppercase outline-none focus:border-blue-500 tracking-widest"
+                                    className={`w-full p-4 bg-slate-50 border rounded-2xl font-black text-xl uppercase outline-none tracking-widest transition-all ${lookupError ? 'border-red-300 bg-red-50 text-red-600 focus:ring-4 focus:ring-red-500/10' : 'border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'}`}
                                     placeholder="ABC1D23"
                                     maxLength={7}
                                     value={formData.plate}
-                                    onChange={e => setFormData({...formData, plate: e.target.value.toUpperCase()})}
+                                    onChange={e => {
+                                        setFormData({...formData, plate: e.target.value.toUpperCase()});
+                                        if(lookupError) setLookupError(null);
+                                    }}
                                     onBlur={handlePlateLookup}
                                 />
                                 <div className="absolute right-4 top-9 text-blue-600">
-                                    {isSearchingPlate ? <Loader2 className="animate-spin"/> : <CloudLightning size={20}/>}
+                                    {isSearchingPlate ? <Loader2 className="animate-spin"/> : <CloudLightning size={20} className={lookupError ? 'text-red-400' : 'text-blue-600'}/>}
                                 </div>
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-slate-600 mb-1">Proprietário *</label>
                                 <select 
-                                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm outline-none"
+                                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:border-blue-500 transition-all"
                                     value={formData.associateId}
                                     onChange={e => setFormData({...formData, associateId: e.target.value})}
                                 >
@@ -194,12 +214,12 @@ const Vehicles: React.FC = () => {
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-slate-600 mb-1">KM Atual</label>
-                                <input type="number" className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none" 
+                                <input type="number" className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none focus:border-blue-500 transition-all" 
                                     value={formData.km} onChange={e => setFormData({...formData, km: Number(e.target.value)})} />
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-slate-600 mb-1">Status</label>
-                                <select className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none"
+                                <select className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none focus:border-blue-500 transition-all"
                                     value={formData.status} onChange={e => setFormData({...formData, status: e.target.value as any})}>
                                     <option>Ativo</option>
                                     <option>Inativo</option>
@@ -244,7 +264,7 @@ const Vehicles: React.FC = () => {
                     </section>
 
                     <div className="flex justify-end pt-4">
-                        <button type="submit" disabled={isSubmitting} className="px-10 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl flex items-center gap-2">
+                        <button type="submit" disabled={isSubmitting} className="px-10 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl flex items-center gap-2 hover:bg-blue-700 transition-all">
                             {isSubmitting ? <Loader2 className="animate-spin"/> : <><Save size={18}/> Salvar Veículo</>}
                         </button>
                     </div>

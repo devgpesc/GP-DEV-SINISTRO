@@ -4,7 +4,7 @@ import { Link, useLocation, Outlet } from 'react-router-dom';
 import { 
   LayoutDashboard, FileText, ShoppingCart, Users, Truck, 
   BarChart3, Settings, Package, Car, Bell, Search, UserCircle, X, ShoppingBag, Clock, Trash2, CheckCheck,
-  Globe, ShieldCheck, Wifi, WifiOff, AlertTriangle, CheckCircle2
+  Globe, ShieldCheck, Wifi, WifiOff, AlertTriangle, CheckCircle2, UserCheck
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { isSupabaseConfigured } from '../services/supabaseClient';
@@ -75,6 +75,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <NavItem to="/entregas" icon={Truck} label="Entregas" active={location.pathname === '/entregas'} />
             
             <p className="px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 mt-6">Gestão</p>
+            <NavItem to="/associados" icon={UserCheck} label="Associados" active={location.pathname === '/associados'} />
             <NavItem to="/fornecedores" icon={Users} label="Fornecedores" active={location.pathname === '/fornecedores'} />
             <NavItem to="/veiculos" icon={Car} label="Veículos" active={location.pathname === '/veiculos'} />
             <NavItem to="/catalogo" icon={Package} label="Catálogo" active={location.pathname === '/catalogo'} />
