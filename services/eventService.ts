@@ -41,19 +41,14 @@ export const eventService = {
 
     const { data: { user } } = await supabase.auth.getUser();
     
+    // Preparar payload limpando campos de relacionamento que não são colunas da tabela events
+    const { attachments, history, ...cleanEventData } = eventData;
+
     const payload = {
-      ...eventData,
+      ...cleanEventData,
       id: eventData.id || Math.random().toString(36).substr(2, 9),
       created_by: user?.id || 'system',
       created_at: eventData.createdAt || new Date().toISOString(),
-      history: eventData.history || [{
-        id: Math.random().toString(36).substr(2, 9),
-        fromStatus: 'Criação',
-        toStatus: 'Aguardando',
-        comment: 'Evento registrado via Portal.',
-        user: user?.email || 'Sistema',
-        timestamp: new Date().toISOString()
-      }]
     };
 
     const { data, error } = await supabase
@@ -64,12 +59,27 @@ export const eventService = {
     
     if (error) throw error;
     
+    // Tratamento de Attachments e History (Deveriam ser inserts separados em tabelas relacionadas)
+    // Em mock/local storage, mantemos a estrutura aninhada para compatibilidade de visualização
+    const fullPayload = {
+        ...payload,
+        attachments: attachments || [],
+        history: history || [{
+            id: Math.random().toString(36).substr(2, 9),
+            fromStatus: 'Criação',
+            toStatus: 'Aguardando',
+            comment: 'Evento registrado via Portal.',
+            user: user?.email || 'Sistema',
+            timestamp: new Date().toISOString()
+        }]
+    };
+    
     // Atualiza Mock Storage Local (para garantir que a UI reflita a mudança imediatamente em modo offline)
     const currentEvents = mockStorage.get('events') || [];
     // Remove se for update, adiciona novo
     const filtered = currentEvents.filter((e: Event) => e.id !== payload.id);
-    mockStorage.set('events', [payload, ...filtered]);
+    mockStorage.set('events', [fullPayload, ...filtered]);
 
-    return data || payload;
+    return data || fullPayload;
   }
 };

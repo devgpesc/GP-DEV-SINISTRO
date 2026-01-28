@@ -6,12 +6,14 @@ import {
 } from 'lucide-react';
 import { mockStorage } from '../services/supabaseClient';
 import { Vehicle } from '../types';
+import ActionModal from '../components/ActionModal';
 
 interface Associate {
   id: string;
   name: string;
   document: string; // CPF ou CNPJ
   type: 'PF' | 'PJ';
+  responsible?: string; // Novo Campo
   email?: string;
   phone?: string;
   createdAt: string;
@@ -23,18 +25,18 @@ const Associates: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   
-  // Dados de edição
   const [associateToEdit, setAssociateToEdit] = useState<Associate | null>(null);
   
-  // Estado do Formulário
   const [formData, setFormData] = useState({
     name: '',
     document: '',
     type: 'PF' as 'PF' | 'PJ',
+    responsible: '', // Novo Campo
     email: '',
     phone: '',
-    linkedPlate: '' // Campo novo para vincular carro
+    linkedPlate: ''
   });
 
   useEffect(() => {
@@ -53,9 +55,10 @@ const Associates: React.FC = () => {
         name: associate.name,
         document: associate.document,
         type: associate.type,
+        responsible: associate.responsible || '',
         email: associate.email || '',
         phone: associate.phone || '',
-        linkedPlate: '' // Não carregamos a placa na edição para simplificar, apenas na criação
+        linkedPlate: ''
       });
     } else {
       setAssociateToEdit(null);
@@ -63,6 +66,7 @@ const Associates: React.FC = () => {
         name: '',
         document: '',
         type: 'PF',
+        responsible: '',
         email: '',
         phone: '',
         linkedPlate: ''
@@ -71,16 +75,16 @@ const Associates: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('Tem certeza que deseja excluir este associado? Os veículos vinculados ficarão sem proprietário.')) {
-      const updated = associates.filter(a => a.id !== id);
+  const confirmDelete = () => {
+    if (deleteId) {
+      const updated = associates.filter(a => a.id !== deleteId);
       setAssociates(updated);
       mockStorage.set('associates', updated);
       
-      // Opcional: Atualizar veículos para remover o associateId
       const vehicles: Vehicle[] = mockStorage.get('vehicles') || [];
-      const updatedVehicles = vehicles.map(v => v.associateId === id ? { ...v, associateId: '' } : v);
+      const updatedVehicles = vehicles.map(v => v.associateId === deleteId ? { ...v, associateId: '' } : v);
       mockStorage.set('vehicles', updatedVehicles);
+      setDeleteId(null);
     }
   };
 
@@ -89,8 +93,6 @@ const Associates: React.FC = () => {
     if (!formData.name || !formData.document) return;
     
     setIsSubmitting(true);
-
-    // Simular delay de rede
     await new Promise(r => setTimeout(r, 600));
 
     const newId = associateToEdit ? associateToEdit.id : Math.random().toString(36).substr(2, 9);
@@ -100,12 +102,12 @@ const Associates: React.FC = () => {
       name: formData.name,
       document: formData.document,
       type: formData.type,
+      responsible: formData.responsible,
       email: formData.email,
       phone: formData.phone,
       createdAt: associateToEdit ? associateToEdit.createdAt : new Date().toISOString()
     };
 
-    // 1. Salvar Associado
     let updatedAssociates;
     if (associateToEdit) {
       updatedAssociates = associates.map(a => a.id === associateToEdit.id ? newAssociate : a);
@@ -115,7 +117,7 @@ const Associates: React.FC = () => {
     setAssociates(updatedAssociates);
     mockStorage.set('associates', updatedAssociates);
 
-    // 2. Lógica de Vínculo de Veículo (Apenas se informado)
+    // Lógica de Vínculo de Veículo
     if (formData.linkedPlate && formData.linkedPlate.length >= 7) {
         const vehicles: Vehicle[] = mockStorage.get('vehicles') || [];
         const cleanPlate = formData.linkedPlate.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -123,10 +125,8 @@ const Associates: React.FC = () => {
         const existingVehicleIndex = vehicles.findIndex(v => v.plate.replace(/[^A-Z0-9]/g, '') === cleanPlate);
 
         if (existingVehicleIndex >= 0) {
-            // Veículo existe: Atualiza o proprietário
             vehicles[existingVehicleIndex].associateId = newId;
         } else {
-            // Veículo não existe: Cria novo veículo vinculado
             const newVehicle: Vehicle = {
                 id: Math.random().toString(36).substr(2, 9),
                 createdAt: new Date().toISOString(),
@@ -134,7 +134,7 @@ const Associates: React.FC = () => {
                 associateId: newId,
                 status: 'Ativo',
                 km: 0,
-                brand: '', model: 'A DEFINIR', version: '', yearFab: '', yearModel: '', color: '', fuel: '', type: ''
+                brand: '', model: 'A DEFINIR (Editar em Veículos)', version: '', yearFab: '', yearModel: '', color: '', fuel: '', type: ''
             };
             vehicles.unshift(newVehicle);
         }
@@ -196,7 +196,10 @@ const Associates: React.FC = () => {
               </div>
               
               <h3 className="font-black text-slate-800 text-lg mb-1 truncate" title={associate.name}>{associate.name}</h3>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6">{associate.document}</p>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">{associate.document}</p>
+              {associate.responsible && (
+                  <p className="text-xs text-indigo-600 font-bold mb-4 flex items-center gap-1"><User size={12}/> Resp: {associate.responsible}</p>
+              )}
               
               <div className="space-y-2 pt-4 border-t border-slate-50">
                  {associate.email && (
@@ -213,7 +216,7 @@ const Associates: React.FC = () => {
 
               <div className="absolute top-4 right-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                  <button onClick={() => handleOpenModal(associate)} className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Edit3 size={18}/></button>
-                 <button onClick={() => handleDelete(associate.id)} className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18}/></button>
+                 <button onClick={() => setDeleteId(associate.id)} className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18}/></button>
               </div>
             </div>
           ))}
@@ -237,7 +240,10 @@ const Associates: React.FC = () => {
                             <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${a.type === 'PJ' ? 'bg-indigo-50 text-indigo-600' : 'bg-blue-50 text-blue-600'}`}>
                                 {a.type === 'PJ' ? <Shield size={16}/> : <User size={16}/>}
                             </div>
-                            <span className="font-bold text-slate-700">{a.name}</span>
+                            <div>
+                                <span className="font-bold text-slate-700 block">{a.name}</span>
+                                {a.responsible && <span className="text-[10px] text-slate-400">Resp: {a.responsible}</span>}
+                            </div>
                          </div>
                       </td>
                       <td className="px-8 py-5 text-xs font-bold text-slate-500">{a.document}</td>
@@ -250,7 +256,7 @@ const Associates: React.FC = () => {
                       <td className="px-8 py-5 text-right">
                          <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button onClick={() => handleOpenModal(a)} className="p-2 text-slate-400 hover:text-blue-600 rounded-lg"><Edit3 size={18}/></button>
-                            <button onClick={() => handleDelete(a.id)} className="p-2 text-slate-400 hover:text-red-600 rounded-lg"><Trash2 size={18}/></button>
+                            <button onClick={() => setDeleteId(a.id)} className="p-2 text-slate-400 hover:text-red-600 rounded-lg"><Trash2 size={18}/></button>
                          </div>
                       </td>
                    </tr>
@@ -308,6 +314,16 @@ const Associates: React.FC = () => {
                       />
                    </div>
 
+                   <div className="col-span-2">
+                      <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Nome do Responsável</label>
+                      <input 
+                        className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all"
+                        value={formData.responsible}
+                        onChange={e => setFormData({...formData, responsible: e.target.value})}
+                        placeholder="Nome do contato principal (se houver)"
+                      />
+                   </div>
+
                    <div>
                       <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">E-mail</label>
                       <input 
@@ -338,6 +354,7 @@ const Associates: React.FC = () => {
                              <p className="text-xs text-slate-500 mb-3 leading-relaxed">
                                 Insira a placa do veículo principal deste associado. <br/>
                                 <span className="font-bold text-blue-600">Se a placa não existir, o sistema criará o veículo automaticamente.</span>
+                                <br/>Você poderá editar os detalhes depois na aba Veículos.
                              </p>
                              <input 
                                 className="w-full p-4 bg-white border border-blue-100 rounded-2xl font-black text-lg text-slate-800 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all uppercase tracking-[0.2em] text-center placeholder:text-slate-300 placeholder:normal-case placeholder:tracking-normal placeholder:font-medium"
@@ -361,6 +378,17 @@ const Associates: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* ActionModal de Exclusão */}
+      <ActionModal 
+        isOpen={!!deleteId}
+        onClose={() => setDeleteId(null)}
+        onConfirm={confirmDelete}
+        title="Excluir Associado?"
+        description="Tem certeza que deseja excluir este associado? Os veículos vinculados ficarão sem proprietário."
+        type="danger"
+        confirmText="Sim, excluir"
+      />
     </div>
   );
 };

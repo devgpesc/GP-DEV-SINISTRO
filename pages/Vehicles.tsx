@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, Search, Car, Loader2, User, LayoutGrid, List, 
-  Trash2, Edit, Save, CheckCircle2, AlertCircle, X, CloudLightning
+  Trash2, Edit, Save, CheckCircle2, AlertCircle, X, CloudLightning, Keyboard
 } from 'lucide-react';
 import { vehicleService } from '../services/vehicleService';
 import { lookupService } from '../services/lookupService';
@@ -28,6 +28,9 @@ const Vehicles: React.FC = () => {
   const [isSearchingPlate, setIsSearchingPlate] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
   
+  // Tabs: 'auto' (API) vs 'manual' (Digitado)
+  const [inputMode, setInputMode] = useState<'auto' | 'manual'>('auto');
+  
   const [formData, setFormData] = useState<Partial<Vehicle>>({
     plate: '',
     associateId: '',
@@ -38,6 +41,8 @@ const Vehicles: React.FC = () => {
     brand: '', model: '', version: '', yearFab: '', yearModel: '', 
     color: '', fuel: '', type: '', chassi: '', renavam: '', uf: '', city: ''
   });
+
+  const [editId, setEditId] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -56,6 +61,19 @@ const Vehicles: React.FC = () => {
     }
   };
 
+  const handleOpenModal = (vehicleToEdit?: Vehicle) => {
+    if (vehicleToEdit) {
+      setEditId(vehicleToEdit.id);
+      setFormData(vehicleToEdit);
+      setInputMode('manual'); // Edição é sempre manual/híbrida
+    } else {
+      setEditId(null);
+      setFormData({ plate: '', associateId: '', km: 0, status: 'Ativo', notes: '', brand: '', model: '' });
+      setInputMode('auto');
+    }
+    setIsModalOpen(true);
+  };
+
   const handlePlateLookup = async () => {
     if (!formData.plate || formData.plate.length < 7) return;
     setIsSearchingPlate(true);
@@ -69,7 +87,7 @@ const Vehicles: React.FC = () => {
           ...data // Preenche automaticamente os campos técnicos
         }));
       } else {
-        setLookupError('Placa não encontrada na base nacional. Verifique os dados ou preencha manualmente.');
+        setLookupError('Placa não encontrada na base nacional. Verifique os dados ou mude para o modo manual.');
       }
     } catch (e) {
       console.error(e);
@@ -88,18 +106,22 @@ const Vehicles: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-        const newVehicle: Vehicle = {
-            id: Math.random().toString(36).substr(2, 9),
+        const vehicleData: Vehicle = {
+            id: editId || Math.random().toString(36).substr(2, 9),
             createdAt: new Date().toISOString(),
             ...formData as Vehicle
         };
         
-        const updated = [newVehicle, ...vehicles];
+        let updated;
+        if (editId) {
+            updated = vehicles.map(v => v.id === editId ? vehicleData : v);
+        } else {
+            updated = [vehicleData, ...vehicles];
+        }
+        
         setVehicles(updated);
         mockStorage.set('vehicles', updated);
         setIsModalOpen(false);
-        setFormData({ plate: '', associateId: '', km: 0, status: 'Ativo', notes: '' });
-        setLookupError(null);
     } finally {
         setIsSubmitting(false);
     }
@@ -117,7 +139,7 @@ const Vehicles: React.FC = () => {
             <h2 className="text-3xl font-black text-slate-800">Gestão de Veículos</h2>
             <p className="text-sm text-slate-500">Cadastro simplificado com busca automática.</p>
         </div>
-        <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 shadow-xl transition-all">
+        <button onClick={() => handleOpenModal()} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 shadow-xl transition-all">
             <Plus size={18}/> Novo Veículo
         </button>
       </div>
@@ -138,12 +160,17 @@ const Vehicles: React.FC = () => {
          {loading ? <div className="text-center py-10"><Loader2 className="animate-spin mx-auto text-blue-600"/></div> : (
             <div className={`grid gap-4 ${viewMode === 'grid' ? 'grid-cols-3' : 'grid-cols-1'}`}>
                 {filteredVehicles.map(v => (
-                    <div key={v.id} className="p-5 border border-slate-100 rounded-3xl hover:border-blue-200 transition-all bg-slate-50/50">
+                    <div key={v.id} className="p-5 border border-slate-100 rounded-3xl hover:border-blue-200 transition-all bg-slate-50/50 relative group">
+                        <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => handleOpenModal(v)} className="p-2 bg-white text-blue-600 hover:text-blue-800 rounded-lg shadow-sm border border-slate-100">
+                                <Edit size={16}/>
+                            </button>
+                        </div>
                         <div className="flex justify-between items-start mb-4">
                             <div className="bg-slate-800 text-white px-3 py-1 rounded-lg font-black tracking-widest text-sm">{v.plate}</div>
                             <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${v.status === 'Ativo' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{v.status}</span>
                         </div>
-                        <h4 className="font-black text-slate-800 uppercase text-sm truncate">{v.model || 'Desconhecido'}</h4>
+                        <h4 className="font-black text-slate-800 uppercase text-sm truncate">{v.model || 'A DEFINIR'}</h4>
                         <p className="text-xs text-slate-500 font-bold uppercase mb-4">{v.brand} • {v.yearModel}</p>
                         
                         <div className="pt-4 border-t border-slate-200 flex justify-between items-center text-xs">
@@ -156,20 +183,32 @@ const Vehicles: React.FC = () => {
          )}
       </div>
 
-      {/* Modal Simplificado */}
+      {/* Modal Simplificado com Abas */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setIsModalOpen(false)}></div>
-            <div className="relative bg-white w-full max-w-3xl rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in duration-200">
-                <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-                    <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><Car className="text-blue-600"/> Cadastro Inteligente</h3>
+            <div className="relative bg-white w-full max-w-3xl rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
+                    <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><Car className="text-blue-600"/> {editId ? 'Editar Veículo' : 'Cadastro de Veículo'}</h3>
                     <button onClick={() => setIsModalOpen(false)}><X className="text-slate-400 hover:text-slate-600"/></button>
                 </div>
                 
                 <form onSubmit={handleSave} className="p-8 space-y-8">
                     
+                    {/* Tabs de Modo */}
+                    {!editId && (
+                        <div className="flex bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
+                            <button type="button" onClick={() => setInputMode('auto')} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all flex items-center justify-center gap-2 ${inputMode === 'auto' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>
+                                <CloudLightning size={16}/> Busca Automática (API)
+                            </button>
+                            <button type="button" onClick={() => setInputMode('manual')} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all flex items-center justify-center gap-2 ${inputMode === 'manual' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>
+                                <Keyboard size={16}/> Cadastro Manual
+                            </button>
+                        </div>
+                    )}
+
                     {/* Alerta de Erro */}
-                    {lookupError && (
+                    {lookupError && inputMode === 'auto' && (
                         <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 animate-in fade-in slide-in-from-top-2">
                             <AlertCircle className="shrink-0" size={20} />
                             <div className="flex-1">
@@ -195,10 +234,10 @@ const Vehicles: React.FC = () => {
                                         setFormData({...formData, plate: e.target.value.toUpperCase()});
                                         if(lookupError) setLookupError(null);
                                     }}
-                                    onBlur={handlePlateLookup}
+                                    onBlur={() => inputMode === 'auto' && handlePlateLookup()}
                                 />
                                 <div className="absolute right-4 top-9 text-blue-600">
-                                    {isSearchingPlate ? <Loader2 className="animate-spin"/> : <CloudLightning size={20} className={lookupError ? 'text-red-400' : 'text-blue-600'}/>}
+                                    {isSearchingPlate ? <Loader2 className="animate-spin"/> : (inputMode === 'auto' && <CloudLightning size={20} className={lookupError ? 'text-red-400' : 'text-blue-600'}/>)}
                                 </div>
                             </div>
                             <div>
@@ -229,36 +268,57 @@ const Vehicles: React.FC = () => {
                         </div>
                     </section>
 
-                    {/* Seção 2: Dados Automáticos (Read-onlyish) */}
+                    {/* Seção 2: Dados Técnicos */}
                     <section className="bg-slate-50 p-6 rounded-[32px] border border-slate-100">
                         <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-4 flex items-center gap-2">
-                            <CloudLightning size={14}/> Dados Técnicos (Automático)
+                            {inputMode === 'auto' ? <CloudLightning size={14}/> : <Keyboard size={14}/>} 
+                            {inputMode === 'auto' ? 'Dados Técnicos (Automático)' : 'Dados Técnicos (Preenchimento Manual)'}
                         </h4>
                         <div className="grid grid-cols-3 gap-4">
                             <div className="col-span-1">
                                 <label className="block text-[10px] font-bold text-slate-400 uppercase">Marca</label>
-                                <input className="w-full bg-transparent font-black text-slate-800 border-b border-slate-200 py-1 outline-none" 
-                                    value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})} placeholder="---"/>
+                                <input 
+                                    className={`w-full bg-transparent font-black text-slate-800 border-b border-slate-200 py-1 outline-none ${inputMode === 'auto' ? 'pointer-events-none opacity-70' : ''}`}
+                                    value={formData.brand} 
+                                    onChange={e => setFormData({...formData, brand: e.target.value})} 
+                                    placeholder="---"
+                                />
                             </div>
                             <div className="col-span-2">
                                 <label className="block text-[10px] font-bold text-slate-400 uppercase">Modelo</label>
-                                <input className="w-full bg-transparent font-black text-slate-800 border-b border-slate-200 py-1 outline-none" 
-                                    value={formData.model} onChange={e => setFormData({...formData, model: e.target.value})} placeholder="---"/>
+                                <input 
+                                    className={`w-full bg-transparent font-black text-slate-800 border-b border-slate-200 py-1 outline-none ${inputMode === 'auto' ? 'pointer-events-none opacity-70' : ''}`}
+                                    value={formData.model} 
+                                    onChange={e => setFormData({...formData, model: e.target.value})} 
+                                    placeholder="---"
+                                />
                             </div>
                             <div>
                                 <label className="block text-[10px] font-bold text-slate-400 uppercase">Ano/Mod</label>
-                                <input className="w-full bg-transparent font-bold text-slate-600 border-b border-slate-200 py-1 outline-none" 
-                                    value={formData.yearModel} onChange={e => setFormData({...formData, yearModel: e.target.value})} placeholder="---"/>
+                                <input 
+                                    className={`w-full bg-transparent font-bold text-slate-600 border-b border-slate-200 py-1 outline-none ${inputMode === 'auto' ? 'pointer-events-none opacity-70' : ''}`}
+                                    value={formData.yearModel} 
+                                    onChange={e => setFormData({...formData, yearModel: e.target.value})} 
+                                    placeholder="---"
+                                />
                             </div>
                             <div>
                                 <label className="block text-[10px] font-bold text-slate-400 uppercase">Cor</label>
-                                <input className="w-full bg-transparent font-bold text-slate-600 border-b border-slate-200 py-1 outline-none" 
-                                    value={formData.color} onChange={e => setFormData({...formData, color: e.target.value})} placeholder="---"/>
+                                <input 
+                                    className={`w-full bg-transparent font-bold text-slate-600 border-b border-slate-200 py-1 outline-none ${inputMode === 'auto' ? 'pointer-events-none opacity-70' : ''}`}
+                                    value={formData.color} 
+                                    onChange={e => setFormData({...formData, color: e.target.value})} 
+                                    placeholder="---"
+                                />
                             </div>
                             <div>
                                 <label className="block text-[10px] font-bold text-slate-400 uppercase">Chassi</label>
-                                <input className="w-full bg-transparent font-bold text-slate-600 border-b border-slate-200 py-1 outline-none" 
-                                    value={formData.chassi} onChange={e => setFormData({...formData, chassi: e.target.value})} placeholder="---"/>
+                                <input 
+                                    className={`w-full bg-transparent font-bold text-slate-600 border-b border-slate-200 py-1 outline-none ${inputMode === 'auto' ? 'pointer-events-none opacity-70' : ''}`}
+                                    value={formData.chassi} 
+                                    onChange={e => setFormData({...formData, chassi: e.target.value})} 
+                                    placeholder="---"
+                                />
                             </div>
                         </div>
                     </section>

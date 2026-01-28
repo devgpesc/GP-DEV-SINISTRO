@@ -3,12 +3,12 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, Search, Star, MessageCircle, MapPin, X, 
   LayoutGrid, List, Edit, Trash2, Shield, Loader2, 
-  TrendingUp, Clock, Globe, User, Mail, Phone, AlertTriangle
+  TrendingUp, Clock, Globe, User, Mail, Phone, AlertTriangle, Home
 } from 'lucide-react';
 import { Supplier } from '../types';
 import { mockStorage, isSupabaseConfigured, supabase } from '../services/supabaseClient';
 import { lookupService } from '../services/lookupService';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import ActionModal from '../components/ActionModal';
 
 const Suppliers: React.FC = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -20,17 +20,19 @@ const Suppliers: React.FC = () => {
   const [supplierToEdit, setSupplierToEdit] = useState<Supplier | null>(null);
   
   // Modal de Exclusão
-  const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Estado específico para o Loading da busca de CNPJ
+  // Estado específico para o Loading da busca de CNPJ e CEP
   const [isLookingUp, setIsLookingUp] = useState(false);
+  const [isLookingCep, setIsLookingCep] = useState(false);
   const [lookupMessage, setLookupMessage] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
-    name: '', cnpj: '', segment: 'Peças' as any, whatsapp: '', email: '', city: '', status: 'Ativo' as any, rating: 5, contactName: ''
+    name: '', cnpj: '', segment: 'Peças' as any, whatsapp: '', email: '', 
+    cep: '', address: '', city: '', status: 'Ativo' as any, rating: 5, contactName: ''
   });
 
   useEffect(() => {
@@ -39,7 +41,6 @@ const Suppliers: React.FC = () => {
 
   async function loadSuppliers() {
     setLoading(true);
-    // Dados carregados apenas do storage, sem mocks
     const saved = mockStorage.get('suppliers') || [];
     setSuppliers(saved);
     setLoading(false);
@@ -53,6 +54,8 @@ const Suppliers: React.FC = () => {
       segment: s.segment,
       whatsapp: s.whatsapp,
       email: s.email || '',
+      cep: (s as any).cep || '',
+      address: (s as any).address || '',
       city: s.city,
       status: s.status,
       rating: s.rating,
@@ -61,16 +64,35 @@ const Suppliers: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleDeleteClick = (s: Supplier) => {
-    setSupplierToDelete(s);
-  };
-
-  const handleConfirmDelete = () => {
-    if (supplierToDelete) {
-      const updatedList = suppliers.filter(s => s.id !== supplierToDelete.id);
+  const confirmDelete = () => {
+    if (deleteId) {
+      const updatedList = suppliers.filter(s => s.id !== deleteId);
       setSuppliers(updatedList);
       mockStorage.set('suppliers', updatedList);
-      setSupplierToDelete(null);
+      setDeleteId(null);
+    }
+  };
+
+  const handleCepLookup = async () => {
+    const cleanCep = formData.cep.replace(/\D/g, '');
+    if (cleanCep.length < 8) return;
+
+    setIsLookingCep(true);
+    try {
+        const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+        const data = await response.json();
+        
+        if (!data.erro) {
+            setFormData(prev => ({
+                ...prev,
+                address: `${data.logradouro}, ${data.bairro}`,
+                city: `${data.localidade} - ${data.uf}`
+            }));
+        }
+    } catch (e) {
+        console.error('Erro CEP', e);
+    } finally {
+        setIsLookingCep(false);
     }
   };
 
@@ -123,7 +145,7 @@ const Suppliers: React.FC = () => {
     setIsModalOpen(false);
     setSupplierToEdit(null);
     setLookupMessage(null);
-    setFormData({name: '', cnpj: '', segment: 'Peças', whatsapp: '', email: '', city: '', status: 'Ativo', rating: 5, contactName: ''});
+    setFormData({name: '', cnpj: '', segment: 'Peças', whatsapp: '', email: '', cep: '', address: '', city: '', status: 'Ativo', rating: 5, contactName: ''});
   };
 
   const filtered = useMemo(() => {
@@ -137,7 +159,7 @@ const Suppliers: React.FC = () => {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input type="text" placeholder="Buscar por nome ou CNPJ..." className="w-full pl-10 pr-4 py-3 bg-slate-50 rounded-2xl outline-none border border-slate-100 text-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
         </div>
-        <button onClick={() => { setSupplierToEdit(null); setFormData({name: '', cnpj: '', segment: 'Peças', whatsapp: '', email: '', city: '', status: 'Ativo', rating: 5, contactName: ''}); setIsModalOpen(true); }} className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 shadow-xl shadow-blue-500/20 whitespace-nowrap">
+        <button onClick={() => { setSupplierToEdit(null); setFormData({name: '', cnpj: '', segment: 'Peças', whatsapp: '', email: '', cep: '', address: '', city: '', status: 'Ativo', rating: 5, contactName: ''}); setIsModalOpen(true); }} className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 shadow-xl shadow-blue-500/20 whitespace-nowrap">
           <Plus size={18} /> Novo Parceiro
         </button>
       </div>
@@ -172,7 +194,7 @@ const Suppliers: React.FC = () => {
                 </td>
                 <td className="px-8 py-5 text-right flex justify-end gap-2">
                    <button onClick={(e) => { e.stopPropagation(); handleEdit(s); }} className="p-2 text-slate-400 hover:text-blue-600 rounded-lg"><Edit size={18}/></button>
-                   <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(s); }} className="p-2 text-slate-400 hover:text-red-600 rounded-lg"><Trash2 size={18}/></button>
+                   <button onClick={(e) => { e.stopPropagation(); setDeleteId(s.id); }} className="p-2 text-slate-400 hover:text-red-600 rounded-lg"><Trash2 size={18}/></button>
                 </td>
               </tr>
             ))}
@@ -183,7 +205,7 @@ const Suppliers: React.FC = () => {
       {isModalOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
-          <div className="relative bg-white w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in duration-200">
+          <div className="relative bg-white w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
             <div className="p-8 border-b border-slate-50 flex justify-between">
               <div className="flex items-center gap-4">
                  <div className="bg-blue-600 p-3 rounded-2xl text-white shadow-lg shadow-blue-600/30 w-14 h-14 flex items-center justify-center"><Plus size={32}/></div>
@@ -229,6 +251,29 @@ const Suppliers: React.FC = () => {
                 </div>
 
                 <div className="col-span-2">
+                  <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Endereço (CEP)</label>
+                  <div className="flex gap-4">
+                      <div className="relative w-40">
+                        <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                        <input className="w-full pl-12 pr-4 py-4 bg-[#F8FAFC] border border-slate-100 rounded-2xl font-bold outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20" 
+                            value={formData.cep} 
+                            onChange={e => setFormData({...formData, cep: e.target.value})}
+                            onBlur={handleCepLookup}
+                            placeholder="CEP" 
+                        />
+                        {isLookingCep && <div className="absolute right-4 top-1/2 -translate-y-1/2"><Loader2 className="animate-spin text-blue-500" size={14}/></div>}
+                      </div>
+                      <input className="flex-1 p-4 bg-[#F8FAFC] border border-slate-100 rounded-2xl font-bold outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20" 
+                        value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} placeholder="Rua, Número, Bairro" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Cidade de Operação *</label>
+                  <input required className="w-full p-4 bg-[#F8FAFC] border border-slate-100 rounded-2xl font-bold outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20" value={formData.city} onChange={e => setFormData({...formData, city: e.target.value.toUpperCase()})} />
+                </div>
+
+                <div className="col-span-2">
                   <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Nome do Responsável</label>
                   <div className="relative">
                     <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
@@ -237,7 +282,7 @@ const Suppliers: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">E-mail do Responsável</label>
+                  <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">E-mail</label>
                   <div className="relative">
                     <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                     <input type="email" className="w-full pl-12 pr-4 py-4 bg-[#F8FAFC] border border-slate-100 rounded-2xl font-bold outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="email@exemplo.com" />
@@ -245,16 +290,11 @@ const Suppliers: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Telefone do Responsável</label>
+                  <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Telefone</label>
                   <div className="relative">
                     <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                     <input className="w-full pl-12 pr-4 py-4 bg-[#F8FAFC] border border-slate-100 rounded-2xl font-bold outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20" value={formData.whatsapp} onChange={e => setFormData({...formData, whatsapp: e.target.value})} placeholder="(00) 00000-0000" />
                   </div>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Cidade de Operação *</label>
-                  <input required className="w-full p-4 bg-[#F8FAFC] border border-slate-100 rounded-2xl font-bold outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20" value={formData.city} onChange={e => setFormData({...formData, city: e.target.value.toUpperCase()})} />
                 </div>
                 
                 <div>
@@ -274,25 +314,16 @@ const Suppliers: React.FC = () => {
         </div>
       )}
 
-      {/* Modal de Exclusão "Caixa Bonita" */}
-      {supplierToDelete && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setSupplierToDelete(null)}></div>
-          <div className="relative bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden p-8 animate-in zoom-in duration-200 text-center">
-            <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
-              <AlertTriangle size={40} />
-            </div>
-            <h3 className="text-xl font-black text-slate-800 mb-2">Excluir Parceiro?</h3>
-            <p className="text-sm text-slate-500 font-medium mb-8 leading-relaxed">
-              Você está prestes a remover <span className="font-black text-slate-800">{supplierToDelete.name}</span>. Esta ação é irreversível.
-            </p>
-            <div className="grid grid-cols-2 gap-4">
-              <button onClick={() => setSupplierToDelete(null)} className="py-3 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-slate-200 transition-all">Cancelar</button>
-              <button onClick={handleConfirmDelete} className="py-3 bg-red-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-red-600 transition-all shadow-xl shadow-red-500/20">Excluir</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ActionModal Exclusão */}
+      <ActionModal 
+        isOpen={!!deleteId}
+        onClose={() => setDeleteId(null)}
+        onConfirm={confirmDelete}
+        title="Excluir Parceiro?"
+        description="Você está prestes a remover este fornecedor. Esta ação é irreversível."
+        type="danger"
+        confirmText="Sim, excluir"
+      />
     </div>
   );
 };
