@@ -5,7 +5,7 @@ import {
   LayoutDashboard, FileText, ShoppingCart, Users, Truck, 
   BarChart3, Settings, Package, Car, Bell, Search, UserCircle, X, ShoppingBag, Clock, Trash2, CheckCheck,
   Globe, ShieldCheck, Wifi, WifiOff, AlertTriangle, CheckCircle2, UserCheck, Mail, Phone, MapPin, Key,
-  Camera, Save, Loader2, Edit3, AlertCircle, LogOut
+  Camera, Save, Loader2, Edit3, AlertCircle, LogOut, ChevronDown
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { isSupabaseConfigured } from '../services/supabaseClient';
@@ -49,6 +49,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   // Profile Edit States
   const [editName, setEditName] = useState('');
   const [editAvatar, setEditAvatar] = useState('');
+  const [editRole, setEditRole] = useState('user');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -60,6 +61,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (showProfileModal && profile) {
         setEditName(profile.full_name || user?.user_metadata?.full_name || '');
         setEditAvatar(profile.avatar_url || user?.user_metadata?.avatar_url || '');
+        setEditRole(profile.role || 'user');
     }
   }, [showProfileModal, profile, user]);
   
@@ -106,7 +108,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     try {
         await updateProfile({
             full_name: editName,
-            avatar_url: editAvatar
+            avatar_url: editAvatar,
+            role: editRole
         });
         
         addToast('success', 'Perfil Atualizado', 'Suas informações foram salvas com sucesso.');
@@ -335,23 +338,34 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                  <div className="space-y-6 text-center">
                     <div className="space-y-1">
                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Nome de Exibição</label>
-                       <div className="relative">
+                       <div className="relative group">
                           <input 
-                             className="w-full text-center text-2xl font-black text-slate-800 bg-transparent border-b-2 border-transparent hover:border-slate-100 focus:border-blue-500 outline-none pb-1 transition-all"
+                             className="w-full text-center text-2xl font-black text-slate-800 bg-transparent border-b-2 border-slate-100 hover:border-blue-300 focus:border-blue-500 outline-none pb-2 transition-all placeholder:text-slate-300"
                              value={editName}
                              onChange={e => setEditName(e.target.value)}
                              placeholder="Seu Nome"
                           />
-                          <Edit3 className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-300 opacity-0 group-hover:opacity-100" size={16}/>
+                          <Edit3 className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-300 opacity-50 group-hover:opacity-100 transition-opacity pointer-events-none" size={16}/>
                        </div>
                        <p className="text-xs font-medium text-slate-500">{user?.email}</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
-                       <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col items-center justify-center gap-1">
+                       <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col items-center justify-center gap-1 relative overflow-hidden group">
                           <ShieldCheck size={20} className="text-blue-600"/>
                           <p className="text-[9px] font-black text-slate-400 uppercase">Função</p>
-                          <p className="text-xs font-bold text-slate-700 capitalize">{profile?.role || 'Usuário'}</p>
+                          
+                          <select 
+                            value={editRole} 
+                            onChange={e => setEditRole(e.target.value)}
+                            className="appearance-none bg-transparent text-xs font-bold text-slate-700 capitalize text-center w-full outline-none cursor-pointer relative z-10"
+                          >
+                             <option value="user">User</option>
+                             <option value="gerente">Gerente</option>
+                             <option value="admin">Admin</option>
+                             <option value="super_admin">Super Admin</option>
+                          </select>
+                          <ChevronDown size={12} className="absolute right-2 bottom-3 text-slate-300 pointer-events-none group-hover:text-blue-500 transition-colors"/>
                        </div>
                        <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col items-center justify-center gap-1">
                           <Key size={20} className="text-amber-500"/>

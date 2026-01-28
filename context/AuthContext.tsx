@@ -10,7 +10,7 @@ interface AuthContextType {
   loading: boolean;
   signOut: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
-  updateProfile: (data: { full_name?: string; avatar_url?: string }) => Promise<void>;
+  updateProfile: (data: { full_name?: string; avatar_url?: string; role?: string }) => Promise<void>;
   isSuperAdmin: boolean;
 }
 
@@ -122,7 +122,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const updateProfile = async (data: { full_name?: string; avatar_url?: string }) => {
+  const updateProfile = async (data: { full_name?: string; avatar_url?: string; role?: string }) => {
     if (!user) return;
 
     try {
