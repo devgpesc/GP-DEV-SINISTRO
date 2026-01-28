@@ -1,30 +1,35 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase, isSupabaseConfigured, mockStorage } from '../services/supabaseClient';
+import { supabase } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { 
   Loader2, ArrowRight, ShieldCheck, Mail, Lock, 
-  LayoutDashboard, Zap, Globe, AlertCircle, WifiOff, Car 
+  LayoutDashboard, Zap, Globe, AlertCircle, Car 
 } from 'lucide-react';
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuth(); // Loading handled by App wrapper mostly
+  const { user } = useAuth();
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [localLoading, setLocalLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  const [company, setCompany] = useState({ name: 'ESC Solutions', logo: '' });
+  const [company, setCompany] = useState({ name: 'AutoClaims Pro', logo: '' });
 
   useEffect(() => {
     if (user) {
       navigate('/', { replace: true });
     }
-    // Carregar configurações da empresa
-    const saved = mockStorage.get('app_company');
-    if (saved) setCompany({ name: saved.name, logo: saved.logo });
+    // Tenta carregar config da empresa do banco (se existir tabela settings)
+    // Se não, usa default
+    const fetchSettings = async () => {
+        const { data } = await supabase.from('saas_settings').select('*').single();
+        if (data) setCompany({ name: data.company_name || 'AutoClaims Pro', logo: data.logo_url || '' });
+    };
+    fetchSettings();
   }, [user, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -36,15 +41,10 @@ const Login: React.FC = () => {
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      // Sucesso: AuthContext vai detectar e redirecionar
+      // Sucesso é tratado pelo AuthContext
     } catch (err: any) {
       console.error(err);
-      if (!isSupabaseConfigured) {
-        // Se estiver em modo offline, o mock client deve ter tratado o login, mas se caiu aqui:
-         setError('Modo Offline: Login simulado falhou.');
-      } else {
-         setError('Credenciais inválidas ou erro no servidor.');
-      }
+      setError('Falha na autenticação. Verifique suas credenciais.');
       setLocalLoading(false);
     }
   };
@@ -181,17 +181,10 @@ const Login: React.FC = () => {
             </div>
 
           <div className="mt-10 pt-6 border-t border-slate-50 text-center">
-            {isSupabaseConfigured ? (
-               <div className="flex items-center justify-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  <ShieldCheck size={14} className="text-green-500" />
-                  Produção v1.0.0
-               </div>
-            ) : (
-               <div className="flex items-center justify-center gap-2 text-[10px] font-bold text-amber-500 uppercase tracking-wider">
-                  <WifiOff size={14} />
-                  Modo Offline / Demo - Use qualquer e-mail/senha
-               </div>
-            )}
+             <div className="flex items-center justify-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                <ShieldCheck size={14} className="text-green-500" />
+                Produção Online • Supabase
+             </div>
           </div>
         </div>
       </div>

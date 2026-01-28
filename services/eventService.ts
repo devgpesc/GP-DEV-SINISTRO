@@ -1,6 +1,6 @@
 
-import { supabase, mockStorage } from './supabaseClient';
-import { Event, Vehicle, Associate } from '../types';
+import { supabase } from './supabaseClient';
+import { Event } from '../types';
 
 export const eventService = {
   async getEvents(): Promise<Event[]> {
@@ -21,36 +21,38 @@ export const eventService = {
   },
 
   async createEvent(eventData: Partial<Event>) {
-    // VALIDAÇÃO DE REGRA DE NEGÓCIO: VÍNCULO OBRIGATÓRIO
+    // 1. VALIDAÇÃO DE VÍNCULO OBRIGATÓRIO
     if (!eventData.vehicleId || !eventData.associateId) {
         throw new Error('É obrigatório vincular um Associado e um Veículo para criar um sinistro.');
     }
 
-    // Verificar se Veículo pertence ao Associado (Integridade)
-    // Em produção, isso seria uma query ou constraint do banco. Aqui simulamos com storage.
-    const vehicles = mockStorage.get('vehicles') as Vehicle[] || [];
-    const targetVehicle = vehicles.find(v => v.id === eventData.vehicleId);
+    // 2. Verificar consistência no Banco de Dados
+    const { data: vehicle, error: vehicleError } = await supabase
+        .from('vehicles')
+        .select('associateId')
+        .eq('id', eventData.vehicleId)
+        .single();
     
-    if (!targetVehicle) {
-        throw new Error('Veículo selecionado não encontrado na base.');
+    if (vehicleError || !vehicle) {
+        throw new Error('Veículo selecionado não encontrado na base de dados.');
     }
 
-    if (targetVehicle.associateId !== eventData.associateId) {
+    if (vehicle.associateId !== eventData.associateId) {
         throw new Error('Inconsistência: O veículo selecionado não pertence ao associado informado.');
     }
 
     const { data: { user } } = await supabase.auth.getUser();
     
-    // Preparar payload limpando campos de relacionamento que não são colunas da tabela events
+    // 3. Preparar payload (remove campos relacionais virtuais se existirem)
     const { attachments, history, ...cleanEventData } = eventData;
 
     const payload = {
       ...cleanEventData,
-      id: eventData.id || Math.random().toString(36).substr(2, 9),
       created_by: user?.id || 'system',
       created_at: eventData.createdAt || new Date().toISOString(),
     };
 
+    // 4. Insert Real
     const { data, error } = await supabase
       .from('events')
       .insert([payload])
@@ -59,27 +61,23 @@ export const eventService = {
     
     if (error) throw error;
     
-    // Tratamento de Attachments e History (Deveriam ser inserts separados em tabelas relacionadas)
-    // Em mock/local storage, mantemos a estrutura aninhada para compatibilidade de visualização
-    const fullPayload = {
-        ...payload,
-        attachments: attachments || [],
-        history: history || [{
-            id: Math.random().toString(36).substr(2, 9),
-            fromStatus: 'Criação',
-            toStatus: 'Aguardando',
+    // 5. Inserir Histórico Inicial (Se houver tabela event_history)
+    // Ignoramos erro aqui para não bloquear o fluxo principal se a tabela não existir ainda
+    if (data && data.id) {
+        const { error: historyError } = await supabase.from('event_history').insert([{
+            event_id: data.id,
+            from_status: 'Criação',
+            to_status: 'Aguardando',
             comment: 'Evento registrado via Portal.',
-            user: user?.email || 'Sistema',
-            timestamp: new Date().toISOString()
-        }]
-    };
-    
-    // Atualiza Mock Storage Local (para garantir que a UI reflita a mudança imediatamente em modo offline)
-    const currentEvents = mockStorage.get('events') || [];
-    // Remove se for update, adiciona novo
-    const filtered = currentEvents.filter((e: Event) => e.id !== payload.id);
-    mockStorage.set('events', [fullPayload, ...filtered]);
+            user_id: user?.id,
+            created_at: new Date().toISOString()
+        }]);
 
-    return data || fullPayload;
+        if (historyError) {
+             console.warn('Histórico não persistido (tabela pode não existir):', historyError);
+        }
+    }
+
+    return data;
   }
 };

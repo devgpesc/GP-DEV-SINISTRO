@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { Truck, CheckCircle, AlertTriangle, Search, Filter, Camera, ClipboardList, Clock, Archive } from 'lucide-react';
-import { mockStorage } from '../services/supabaseClient';
+import { Truck, CheckCircle, AlertTriangle, Clock, Archive } from 'lucide-react';
+import { supabase } from '../services/supabaseClient';
 
 interface DeliveryItem {
   id: string;
@@ -16,21 +16,36 @@ interface DeliveryItem {
 const Deliveries: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'Aguardando' | 'Concluído'>('Aguardando');
   const [deliveries, setDeliveries] = useState<DeliveryItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Carregar apenas dados do storage, sem mocks hardcoded
-    const saved = mockStorage.get('deliveries') || [];
-    setDeliveries(saved);
+    loadDeliveries();
   }, []);
 
-  const handleProcessDelivery = (id: string, newStatus: 'Conforme' | 'Divergente') => {
-    const updated = deliveries.map(d => d.id === id ? { ...d, status: newStatus } : d);
-    setDeliveries(updated);
-    mockStorage.set('deliveries', updated);
+  const loadDeliveries = async () => {
+    setLoading(true);
+    const { data } = await supabase.from('deliveries').select('*');
+    setDeliveries(data || []);
+    setLoading(false);
   };
 
-  const pendingDeliveries = deliveries.filter(d => d.status === 'Pendente');
-  const historyDeliveries = deliveries.filter(d => d.status !== 'Pendente');
+  const handleProcessDelivery = async (id: string, newStatus: 'Conforme' | 'Divergente') => {
+    const { error } = await supabase
+        .from('deliveries')
+        .update({ status: newStatus })
+        .eq('id', id);
+        
+    if (!error) {
+        setDeliveries(prev => prev.map(d => d.id === id ? { ...d, status: newStatus } : d));
+    } else {
+        alert('Erro ao processar entrega');
+    }
+  };
+
+  const pendingDeliveries = deliveries.filter(d => d.status === 'Pendente' || !d.status);
+  const historyDeliveries = deliveries.filter(d => d.status && d.status !== 'Pendente');
+
+  if (loading) return <div className="text-center py-20 text-slate-400">Carregando entregas...</div>;
 
   return (
     <div className="space-y-6">
@@ -65,7 +80,7 @@ const Deliveries: React.FC = () => {
                 </div>
                 <div className="flex flex-col items-end">
                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Previsão</span>
-                  <p className="text-xs font-bold text-slate-700 flex items-center gap-1.5"><Clock size={12}/> {delivery.date}</p>
+                  <p className="text-xs font-bold text-slate-700 flex items-center gap-1.5"><Clock size={12}/> {new Date(delivery.date).toLocaleDateString()}</p>
                 </div>
               </div>
 
@@ -113,7 +128,6 @@ const Deliveries: React.FC = () => {
                       {delivery.status}
                    </span>
                 </div>
-                <p className="text-xs text-slate-500 mb-2">Processado em {new Date().toLocaleDateString()}</p>
                 <div className="p-3 bg-slate-50 rounded-xl text-xs font-bold text-slate-600 flex justify-between">
                    <span>{delivery.supplier}</span>
                    <span>{delivery.items} itens</span>

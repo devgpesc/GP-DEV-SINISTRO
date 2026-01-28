@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Package, Settings, Trash2, Edit3, Tag, Layers, LayoutGrid, List, X, CheckCircle, AlertCircle } from 'lucide-react';
+import { Plus, Search, Package, Settings, Trash2, Edit3, Tag, LayoutGrid, List, X, Loader2 } from 'lucide-react';
 import { CatalogItem } from '../types';
-import { mockStorage } from '../services/supabaseClient';
+import { supabase } from '../services/supabaseClient';
 
 const Catalog: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'Peça' | 'Serviço'>('Peça');
@@ -11,7 +11,9 @@ const Catalog: React.FC = () => {
   
   // States para CRUD
   const [items, setItems] = useState<CatalogItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [itemToEdit, setItemToEdit] = useState<CatalogItem | null>(null);
   
   // Form State
@@ -28,10 +30,11 @@ const Catalog: React.FC = () => {
     loadItems();
   }, []);
 
-  const loadItems = () => {
-    // Carrega apenas dados do storage, sem mocks
-    const saved = mockStorage.get('catalog_items') || [];
-    setItems(saved);
+  const loadItems = async () => {
+    setLoading(true);
+    const { data } = await supabase.from('catalog_items').select('*');
+    setItems(data || []);
+    setLoading(false);
   };
 
   const handleOpenModal = (item?: CatalogItem) => {
@@ -40,7 +43,7 @@ const Catalog: React.FC = () => {
       setFormData(item);
     } else {
       setItemToEdit(null);
-      // Gerar código sequencial sugerido
+      // Sugestão de código
       const nextId = items.length + 1;
       setFormData({
         code: `${activeTab === 'Peça' ? 'PC' : 'SV'}-${String(nextId).padStart(3, '0')}`,
@@ -54,38 +57,44 @@ const Catalog: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (!formData.name || !formData.code) return;
+    
+    setIsSaving(true);
+    try {
+        const payload = {
+            code: formData.code,
+            name: formData.name,
+            category: formData.category,
+            type: formData.type,
+            unit: formData.unit,
+            description: formData.description
+        };
 
-    const newItem: CatalogItem = {
-      id: itemToEdit ? itemToEdit.id : Math.random().toString(36).substr(2, 9),
-      code: formData.code || '',
-      name: formData.name || '',
-      category: formData.category || 'Geral',
-      type: formData.type as 'Peça' | 'Serviço',
-      unit: formData.unit || 'UN',
-      description: formData.description
-    };
-
-    let updatedItems;
-    if (itemToEdit) {
-      updatedItems = items.map(i => i.id === itemToEdit.id ? newItem : i);
-    } else {
-      updatedItems = [...items, newItem];
+        if (itemToEdit) {
+            await supabase.from('catalog_items').update(payload).eq('id', itemToEdit.id);
+        } else {
+            await supabase.from('catalog_items').insert([payload]);
+        }
+        
+        await loadItems();
+        setIsModalOpen(false);
+    } catch (error) {
+        alert('Erro ao salvar item.');
+    } finally {
+        setIsSaving(false);
     }
-
-    setItems(updatedItems);
-    mockStorage.set('catalog_items', updatedItems);
-    setIsModalOpen(false);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (window.confirm('Tem certeza que deseja remover este item do catálogo?')) {
-      const updatedItems = items.filter(i => i.id !== id);
-      setItems(updatedItems);
-      mockStorage.set('catalog_items', updatedItems);
+      const { error } = await supabase.from('catalog_items').delete().eq('id', id);
+      if (error) {
+          alert('Erro ao excluir: ' + error.message);
+      } else {
+          setItems(items.filter(i => i.id !== id));
+      }
     }
   };
 
@@ -124,7 +133,9 @@ const Catalog: React.FC = () => {
         </div>
       </div>
 
-      {viewMode === 'grid' ? (
+      {loading ? (
+          <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-600" size={32}/></div>
+      ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in duration-300">
           {filteredItems.map(item => (
             <div key={item.id} className="bg-white p-6 rounded-2xl border border-slate-200 hover:border-blue-200 transition-all shadow-sm group relative">
@@ -263,8 +274,8 @@ const Catalog: React.FC = () => {
 
                 <div className="pt-6 flex justify-end gap-3 border-t border-slate-50">
                    <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-3 text-slate-400 font-black uppercase text-[10px] hover:text-slate-600 tracking-widest">Cancelar</button>
-                   <button type="submit" className="px-8 py-3 bg-blue-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-blue-600/20 hover:bg-blue-700 transition-all">
-                      {itemToEdit ? 'Salvar Alterações' : 'Cadastrar Item'}
+                   <button type="submit" disabled={isSaving} className="px-8 py-3 bg-blue-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-blue-600/20 hover:bg-blue-700 transition-all flex items-center gap-2">
+                      {isSaving && <Loader2 className="animate-spin" size={14}/>} {itemToEdit ? 'Salvar Alterações' : 'Cadastrar Item'}
                    </button>
                 </div>
              </form>

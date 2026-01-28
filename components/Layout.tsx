@@ -5,7 +5,7 @@ import {
   LayoutDashboard, FileText, ShoppingCart, Users, Truck, 
   BarChart3, Settings, Package, Car, Bell, Search, UserCircle, X, ShoppingBag, Clock, Trash2, CheckCheck,
   Globe, ShieldCheck, Wifi, WifiOff, AlertTriangle, CheckCircle2, UserCheck, Mail, Phone, MapPin, Key,
-  Camera, Save, Loader2, Edit3, AlertCircle
+  Camera, Save, Loader2, Edit3, AlertCircle, LogOut
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { isSupabaseConfigured } from '../services/supabaseClient';
@@ -58,10 +58,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   // Inicializa dados do formulário quando o modal abre
   useEffect(() => {
     if (showProfileModal && profile) {
-        setEditName(profile.full_name || '');
-        setEditAvatar(profile.avatar_url || '');
+        setEditName(profile.full_name || user?.user_metadata?.full_name || '');
+        setEditAvatar(profile.avatar_url || user?.user_metadata?.avatar_url || '');
     }
-  }, [showProfileModal, profile]);
+  }, [showProfileModal, profile, user]);
   
   const [notifications, setNotifications] = useState([
     { id: 1, title: 'Aprovação Pendente', desc: 'OC-2024-001 aguardando sua assinatura.', time: '10 min', icon: ShoppingBag, color: 'blue', read: false },
@@ -122,9 +122,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   return (
     <div className="flex min-h-screen bg-slate-50 print:bg-white">
       {/* Toast Container */}
-      <div className="fixed top-6 right-6 z-[120] flex flex-col gap-3">
+      <div className="fixed top-6 right-6 z-[120] flex flex-col gap-3 pointer-events-none">
         {toasts.map(toast => (
-          <div key={toast.id} className="bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-2xl border border-slate-200 flex items-start gap-4 min-w-[320px] animate-in slide-in-from-right-10 duration-300">
+          <div key={toast.id} className="bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-2xl border border-slate-200 flex items-start gap-4 min-w-[320px] animate-in slide-in-from-right-10 duration-300 pointer-events-auto">
              <div className={`p-2 rounded-xl ${
                 toast.type === 'success' ? 'bg-green-100 text-green-600' : 
                 toast.type === 'error' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'
@@ -294,26 +294,33 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       {showProfileModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowProfileModal(false)}></div>
-           <div className="relative bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in duration-200">
-              <div className="h-32 bg-gradient-to-r from-blue-600 to-indigo-600 relative">
-                 <button onClick={() => setShowProfileModal(false)} className="absolute top-4 right-4 bg-white/20 hover:bg-white/40 text-white p-2 rounded-full transition-all">
-                    <X size={20}/>
+           <div className="relative bg-white w-full max-w-sm rounded-[36px] shadow-2xl overflow-hidden animate-in zoom-in duration-300 border border-white/20">
+              
+              {/* Header com Gradiente */}
+              <div className="h-28 bg-gradient-to-br from-indigo-600 to-blue-700 relative flex justify-end p-4">
+                 <button 
+                    onClick={() => setShowProfileModal(false)} 
+                    className="bg-white/20 hover:bg-white/30 text-white p-2 rounded-full transition-all backdrop-blur-sm"
+                 >
+                    <X size={18}/>
                  </button>
               </div>
-              <div className="px-8 pb-8">
-                 <div className="relative -mt-12 mb-6 flex justify-between items-end">
+
+              <div className="px-8 pb-8 -mt-14 relative">
+                 {/* Avatar Area */}
+                 <div className="flex justify-center mb-6">
                     <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-                       <div className="w-24 h-24 rounded-[32px] bg-white p-1.5 shadow-xl">
+                       <div className="w-28 h-28 rounded-[36px] bg-white p-1.5 shadow-xl rotate-3 group-hover:rotate-0 transition-all duration-300">
                           {editAvatar ? (
-                             <img src={editAvatar} className="w-full h-full rounded-[28px] object-cover" />
+                             <img src={editAvatar} className="w-full h-full rounded-[30px] object-cover border-2 border-slate-100" />
                           ) : (
-                             <div className="w-full h-full rounded-[28px] bg-slate-100 flex items-center justify-center text-slate-400">
-                                <UserCircle size={40}/>
+                             <div className="w-full h-full rounded-[30px] bg-slate-50 flex items-center justify-center text-slate-300 border-2 border-slate-100">
+                                <UserCircle size={48}/>
                              </div>
                           )}
                        </div>
-                       <div className="absolute inset-0 bg-black/40 rounded-[32px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white m-1.5">
-                          <Camera size={24}/>
+                       <div className="absolute bottom-0 right-0 bg-slate-900 text-white p-2.5 rounded-2xl shadow-lg border-2 border-white group-hover:scale-110 transition-transform">
+                          <Camera size={16}/>
                        </div>
                        <input 
                           type="file" 
@@ -323,53 +330,50 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                           onChange={handleAvatarChange}
                         />
                     </div>
-                    
-                    <div className="flex gap-2 mb-2">
-                       <button onClick={signOut} className="p-2.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-all flex items-center gap-2 text-xs font-bold uppercase" title="Sair">
-                          Sair
-                       </button>
-                    </div>
                  </div>
                  
-                 <div className="space-y-6">
-                    <div>
-                       <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Nome de Exibição</label>
+                 <div className="space-y-6 text-center">
+                    <div className="space-y-1">
+                       <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Nome de Exibição</label>
                        <div className="relative">
                           <input 
-                             className="w-full text-2xl font-black text-slate-800 border-b-2 border-slate-100 focus:border-blue-500 outline-none pb-2 bg-transparent"
+                             className="w-full text-center text-2xl font-black text-slate-800 bg-transparent border-b-2 border-transparent hover:border-slate-100 focus:border-blue-500 outline-none pb-1 transition-all"
                              value={editName}
                              onChange={e => setEditName(e.target.value)}
+                             placeholder="Seu Nome"
                           />
-                          <Edit3 className="absolute right-0 bottom-2 text-slate-300 pointer-events-none" size={18}/>
+                          <Edit3 className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-300 opacity-0 group-hover:opacity-100" size={16}/>
                        </div>
-                       <p className="text-sm font-medium text-slate-500 mt-1">{user?.email}</p>
+                       <p className="text-xs font-medium text-slate-500">{user?.email}</p>
                     </div>
 
-                    <div className="space-y-3">
-                       <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                          <div className="p-2 bg-white rounded-lg text-blue-600 shadow-sm"><ShieldCheck size={20}/></div>
-                          <div>
-                             <p className="text-[10px] font-black text-slate-400 uppercase">Função (Sistema)</p>
-                             <p className="font-bold text-slate-700 capitalize">{profile?.role || 'Colaborador'}</p>
-                          </div>
+                    <div className="grid grid-cols-2 gap-3">
+                       <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col items-center justify-center gap-1">
+                          <ShieldCheck size={20} className="text-blue-600"/>
+                          <p className="text-[9px] font-black text-slate-400 uppercase">Função</p>
+                          <p className="text-xs font-bold text-slate-700 capitalize">{profile?.role || 'Usuário'}</p>
                        </div>
-                       <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                          <div className="p-2 bg-white rounded-lg text-amber-600 shadow-sm"><Key size={20}/></div>
-                          <div>
-                             <p className="text-[10px] font-black text-slate-400 uppercase">Último Acesso</p>
-                             <p className="font-bold text-slate-700">{new Date().toLocaleDateString()} às {new Date().toLocaleTimeString()}</p>
-                          </div>
+                       <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col items-center justify-center gap-1">
+                          <Key size={20} className="text-amber-500"/>
+                          <p className="text-[9px] font-black text-slate-400 uppercase">Acesso</p>
+                          <p className="text-xs font-bold text-slate-700">{new Date().toLocaleDateString()}</p>
                        </div>
                     </div>
 
-                    <button 
-                       id="save-profile-btn"
-                       onClick={handleSaveProfile}
-                       disabled={isSavingProfile}
-                       className={`w-full py-4 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-600/20 transition-all flex items-center justify-center gap-2 ${isSavingProfile ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
-                    >
-                       {isSavingProfile ? <Loader2 className="animate-spin" size={18}/> : <><Save size={18}/> Salvar Alterações</>}
-                    </button>
+                    <div className="pt-2 space-y-3">
+                        <button 
+                           id="save-profile-btn"
+                           onClick={handleSaveProfile}
+                           disabled={isSavingProfile}
+                           className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-slate-900/20 hover:bg-slate-800 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                        >
+                           {isSavingProfile ? <Loader2 className="animate-spin" size={18}/> : <><Save size={18}/> Salvar Perfil</>}
+                        </button>
+                        
+                        <button onClick={signOut} className="w-full py-3 bg-red-50 text-red-600 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-red-100 transition-all flex items-center justify-center gap-2">
+                           <LogOut size={16}/> Sair do Sistema
+                        </button>
+                    </div>
                  </div>
               </div>
            </div>

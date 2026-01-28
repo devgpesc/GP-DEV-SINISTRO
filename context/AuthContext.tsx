@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { Session, User } from '@supabase/supabase-js';
-import { supabase, mockStorage } from '../services/supabaseClient';
+import { supabase } from '../services/supabaseClient';
 
 interface AuthContextType {
   user: User | null;
@@ -22,40 +22,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // Função isolada para buscar perfil com Timeout para evitar travamento
+  // Busca perfil real no banco
   const fetchProfile = useCallback(async (userId: string) => {
     try {
-      // Timeout de segurança
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Timeout ao buscar perfil')), 3000)
-      );
-
-      const requestPromise = supabase
+      const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .maybeSingle();
 
-      // Race condition entre request e timeout
-      const response: any = await Promise.race([requestPromise, timeoutPromise]);
-      const { data, error } = response || {};
-
-      if (error) console.error('[Auth] Erro ao buscar perfil (DB):', error.message);
-      
-      // Se não encontrar perfil no banco, tenta buscar do mock storage de usuários
-      if (!data) {
-          const appUsers = mockStorage.get('app_users') || [];
-          const localUser = appUsers.find((u: any) => u.id === userId || u.email === user?.email);
-          if (localUser) {
-              return {
-                  id: userId,
-                  full_name: localUser.name,
-                  role: localUser.role,
-                  avatar_url: localUser.avatar_url || ''
-              };
-          }
+      if (error) {
+          console.error('[Auth] Erro ao buscar perfil:', error.message);
+          return null;
       }
-
+      
       return data || { 
         id: userId, 
         role: 'user', 
@@ -63,13 +43,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     } catch (err) {
       console.error('[Auth] Falha crítica no fetchProfile:', err);
-      return { 
-        id: userId, 
-        role: 'user', 
-        full_name: 'Usuário (Offline)' 
-      };
+      return null;
     }
-  }, [user]);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -78,10 +54,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const { data: { session: initialSession }, error } = await supabase.auth.getSession();
         
-        if (error) {
-            console.error('[Auth] Erro getSession:', error);
-            throw error;
-        }
+        if (error) throw error;
 
         if (mounted && initialSession) {
             setSession(initialSession);
@@ -93,8 +66,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error('[Auth] Erro na inicialização:', err);
       } finally {
         if (mounted) {
-            // Pequeno delay para evitar flash
-            setTimeout(() => setLoading(false), 500);
+            setLoading(false);
         }
       }
     };
@@ -126,7 +98,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [fetchProfile]);
+  }, [fetchProfile, profile]);
 
   const signInWithGoogle = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
@@ -140,37 +112,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signOut = async () => {
-    setLoading(true);
-    await supabase.auth.signOut();
+    try {
+        setLoading(true);
+        await supabase.auth.signOut();
+        // O estado será atualizado pelo onAuthStateChange
+    } catch (error) {
+        console.error("Erro ao sair:", error);
+        setLoading(false);
+    }
   };
 
   const updateProfile = async (data: { full_name?: string; avatar_url?: string }) => {
     if (!user) return;
 
     try {
-        // Usa UPSERT para criar se não existir ou atualizar se existir
+        const updates = {
+            id: user.id,
+            ...data,
+            updated_at: new Date().toISOString(),
+        };
+
         const { error } = await supabase
             .from('profiles')
-            .upsert({ id: user.id, ...data, updated_at: new Date().toISOString() });
+            .upsert(updates);
 
         if (error) throw error;
 
-        // Atualiza estado local imediatamente
+        // Atualiza estado local imediatamente para refletir na UI
         setProfile((prev: any) => ({ ...prev, ...data }));
-
-        // Atualiza também na lista de usuários do sistema (app_users) para consistência no mock
-        const appUsers = mockStorage.get('app_users') || [];
-        const updatedUsers = appUsers.map((u: any) => {
-            if (u.id === user.id || u.email === user.email) {
-                return { 
-                    ...u, 
-                    name: data.full_name || u.name, 
-                    avatar_url: data.avatar_url || u.avatar_url 
-                };
-            }
-            return u;
-        });
-        mockStorage.set('app_users', updatedUsers);
 
     } catch (error) {
         console.error("Erro ao atualizar perfil:", error);
@@ -196,13 +165,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         <div className="min-h-screen flex items-center justify-center bg-slate-50">
           <div className="flex flex-col items-center gap-4 animate-in fade-in duration-500">
              <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-             <p className="text-slate-500 font-bold text-sm tracking-widest uppercase">Carregando Sessão...</p>
-             <button 
-                onClick={() => window.location.reload()} 
-                className="mt-4 text-xs text-blue-500 underline hover:text-blue-700"
-             >
-                Demorando muito? Recarregar
-             </button>
+             <p className="text-slate-500 font-bold text-sm tracking-widest uppercase">Conectando ao Supabase...</p>
           </div>
         </div>
       )}
