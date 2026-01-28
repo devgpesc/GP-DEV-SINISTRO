@@ -5,7 +5,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 type Session = any;
 type User = any;
 import { supabase } from '../services/supabaseClient';
-import { Car, RefreshCw, Trash2 } from 'lucide-react';
+import { Car, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 
 interface AuthContextType {
   user: User | null;
@@ -56,84 +56,73 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let mounted = true;
 
     // Detecção Crítica: Estamos voltando de um login social?
-    // Se houver hash na URL, NÃO podemos liberar o loading até o Supabase processar.
     const isOAuthRedirect = typeof window !== 'undefined' && 
                             window.location.hash && 
                             window.location.hash.includes('access_token');
 
-    // Timeout de segurança reduzido para agilizar o carregamento
+    // Timeout de segurança AGRESSIVO para corrigir loops
     const safetyTimeout = setTimeout(() => {
         if (loading && mounted) {
-            console.warn('[Auth] Timeout de segurança atingido. Liberando interface.');
+            console.warn('[Auth] Timeout crítico. Forçando liberação.');
+            
+            // Se não estamos em redirect OAuth e travou, provavelmente é cache sujo.
+            if (!isOAuthRedirect) {
+               console.warn('[Auth] Sessão corrompida detectada. Limpando...');
+               localStorage.removeItem('sb-' + (import.meta as any).env?.VITE_SUPABASE_URL?.split('//')[1]?.split('.')[0] + '-auth-token');
+               setLoadingError(true); // Mostra botão de reset manual se o auto falhar
+            }
+            
             setLoading(false);
-            if (!user) setLoadingError(true);
         }
-    }, isOAuthRedirect ? 6000 : 3000); // 3s para normal, 6s para OAuth (muito mais rápido)
+    }, isOAuthRedirect ? 8000 : 4000); // 4s máximo para login normal
 
     const initAuth = async () => {
-        // 1. Configurar Listener PRIMEIRO para capturar eventos de hash instantaneamente
+        // 1. Configurar Listener PRIMEIRO
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
             console.log(`[Auth Event] ${event}`);
-            
             if (!mounted) return;
 
             if (newSession?.user) {
                 setSession(newSession);
                 setUser(newSession.user);
                 
-                // Fetch profile apenas se mudou o usuário ou ainda não temos
                 if (!profile || profile.id !== newSession.user.id) {
                     const p = await fetchProfile(newSession.user.id);
                     if (mounted) setProfile(p);
                 }
                 
-                // SEGURANÇA: Limpa hash da URL após sucesso
+                // Limpa hash da URL
                 if (window.location.hash && window.location.hash.includes('access_token')) {
                     window.history.replaceState(null, '', window.location.pathname);
                 }
-            } else {
-                // Se foi logout explícito, limpa estado
-                if (event === 'SIGNED_OUT') {
-                    setSession(null);
-                    setUser(null);
-                    setProfile(null);
-                }
+            } else if (event === 'SIGNED_OUT') {
+                setSession(null);
+                setUser(null);
+                setProfile(null);
             }
 
-            // Qualquer evento de mudança de estado encerra o loading
-            // (SIGNED_IN, TOKEN_REFRESHED, INITIAL_SESSION, etc)
             setLoading(false);
         });
 
-        // 2. Verificação Inicial Robusta (Server-Side Validation)
+        // 2. Verificação Inicial
         try {
-            // Tenta pegar usuário validado no servidor (evita cookies falsos)
-            const { data: { user: validUser }, error } = await supabase.auth.getUser();
+            const { data: { user: validUser } } = await supabase.auth.getUser();
             
             if (mounted) {
                 if (validUser) {
-                    // Usuário válido já existe
                     setUser(validUser);
                     const { data: { session: currentSession } } = await supabase.auth.getSession();
                     setSession(currentSession);
                     
                     const p = await fetchProfile(validUser.id);
                     if (mounted) setProfile(p);
-                    
                     setLoading(false);
-                } else {
-                    // Nenhum usuário ativo no storage/servidor.
-                    // CRÍTICO: Se for redirect OAuth, NÃO setamos loading false aqui.
-                    // Esperamos o evento do onAuthStateChange processar o hash.
-                    if (!isOAuthRedirect) {
-                        setLoading(false);
-                    } else {
-                        console.log('[Auth] Aguardando processamento de hash OAuth...');
-                    }
+                } else if (!isOAuthRedirect) {
+                    setLoading(false);
                 }
             }
         } catch (err) {
-            console.error('[Auth] Erro na inicialização:', err);
+            console.error('[Auth] Erro init:', err);
             if (mounted && !isOAuthRedirect) setLoading(false);
         }
 
@@ -151,7 +140,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signInWithGoogle = async () => {
     try {
-        setLoading(true); // Bloqueia UI durante início do redirecionamento
+        setLoading(true);
         const { error } = await (supabase.auth as any).signInWithOAuth({
           provider: 'google',
           options: {
@@ -161,9 +150,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         if (error) throw error;
     } catch (error) {
-        console.error("Erro no login Google:", error);
         setLoading(false);
-        alert("Erro ao iniciar login com Google. Verifique o console.");
+        alert("Erro ao iniciar login com Google.");
     }
   };
 
@@ -171,7 +159,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
         setLoading(true);
         await supabase.auth.signOut();
-        // O estado será limpo pelo onAuthStateChange -> SIGNED_OUT
+        localStorage.clear(); // Garante limpeza total no logout
     } catch (error) {
         console.error("Erro ao sair:", error);
         setLoading(false);
@@ -180,7 +168,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateProfile = async (data: { full_name?: string; avatar_url?: string; role?: string }) => {
     if (!user) return;
-
     try {
         const updates = {
             id: user.id,
@@ -188,27 +175,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             email: user.email, 
             updated_at: new Date().toISOString(),
         };
-
-        const { error } = await supabase
-            .from('profiles')
-            .upsert(updates);
-
-        if (error) {
-            console.error("Supabase Error:", error);
-            throw error;
-        }
-
+        const { error } = await supabase.from('profiles').upsert(updates);
+        if (error) throw error;
         setProfile((prev: any) => ({ ...prev, ...data }));
-
     } catch (error) {
-        console.error("Erro ao atualizar perfil:", error);
+        console.error("Erro perfil:", error);
         throw error;
     }
   };
 
-  // Função de Emergência para Limpar Cache e Recarregar
   const handleHardReset = () => {
-      if (window.confirm('Isso irá limpar seus dados de login locais e recarregar a página para corrigir erros. Continuar?')) {
+      if (window.confirm('Isso corrigirá problemas de travamento limpando os dados locais. Continuar?')) {
           localStorage.clear();
           sessionStorage.clear();
           window.location.href = '/login';
@@ -230,7 +207,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <AuthContext.Provider value={value}>
       {!loading && children} 
       {loading && (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-6">
+        <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-8 p-4">
           <div className="flex flex-col items-center">
             <div className="relative flex items-center justify-center mb-6 animate-in zoom-in duration-500">
                 <div className="w-16 h-16 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
@@ -239,17 +216,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 </div>
             </div>
             <p className="text-slate-400 font-black text-[10px] uppercase tracking-[0.3em] animate-pulse">
-                {loadingError ? 'Conexão lenta detectada...' : 'Autenticando...'}
+                Iniciando Sistema...
             </p>
           </div>
           
-          {/* Botão de Emergência para Limpar Cache */}
-          <button 
-            onClick={handleHardReset} 
-            className="flex items-center gap-2 px-5 py-3 bg-white border border-slate-200 text-slate-500 rounded-xl hover:bg-red-50 hover:text-red-600 hover:border-red-100 transition-all text-xs font-bold uppercase tracking-wider shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-700"
-          >
-              <Trash2 size={16} /> Limpar Cache e Recarregar
-          </button>
+          {/* Botão de Auto-Recuperação sempre visível após delay */}
+          <div className="flex flex-col gap-3 items-center animate-in fade-in slide-in-from-bottom-4 duration-700 delay-1000 fill-mode-forwards opacity-0" style={{animationDelay: '1s'}}>
+              <p className="text-xs text-slate-400 font-medium">O sistema está demorando?</p>
+              <button 
+                onClick={handleHardReset} 
+                className="flex items-center gap-2 px-6 py-3 bg-white border border-red-100 text-red-500 rounded-xl hover:bg-red-50 hover:border-red-200 transition-all text-xs font-bold uppercase tracking-wider shadow-sm"
+              >
+                  <AlertTriangle size={16} /> Corrigir e Recarregar
+              </button>
+          </div>
         </div>
       )}
     </AuthContext.Provider>

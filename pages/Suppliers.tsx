@@ -23,6 +23,7 @@ const Suppliers: React.FC = () => {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [dbError, setDbError] = useState(false);
   
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [isLookingCep, setIsLookingCep] = useState(false);
@@ -39,23 +40,22 @@ const Suppliers: React.FC = () => {
 
   async function loadSuppliers() {
     setLoading(true);
+    setDbError(false);
     try {
         const { data, error } = await supabase.from('suppliers').select('*').order('created_at', { ascending: false });
         
         if (error) {
-            // Código 42P01 = Tabela não existe
-            if (error.code === '42P01') {
-                console.warn('Tabela de fornecedores não encontrada.');
-                setSuppliers([]);
+            console.error("Supabase Error:", error);
+            if (error.message.includes('does not exist') || error.code === '42P01' || error.code === '42703') {
+                setDbError(true);
+                addToast('error', 'Banco de Dados Desatualizado', 'Rode o script SQL de correção no Supabase.');
             } else {
-                console.error("Erro Supabase:", error);
-                addToast('error', 'Erro', 'Falha ao carregar fornecedores: ' + error.message);
+                addToast('error', 'Erro', 'Falha ao carregar fornecedores.');
             }
         } else {
-            // Mapeia contact_name (snake_case do banco) para contactName (camelCase do frontend) se necessário
             const mappedData = data?.map((s: any) => ({
                 ...s,
-                contactName: s.contact_name || s.contactName // Suporta ambos os formatos
+                contactName: s.contact_name || s.contactName // Fallback para compatibilidade
             }));
             setSuppliers(mappedData || []);
         }
@@ -153,7 +153,7 @@ const Suppliers: React.FC = () => {
     e.preventDefault();
     setIsSaving(true);
 
-    // Mapeia para snake_case para o banco de dados
+    // Payload rigorosamente tipado para o banco (snake_case)
     const payload = {
         name: formData.name,
         cnpj: formData.cnpj.replace(/\D/g, ''),
@@ -165,8 +165,9 @@ const Suppliers: React.FC = () => {
         cep: formData.cep,
         status: formData.status,
         rating: formData.rating,
-        contact_name: formData.contactName, // Correção crucial: Frontend (camel) -> DB (snake)
-        created_at: supplierToEdit ? undefined : new Date().toISOString()
+        contact_name: formData.contactName, // Importante: snake_case
+        // created_at é automático no DB, enviamos apenas se for insert manual necessário, 
+        // mas o DB default deve cuidar disso. Para update, updated_at seria ideal.
     };
 
     try {
@@ -185,7 +186,12 @@ const Suppliers: React.FC = () => {
         addToast('success', 'Salvo', 'Fornecedor atualizado com sucesso.');
     } catch (err: any) {
         console.error("Erro ao salvar:", err);
-        addToast('error', 'Erro ao Salvar', err.message || 'Verifique as permissões do banco.');
+        // Tratamento amigável
+        if (err.message?.includes('column') || err.message?.includes('schema')) {
+             addToast('error', 'Erro de Estrutura', 'A tabela no banco não tem as colunas corretas. Rode o script SQL.');
+        } else {
+             addToast('error', 'Erro ao Salvar', err.message);
+        }
     } finally {
         setIsSaving(false);
     }
@@ -197,6 +203,16 @@ const Suppliers: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {dbError && (
+          <div className="p-4 bg-red-100 text-red-700 rounded-2xl flex items-center gap-3 border border-red-200">
+              <AlertTriangle size={24}/>
+              <div>
+                  <p className="font-bold">Atenção: Banco de Dados Desatualizado</p>
+                  <p className="text-xs">A tabela 'suppliers' precisa de ajuste nas colunas. Execute o Script SQL fornecido no Supabase.</p>
+              </div>
+          </div>
+      )}
+
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -260,7 +276,7 @@ const Suppliers: React.FC = () => {
               <button onClick={() => setIsModalOpen(false)} className="p-1 text-slate-300 hover:text-slate-500"><X size={28}/></button>
             </div>
             <form onSubmit={handleSave} className="p-10 space-y-6">
-              {/* Form Content - Same as before but using state */}
+              {/* Form Content */}
                <div className="grid grid-cols-2 gap-x-8 gap-y-6">
                 <div className="col-span-2">
                   <label className="flex justify-between items-end text-[10px] font-black uppercase text-slate-400 mb-2">
