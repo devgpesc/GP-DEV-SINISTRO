@@ -56,14 +56,15 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   // Toast State
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  // Inicializa dados do formulário quando o modal abre
+  // CORREÇÃO AQUI: Dependência apenas do showProfileModal para não resetar enquanto digita
   useEffect(() => {
-    if (showProfileModal && (profile || user)) {
+    if (showProfileModal) {
+        // Carrega os dados apenas quando o modal abre
         setEditName(profile?.full_name || user?.user_metadata?.full_name || '');
         setEditAvatar(profile?.avatar_url || user?.user_metadata?.avatar_url || '');
         setEditRole(profile?.role || 'user');
     }
-  }, [showProfileModal, profile, user]);
+  }, [showProfileModal]); // Removido 'profile' e 'user' das dependências para evitar loop de reset
   
   const [notifications, setNotifications] = useState([
     { id: 1, title: 'Aprovação Pendente', desc: 'OC-2024-001 aguardando sua assinatura.', time: '10 min', icon: ShoppingBag, color: 'blue', read: false },
@@ -90,7 +91,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Validação de tamanho (max 2MB conforme solicitado)
       if (file.size > 2 * 1024 * 1024) {
         addToast('warning', 'Arquivo muito grande', 'A imagem deve ter no máximo 2MB.');
         return;
@@ -115,11 +115,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         await updateProfile({
             full_name: editName,
             avatar_url: editAvatar,
-            role: editRole
+            // role: editRole // Role geralmente não é editado pelo próprio usuário em self-service, mas mantido se for admin
         });
         
         addToast('success', 'Perfil Atualizado', 'Suas informações foram salvas com sucesso.');
-        setTimeout(() => setShowProfileModal(false), 1000);
+        setTimeout(() => setShowProfileModal(false), 800);
     } catch (error: any) {
         console.error(error);
         addToast('error', 'Erro ao Salvar', error.message || 'Não foi possível atualizar o perfil.');
@@ -358,27 +358,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
-                       <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col items-center justify-center gap-1 relative overflow-hidden group hover:border-blue-200 transition-colors">
+                       <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col items-center justify-center gap-1 relative overflow-hidden">
                           <ShieldCheck size={20} className="text-blue-600"/>
                           <p className="text-[9px] font-black text-slate-400 uppercase">Função</p>
-                          
-                          {/* Seletor com z-index alto para garantir clique */}
-                          <select 
-                            value={editRole} 
-                            onChange={e => setEditRole(e.target.value)}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-30 appearance-none"
-                          >
-                             <option value="user">User</option>
-                             <option value="gerente">Gerente</option>
-                             <option value="admin">Admin</option>
-                             <option value="super_admin">Super Admin</option>
-                          </select>
-                          
-                          {/* Display Visual */}
-                          <div className="flex items-center gap-1 relative z-10 pointer-events-none">
-                              <span className="text-xs font-bold text-slate-700 capitalize">{editRole}</span>
-                              <ChevronDown size={12} className="text-slate-300 group-hover:text-blue-500 transition-colors"/>
-                          </div>
+                          <p className="text-xs font-bold text-slate-700 capitalize">{editRole}</p>
                        </div>
                        <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col items-center justify-center gap-1">
                           <Key size={20} className="text-amber-500"/>

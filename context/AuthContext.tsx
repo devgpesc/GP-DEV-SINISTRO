@@ -143,7 +143,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             throw error;
         }
 
-        // Atualiza estado local imediatamente para refletir na UI
+        // Atualiza estado local imediatamente para refletir na UI sem refresh
         setProfile((prev: any) => ({ ...prev, ...data }));
 
     } catch (error) {

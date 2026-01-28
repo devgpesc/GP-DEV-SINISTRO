@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Save, CheckCircle, Database, Bell, Shield, Globe, Mail, User, Building } from 'lucide-react';
+import { Settings as SettingsIcon, Save, CheckCircle, Database, Bell, Shield, Globe, Mail, User, Building, Users, MoreVertical, Edit2, Plus, Loader2, X, AlertTriangle } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 
 const Settings: React.FC = () => {
@@ -8,6 +8,7 @@ const Settings: React.FC = () => {
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   
+  // Company Info State
   const [companyInfo, setCompanyInfo] = useState({
     company_name: 'AutoClaims Pro',
     cnpj: '',
@@ -16,9 +17,22 @@ const Settings: React.FC = () => {
     phone: ''
   });
 
+  // Users Management State
+  const [usersList, setUsersList] = useState<any[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [userModalOpen, setUserModalOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<any>(null);
+  const [userForm, setUserForm] = useState({ id: '', full_name: '', role: 'user' });
+
   useEffect(() => {
     loadSettings();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'users') {
+        loadUsers();
+    }
+  }, [activeTab]);
 
   const loadSettings = async () => {
     setLoading(true);
@@ -35,6 +49,13 @@ const Settings: React.FC = () => {
     setLoading(false);
   };
 
+  const loadUsers = async () => {
+    setLoadingUsers(true);
+    const { data } = await supabase.from('profiles').select('*');
+    setUsersList(data || []);
+    setLoadingUsers(false);
+  };
+
   const handleSaveAll = async () => {
     const { error } = await supabase.from('saas_settings').upsert({
         id: 1, 
@@ -46,13 +67,45 @@ const Settings: React.FC = () => {
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
     } else {
-        // Fallback visual error
         console.error(error);
     }
   };
 
+  const handleEditUser = (user: any) => {
+    setEditingUser(user);
+    setUserForm({
+        id: user.id,
+        full_name: user.full_name || '',
+        role: user.role || 'user'
+    });
+    setUserModalOpen(true);
+  };
+
+  const handleSaveUser = async () => {
+      if (!editingUser) return;
+      
+      const { error } = await supabase.from('profiles').update({
+          full_name: userForm.full_name,
+          role: userForm.role,
+          updated_at: new Date().toISOString()
+      }).eq('id', userForm.id);
+
+      if (!error) {
+          loadUsers();
+          setUserModalOpen(false);
+      } else {
+          alert("Erro ao atualizar usuário: " + error.message);
+      }
+  };
+
+  const handleCreateUser = () => {
+      // Simulação para o usuário entender o fluxo
+      alert("Para adicionar novos usuários, peça para que eles se cadastrem na tela de Registro (/register). Após o cadastro, você poderá editar a função deles nesta tela.");
+  };
+
   const tabs = [
     { id: 'general', label: 'Geral', icon: Building },
+    { id: 'users', label: 'Equipe', icon: Users },
     { id: 'notifications', label: 'Notificações', icon: Bell },
     { id: 'integrations', label: 'Integrações', icon: Globe },
     { id: 'security', label: 'Segurança', icon: Shield },
@@ -131,6 +184,57 @@ const Settings: React.FC = () => {
                   </div>
               )}
 
+              {activeTab === 'users' && (
+                  <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                      <div className="flex items-center justify-between pb-6 border-b border-slate-50">
+                          <div className="flex items-center gap-3">
+                              <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl"><Users size={24}/></div>
+                              <div>
+                                  <h3 className="text-lg font-black text-slate-800">Gestão de Equipe</h3>
+                                  <p className="text-xs text-slate-400 font-medium">Controle de acesso e permissões.</p>
+                              </div>
+                          </div>
+                          <button onClick={handleCreateUser} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-700">
+                             <Plus size={14}/> Adicionar Membro
+                          </button>
+                      </div>
+
+                      {loadingUsers ? (
+                         <div className="py-10 text-center"><Loader2 className="animate-spin mx-auto text-blue-600"/></div>
+                      ) : (
+                         <div className="space-y-3">
+                            {usersList.map(user => (
+                                <div key={user.id} className="p-4 rounded-2xl border border-slate-100 hover:border-blue-200 transition-all flex items-center justify-between group">
+                                    <div className="flex items-center gap-4">
+                                        {user.avatar_url ? (
+                                            <img src={user.avatar_url} className="w-10 h-10 rounded-full border border-slate-200 object-cover"/>
+                                        ) : (
+                                            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400"><User size={20}/></div>
+                                        )}
+                                        <div>
+                                            <p className="font-bold text-slate-800">{user.full_name || 'Sem nome'}</p>
+                                            <p className="text-xs text-slate-400">{user.email || 'Usuário do sistema'}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
+                                            user.role === 'admin' || user.role === 'super_admin' ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                                            user.role === 'gerente' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                                            'bg-slate-50 text-slate-500 border-slate-100'
+                                        }`}>
+                                            {user.role || 'User'}
+                                        </span>
+                                        <button onClick={() => handleEditUser(user)} className="p-2 text-slate-300 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors">
+                                            <Edit2 size={16}/>
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                         </div>
+                      )}
+                  </div>
+              )}
+
               {activeTab === 'notifications' && (
                   <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                       <div className="flex items-center gap-3 pb-6 border-b border-slate-50">
@@ -195,6 +299,40 @@ const Settings: React.FC = () => {
               )}
           </div>
       </div>
+
+      {/* Modal Editar Usuário */}
+      {userModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setUserModalOpen(false)}></div>
+              <div className="relative bg-white w-full max-w-sm rounded-[32px] shadow-2xl p-6 animate-in zoom-in duration-200">
+                  <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-xl font-black text-slate-800">Editar Usuário</h3>
+                      <button onClick={() => setUserModalOpen(false)}><X className="text-slate-400 hover:text-slate-600"/></button>
+                  </div>
+                  <div className="space-y-4">
+                      <div>
+                          <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Nome de Exibição</label>
+                          <input className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-slate-700 outline-none"
+                              value={userForm.full_name} onChange={e => setUserForm({...userForm, full_name: e.target.value})} />
+                      </div>
+                      <div>
+                          <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Função / Permissão</label>
+                          <select className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-slate-700 outline-none"
+                              value={userForm.role} onChange={e => setUserForm({...userForm, role: e.target.value})}>
+                              <option value="user">User (Padrão)</option>
+                              <option value="gerente">Gerente</option>
+                              <option value="admin">Admin</option>
+                              <option value="super_admin">Super Admin</option>
+                          </select>
+                      </div>
+                      <div className="pt-4 flex justify-end gap-3">
+                          <button onClick={() => setUserModalOpen(false)} className="px-4 py-3 text-slate-400 font-black uppercase text-[10px]">Cancelar</button>
+                          <button onClick={handleSaveUser} className="px-6 py-3 bg-blue-600 text-white rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-blue-600/20">Salvar</button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
     </div>
   );
 };
