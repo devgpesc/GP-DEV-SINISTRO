@@ -90,9 +90,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Validação de tamanho (max 1MB para base64 performance)
-      if (file.size > 1024 * 1024) {
-        addToast('warning', 'Arquivo muito grande', 'A imagem deve ter no máximo 1MB.');
+      // Validação de tamanho (max 2MB conforme solicitado)
+      if (file.size > 2 * 1024 * 1024) {
+        addToast('warning', 'Arquivo muito grande', 'A imagem deve ter no máximo 2MB.');
         return;
       }
       
@@ -305,18 +305,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowProfileModal(false)}></div>
            <div className="relative bg-white w-full max-w-sm rounded-[36px] shadow-2xl overflow-hidden animate-in zoom-in duration-300 border border-white/20">
               
-              {/* Header com Gradiente */}
-              <div className="h-28 bg-gradient-to-br from-indigo-600 to-blue-700 relative flex justify-end p-4">
+              {/* Header com Gradiente - Z-Index 0 para ficar atrás do conteúdo se houver conflito */}
+              <div className="h-28 bg-gradient-to-br from-indigo-600 to-blue-700 relative z-0 flex justify-end p-4">
                  <button 
                     onClick={() => setShowProfileModal(false)} 
-                    className="bg-white/20 hover:bg-white/30 text-white p-2 rounded-full transition-all backdrop-blur-sm z-20"
+                    className="bg-white/20 hover:bg-white/30 text-white p-2 rounded-full transition-all backdrop-blur-sm z-30"
                  >
                     <X size={18}/>
                  </button>
               </div>
 
-              {/* Conteúdo do Modal - Z-Index 10 para ficar acima do background do header na margem negativa */}
-              <div className="px-8 pb-8 -mt-14 relative z-10">
+              {/* Conteúdo do Modal - Z-Index 20 para garantir que fique acima do header */}
+              <div className="px-8 pb-8 -mt-14 relative z-20">
                  {/* Avatar Area */}
                  <div className="flex justify-center mb-6">
                     <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
@@ -347,7 +347,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Nome de Exibição</label>
                        <div className="relative group">
                           <input 
-                             className="w-full text-center text-2xl font-black text-slate-800 bg-transparent border-b-2 border-slate-100 hover:border-blue-300 focus:border-blue-500 outline-none pb-2 transition-all placeholder:text-slate-300 relative z-20"
+                             className="w-full text-center text-2xl font-black text-slate-800 bg-transparent border-b-2 border-slate-100 hover:border-blue-300 focus:border-blue-500 outline-none pb-2 transition-all placeholder:text-slate-300 relative z-30"
                              value={editName}
                              onChange={e => setEditName(e.target.value)}
                              placeholder="Seu Nome"
@@ -362,11 +362,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                           <ShieldCheck size={20} className="text-blue-600"/>
                           <p className="text-[9px] font-black text-slate-400 uppercase">Função</p>
                           
-                          {/* Seletor invisível cobrindo toda a área para garantir clique */}
+                          {/* Seletor com z-index alto para garantir clique */}
                           <select 
                             value={editRole} 
                             onChange={e => setEditRole(e.target.value)}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-30 appearance-none"
                           >
                              <option value="user">User</option>
                              <option value="gerente">Gerente</option>
@@ -375,7 +375,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                           </select>
                           
                           {/* Display Visual */}
-                          <div className="flex items-center gap-1 relative z-10">
+                          <div className="flex items-center gap-1 relative z-10 pointer-events-none">
                               <span className="text-xs font-bold text-slate-700 capitalize">{editRole}</span>
                               <ChevronDown size={12} className="text-slate-300 group-hover:text-blue-500 transition-colors"/>
                           </div>
