@@ -80,7 +80,8 @@ const Catalog: React.FC = () => {
         await loadItems();
         setIsModalOpen(false);
     } catch (error) {
-        alert('Erro ao salvar item.');
+        console.error('Erro ao salvar item', error);
+        // Fallback or better error handling can be added here
     } finally {
         setIsSaving(false);
     }

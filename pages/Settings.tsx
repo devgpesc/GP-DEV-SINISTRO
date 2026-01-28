@@ -164,6 +164,35 @@ const Settings: React.FC = () => {
                       </button>
                   </div>
               )}
+
+              {activeTab === 'security' && (
+                  <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                      <div className="flex items-center gap-3 pb-6 border-b border-slate-50">
+                          <div className="p-3 bg-red-50 text-red-600 rounded-2xl"><Shield size={24}/></div>
+                          <div>
+                              <h3 className="text-lg font-black text-slate-800">Segurança da Conta</h3>
+                              <p className="text-xs text-slate-400 font-medium">Gerencie senhas e acessos.</p>
+                          </div>
+                      </div>
+                      
+                      <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                          <div className="flex justify-between items-center mb-4">
+                              <div>
+                                  <p className="font-bold text-slate-700">Autenticação de Dois Fatores (2FA)</p>
+                                  <p className="text-xs text-slate-400">Adicione uma camada extra de segurança.</p>
+                              </div>
+                              <button className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-bold uppercase hover:bg-slate-50">Configurar</button>
+                          </div>
+                          <div className="flex justify-between items-center">
+                              <div>
+                                  <p className="font-bold text-slate-700">Alterar Senha</p>
+                                  <p className="text-xs text-slate-400">Última alteração há 30 dias.</p>
+                              </div>
+                              <button className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-bold uppercase hover:bg-slate-50">Redefinir</button>
+                          </div>
+                      </div>
+                  </div>
+              )}
           </div>
       </div>
     </div>
