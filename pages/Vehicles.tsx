@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, Search, Car, Loader2, User, LayoutGrid, List, 
-  Trash2, Edit, Save, AlertCircle, X, CloudLightning, Keyboard, Calendar, Palette
+  Edit, Save, AlertCircle, X, CloudLightning, Keyboard, Calendar, Palette
 } from 'lucide-react';
 import { lookupService } from '../services/lookupService';
 import { supabase } from '../services/supabaseClient';
@@ -29,7 +29,7 @@ const Vehicles: React.FC = () => {
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [inputMode, setInputMode] = useState<'auto' | 'manual'>('auto');
   
-  // Inicialização completa
+  // Inicialização completa do formulário
   const initialFormState = {
     plate: '', associate_id: '', km: 0, status: 'Ativo' as any, notes: '', 
     brand: '', model: '', version: '', year_fab: '', year_model: '', 
