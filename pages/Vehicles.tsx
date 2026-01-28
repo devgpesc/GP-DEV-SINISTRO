@@ -46,10 +46,16 @@ const Vehicles: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const { data: vs } = await supabase.from('vehicles').select('*').order('created_at', { ascending: false });
-      const { data: as } = await supabase.from('associates').select('id, name, document');
+      const { data: vs, error: vError } = await supabase.from('vehicles').select('*').order('created_at', { ascending: false });
+      if (vError) throw vError;
+      
+      const { data: as, error: aError } = await supabase.from('associates').select('id, name, document');
+      if (aError) console.warn("Erro ao buscar associados:", aError);
+
       setVehicles(vs || []);
       setAssociates(as || []);
+    } catch (err) {
+      console.error("Erro ao carregar dados de veículos:", err);
     } finally {
       setLoading(false);
     }
@@ -96,25 +102,42 @@ const Vehicles: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-        const payload = { ...formData, created_at: editId ? undefined : new Date().toISOString() };
+        const payload = { 
+            ...formData, 
+            plate: formData.plate.toUpperCase().trim(),
+            km: Number(formData.km) || 0,
+            created_at: editId ? undefined : new Date().toISOString() 
+        };
         
+        let error;
         if (editId) {
-            await supabase.from('vehicles').update(payload).eq('id', editId);
+            const { error: e } = await supabase.from('vehicles').update(payload).eq('id', editId);
+            error = e;
         } else {
-            await supabase.from('vehicles').insert([payload]);
+            const { error: e } = await supabase.from('vehicles').insert([payload]);
+            error = e;
         }
+        
+        if (error) throw error;
         
         await loadData();
         setIsModalOpen(false);
-    } catch (err) {
-        alert('Erro ao salvar veículo.');
+    } catch (err: any) {
+        console.error(err);
+        if (err.message?.includes('violates unique constraint')) {
+            alert('Esta placa já está cadastrada no sistema.');
+        } else if (err.message?.includes('not find the table')) {
+             alert('Erro crítico: Tabela de veículos não encontrada. Contate o suporte.');
+        } else {
+            alert('Erro ao salvar veículo: ' + err.message);
+        }
     } finally {
         setIsSubmitting(false);
     }
   };
 
   const filteredVehicles = vehicles.filter(v => 
-    v.plate.includes(searchTerm.toUpperCase()) || 
+    v.plate?.includes(searchTerm.toUpperCase()) || 
     v.model?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -144,6 +167,9 @@ const Vehicles: React.FC = () => {
 
          {loading ? <div className="text-center py-10"><Loader2 className="animate-spin mx-auto text-blue-600"/></div> : (
             <div className={`grid gap-4 ${viewMode === 'grid' ? 'grid-cols-3' : 'grid-cols-1'}`}>
+                {filteredVehicles.length === 0 && (
+                    <div className="col-span-full py-10 text-center text-slate-400 font-medium">Nenhum veículo encontrado.</div>
+                )}
                 {filteredVehicles.map(v => (
                     <div key={v.id} className="p-5 border border-slate-100 rounded-3xl hover:border-blue-200 transition-all bg-slate-50/50 relative group">
                         <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">

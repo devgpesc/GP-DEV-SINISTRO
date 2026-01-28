@@ -5,7 +5,6 @@ import {
   Car, LayoutGrid, List, Phone, Mail, Shield, User, Loader2, AlertCircle
 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
-import { Vehicle } from '../types';
 import ActionModal from '../components/ActionModal';
 
 interface Associate {
@@ -91,7 +90,6 @@ const Associates: React.FC = () => {
           setAssociates(prev => prev.filter(a => a.id !== deleteId));
           setDeleteId(null);
       } catch (error) {
-          // Keep simple alert for delete error or use toast context if available
           console.error("Erro exclusão", error);
       }
     }
@@ -136,19 +134,28 @@ const Associates: React.FC = () => {
         // Lógica de Vínculo de Veículo Rápido
         if (formData.linkedPlate && formData.linkedPlate.length >= 7) {
             const cleanPlate = formData.linkedPlate.toUpperCase().replace(/[^A-Z0-9]/g, '');
-            // Verificar se veículo existe
+            
+            // 1. Verifica se veículo já existe
             const { data: existing } = await supabase.from('vehicles').select('id').eq('plate', cleanPlate).maybeSingle();
             
             if (existing) {
+                // Atualiza dono
                 await supabase.from('vehicles').update({ associateId: result.id }).eq('id', existing.id);
             } else {
-                await supabase.from('vehicles').insert([{
+                // Cria novo veículo básico
+                const { error: vError } = await supabase.from('vehicles').insert([{
                     plate: cleanPlate,
                     associateId: result.id,
                     status: 'Ativo',
-                    model: 'A DEFINIR',
+                    brand: 'A DEFINIR', // Valores padrão para evitar erro de not-null se houver
+                    model: 'CADASTRO RÁPIDO',
                     created_at: new Date().toISOString()
                 }]);
+                
+                if (vError) {
+                    console.error("Erro ao criar veículo automático:", vError);
+                    alert("Associado criado, mas houve um erro ao criar o veículo automático: " + vError.message);
+                }
             }
         }
 
@@ -156,9 +163,9 @@ const Associates: React.FC = () => {
     } catch (error: any) {
         console.error(error);
         if (error.message?.includes('Could not find the table')) {
-             setFormError("Erro de Configuração: Tabela 'associates' não encontrada. Execute as migrações do banco.");
+             setFormError("Erro Crítico: Tabela não encontrada no banco de dados.");
         } else {
-             setFormError(error.message || "Erro ao salvar associado. Verifique os dados.");
+             setFormError(error.message || "Erro ao salvar associado.");
         }
     } finally {
         setIsSubmitting(false);
