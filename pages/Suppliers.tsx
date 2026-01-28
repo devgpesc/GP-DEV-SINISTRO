@@ -6,26 +6,24 @@ import {
   TrendingUp, Clock, Globe, User, Mail, Phone, AlertTriangle, Home
 } from 'lucide-react';
 import { Supplier } from '../types';
-import { mockStorage, isSupabaseConfigured, supabase } from '../services/supabaseClient';
+import { supabase } from '../services/supabaseClient';
 import { lookupService } from '../services/lookupService';
 import ActionModal from '../components/ActionModal';
+import { useToast } from '../context/ToastContext';
 
 const Suppliers: React.FC = () => {
+  const { addToast } = useToast();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Modais de Edição/Criação
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [supplierToEdit, setSupplierToEdit] = useState<Supplier | null>(null);
-  
-  // Modal de Exclusão
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   
-  // Estado específico para o Loading da busca de CNPJ e CEP
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [isLookingCep, setIsLookingCep] = useState(false);
   const [lookupMessage, setLookupMessage] = useState<string | null>(null);
@@ -41,8 +39,11 @@ const Suppliers: React.FC = () => {
 
   async function loadSuppliers() {
     setLoading(true);
-    const saved = mockStorage.get('suppliers') || [];
-    setSuppliers(saved);
+    const { data, error } = await supabase.from('suppliers').select('*').order('created_at', { ascending: false });
+    if (error) {
+        addToast('error', 'Erro', 'Falha ao carregar fornecedores.');
+    }
+    setSuppliers(data || []);
     setLoading(false);
   }
 
@@ -64,11 +65,15 @@ const Suppliers: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (deleteId) {
-      const updatedList = suppliers.filter(s => s.id !== deleteId);
-      setSuppliers(updatedList);
-      mockStorage.set('suppliers', updatedList);
+      const { error } = await supabase.from('suppliers').delete().eq('id', deleteId);
+      if (!error) {
+          setSuppliers(prev => prev.filter(s => s.id !== deleteId));
+          addToast('success', 'Excluído', 'Fornecedor removido.');
+      } else {
+          addToast('error', 'Erro', 'Não foi possível excluir.');
+      }
       setDeleteId(null);
     }
   };
@@ -127,25 +132,33 @@ const Suppliers: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    const updatedSupplier = {
-      id: supplierToEdit ? supplierToEdit.id : Math.random().toString(36).substr(2, 9),
-      ...formData,
-      createdAt: supplierToEdit ? supplierToEdit.createdAt : new Date().toISOString()
+    setIsSaving(true);
+
+    const payload = {
+        ...formData,
+        cnpj: formData.cnpj.replace(/\D/g, ''),
+        created_at: supplierToEdit ? undefined : new Date().toISOString()
     };
 
-    let updated;
-    if (supplierToEdit) {
-      updated = suppliers.map(s => s.id === supplierToEdit.id ? updatedSupplier : s);
-    } else {
-      updated = [updatedSupplier, ...suppliers];
-    }
+    try {
+        if (supplierToEdit) {
+            const { error } = await supabase.from('suppliers').update(payload).eq('id', supplierToEdit.id);
+            if (error) throw error;
+        } else {
+            const { error } = await supabase.from('suppliers').insert([payload]);
+            if (error) throw error;
+        }
 
-    setSuppliers(updated);
-    mockStorage.set('suppliers', updated);
-    setIsModalOpen(false);
-    setSupplierToEdit(null);
-    setLookupMessage(null);
-    setFormData({name: '', cnpj: '', segment: 'Peças', whatsapp: '', email: '', cep: '', address: '', city: '', status: 'Ativo', rating: 5, contactName: ''});
+        await loadSuppliers();
+        setIsModalOpen(false);
+        setSupplierToEdit(null);
+        setFormData({name: '', cnpj: '', segment: 'Peças', whatsapp: '', email: '', cep: '', address: '', city: '', status: 'Ativo', rating: 5, contactName: ''});
+        addToast('success', 'Salvo', 'Fornecedor atualizado com sucesso.');
+    } catch (err: any) {
+        addToast('error', 'Erro ao Salvar', err.message);
+    } finally {
+        setIsSaving(false);
+    }
   };
 
   const filtered = useMemo(() => {
@@ -178,11 +191,11 @@ const Suppliers: React.FC = () => {
             {filtered.length === 0 ? (
                <tr>
                  <td colSpan={4} className="px-8 py-12 text-center text-slate-400">
-                    <p className="text-sm font-bold">Nenhum fornecedor cadastrado.</p>
+                    <p className="text-sm font-bold">{loading ? 'Carregando...' : 'Nenhum fornecedor cadastrado.'}</p>
                  </td>
                </tr>
             ) : filtered.map(s => (
-              <tr key={s.id} className="hover:bg-slate-50/50 transition-colors group cursor-pointer" onClick={() => setSelectedSupplier(s)}>
+              <tr key={s.id} className="hover:bg-slate-50/50 transition-colors group cursor-pointer" onClick={() => handleEdit(s)}>
                 <td className="px-8 py-5">
                   <p className="font-bold text-slate-800">{s.name}</p>
                   <p className="text-[10px] text-slate-400 font-bold">{s.cnpj}</p>
@@ -217,7 +230,8 @@ const Suppliers: React.FC = () => {
               <button onClick={() => setIsModalOpen(false)} className="p-1 text-slate-300 hover:text-slate-500"><X size={28}/></button>
             </div>
             <form onSubmit={handleSave} className="p-10 space-y-6">
-              <div className="grid grid-cols-2 gap-x-8 gap-y-6">
+              {/* Form Content - Same as before but using state */}
+               <div className="grid grid-cols-2 gap-x-8 gap-y-6">
                 <div className="col-span-2">
                   <label className="flex justify-between items-end text-[10px] font-black uppercase text-slate-400 mb-2">
                     <span>CNPJ / CPF *</span>
@@ -305,9 +319,12 @@ const Suppliers: React.FC = () => {
                   </div>
                 </div>
               </div>
+
               <div className="flex justify-end gap-6 pt-6 border-t border-slate-50 items-center">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="text-slate-400 font-black uppercase text-[12px] tracking-widest hover:text-slate-600 transition-colors">CANCELAR</button>
-                <button type="submit" className="px-12 py-4 bg-blue-600 text-white rounded-full font-black shadow-xl shadow-blue-600/30 uppercase text-xs tracking-widest hover:bg-blue-700 transition-all">FINALIZAR CADASTRO</button>
+                <button type="submit" disabled={isSaving} className="px-12 py-4 bg-blue-600 text-white rounded-full font-black shadow-xl shadow-blue-600/30 uppercase text-xs tracking-widest hover:bg-blue-700 transition-all flex items-center gap-2">
+                    {isSaving ? <Loader2 className="animate-spin" size={16}/> : 'FINALIZAR CADASTRO'}
+                </button>
               </div>
             </form>
           </div>
@@ -320,7 +337,7 @@ const Suppliers: React.FC = () => {
         onClose={() => setDeleteId(null)}
         onConfirm={confirmDelete}
         title="Excluir Parceiro?"
-        description="Você está prestes a remover este fornecedor. Esta ação é irreversível."
+        description="Você está prestes a remover este fornecedor do banco de dados."
         type="danger"
         confirmText="Sim, excluir"
       />

@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, ChevronRight, ArrowLeft, BarChart3, Trash2, Rocket, LayoutGrid, List, Eye } from 'lucide-react';
-import { MOCK_SUPPLIERS } from '../constants';
 import MatrixTable from '../components/MatrixTable';
 import { supabase } from '../services/supabaseClient';
 import { Event } from '../types';
@@ -241,3 +240,4 @@ const Quotations: React.FC = () => {
 };
 
 export default Quotations;
+    

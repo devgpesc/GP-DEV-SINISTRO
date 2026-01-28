@@ -22,25 +22,6 @@ export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
   },
 });
 
-export const mockStorage = {
-  get: (key: string) => {
-    try {
-      const item = localStorage.getItem(key);
-      return item ? JSON.parse(item) : null;
-    } catch (e) {
-      console.error('Error reading from localStorage', e);
-      return null;
-    }
-  },
-  set: (key: string, value: any) => {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch (e) {
-      console.error('Error saving to localStorage', e);
-    }
-  }
-};
-
 export const checkSupabaseConnection = async () => {
   if (!isSupabaseConfigured) return false;
   try {
@@ -56,26 +37,20 @@ export const checkSupabaseConnection = async () => {
     const { error } = await Promise.race([queryPromise, timeoutPromise]) as any;
 
     if (error) {
-        // Se tem 'code', é um erro do Postgres/Supabase (Ex: 42P01 tabela não existe, 401 permissão)
-        // Isso significa que CONECTAMOS ao servidor com sucesso.
         if (error.code) {
             console.warn('[Connection Check] Conectado com erro SQL:', error.code, error.message);
             return true;
         }
 
         const msg = error.message?.toLowerCase() || '';
-        // Se for erro de rede (fetch failed, network error), aí sim é Offline
         if (msg.includes('fetch') || msg.includes('network') || msg.includes('connection') || msg.includes('failed')) {
             console.error('[Connection Check] Falha de Rede:', error);
             return false;
         }
     }
-    
-    // Sem erro ou erro de SQL = Online
     return true;
   } catch (e: any) {
     console.error('[Connection Check] Exceção:', e);
-    // Timeout assume offline para não travar, mas idealmente o Dashboard tenta buscar dados mesmo assim
     return false;
   }
 };
