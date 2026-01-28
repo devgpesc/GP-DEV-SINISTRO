@@ -29,7 +29,7 @@ const Vehicles: React.FC = () => {
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [inputMode, setInputMode] = useState<'auto' | 'manual'>('auto');
   
-  // Inicialização completa com snake_case preferencial
+  // Inicialização completa
   const initialFormState = {
     plate: '', associate_id: '', km: 0, status: 'Ativo' as any, notes: '', 
     brand: '', model: '', version: '', year_fab: '', year_model: '', 
@@ -52,10 +52,10 @@ const Vehicles: React.FC = () => {
       const { data: as, error: aError } = await supabase.from('associates').select('id, name, document');
       if (aError) console.warn("Erro ao buscar associados:", aError);
 
-      // Normalização de dados (Resiliência para snake_case vs camelCase na leitura)
+      // Normalização de dados (Resiliência para snake_case vs camelCase)
       const mappedVehicles = vs?.map((v: any) => ({
         ...v,
-        associate_id: v.associate_id || v.associateId, // Prioriza snake_case
+        associate_id: v.associate_id || v.associateId, 
         year_fab: v.year_fab || v.yearFab,
         year_model: v.year_model || v.yearModel
       })) || [];
@@ -105,6 +105,15 @@ const Vehicles: React.FC = () => {
     }
   };
 
+  // Função auxiliar para salvar (tenta payload, se falhar, tenta fallback)
+  const performSave = async (payload: any, isRetry = false): Promise<any> => {
+      if (editId) {
+          return await supabase.from('vehicles').update(payload).eq('id', editId);
+      } else {
+          return await supabase.from('vehicles').insert([payload]);
+      }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.plate || !formData.associate_id) {
@@ -114,44 +123,49 @@ const Vehicles: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-        // Montagem Limpa do Payload (Evita campos camelCase antigos)
+        const cleanAssociateId = formData.associate_id === '' ? null : formData.associate_id;
+
+        // 1. Payload Padrão (snake_case)
         const payload: any = { 
             plate: formData.plate.toUpperCase().trim(),
-            associate_id: formData.associate_id, // Somente snake_case
+            associate_id: cleanAssociateId,
             km: Number(formData.km) || 0,
             status: formData.status || 'Ativo',
             brand: formData.brand?.toUpperCase() || '',
             model: formData.model?.toUpperCase() || '',
             color: formData.color?.toUpperCase() || '',
-            
-            // Campos Opcionais (Preenche com ISENTO se vazio para evitar erro de constraint)
             renavam: formData.renavam?.trim() || 'ISENTO', 
             chassi: formData.chassi?.trim().toUpperCase() || 'ISENTO',
-            
-            // Somente snake_case para anos
             year_fab: formData.year_fab || '',
             year_model: formData.year_model || '',
-            
             created_at: editId ? undefined : new Date().toISOString() 
         };
         
-        // Remove explicitamente chaves antigas se por ventura entrarem
-        delete payload.associateId;
-        delete payload.yearFab;
-        delete payload.yearModel;
-
-        // Remove chaves undefined para não enviar lixo
+        // Limpeza de campos undefined
         Object.keys(payload).forEach(key => (payload as any)[key] === undefined && delete (payload as any)[key]);
 
-        let error;
-        if (editId) {
-            const { error: e } = await supabase.from('vehicles').update(payload).eq('id', editId);
-            error = e;
-        } else {
-            const { error: e } = await supabase.from('vehicles').insert([payload]);
-            error = e;
+        // Tentativa 1: Enviar Snake Case
+        let { error } = await performSave(payload);
+
+        // Se falhar por erro de coluna não encontrada, tenta enviar CamelCase (Fallback para legado)
+        if (error && error.message.includes('column') && error.message.includes('does not exist')) {
+            console.warn('Banco legado detectado. Tentando fallback para camelCase...');
+            
+            const legacyPayload = {
+                ...payload,
+                associateId: cleanAssociateId, // Fallback
+                yearFab: payload.year_fab,
+                yearModel: payload.year_model
+            };
+            // Remove os novos para não dar erro de novo
+            delete legacyPayload.associate_id;
+            delete legacyPayload.year_fab;
+            delete legacyPayload.year_model;
+
+            const retryResult = await performSave(legacyPayload, true);
+            error = retryResult.error;
         }
-        
+
         if (error) throw error;
         
         await loadData();
@@ -162,9 +176,7 @@ const Vehicles: React.FC = () => {
         if (err.message?.includes('violates unique constraint')) {
             addToast('error', 'Duplicidade', 'Esta placa já está cadastrada.');
         } else if (err.message?.includes('null value')) {
-            addToast('error', 'Erro de Banco de Dados', 'Um campo obrigatório do banco está vazio.');
-        } else if (err.message?.includes('associateId')) {
-            addToast('error', 'Cache Antigo', 'Recarregue a página para atualizar o esquema do banco.');
+            addToast('error', 'Erro de Banco de Dados', 'Verifique se o script SQL de correção foi executado no Supabase.');
         } else {
             addToast('error', 'Erro ao Salvar', err.message);
         }
@@ -274,13 +286,13 @@ const Vehicles: React.FC = () => {
                             <div>
                                 <label className="block text-xs font-bold text-slate-600 mb-1">Proprietário *</label>
                                 <select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm outline-none"
-                                    value={formData.associate_id} onChange={e => setFormData({...formData, associate_id: e.target.value})}>
+                                    value={formData.associate_id || ''} onChange={e => setFormData({...formData, associate_id: e.target.value})}>
                                     <option value="">Selecione...</option>
                                     {associates.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                                 </select>
                             </div>
 
-                            {/* RENAVAM E CHASSI REMOVIDOS VISUALMENTE. Enviados como 'ISENTO' no submit. */}
+                            {/* RENAVAM E CHASSI OCULTOS (Visualmente) e enviados como 'ISENTO' */}
 
                             <div>
                                 <label className="block text-xs font-bold text-slate-600 mb-1">KM Atual</label>
