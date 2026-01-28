@@ -29,7 +29,7 @@ const Vehicles: React.FC = () => {
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [inputMode, setInputMode] = useState<'auto' | 'manual'>('auto');
   
-  // Inicialização completa para evitar 'null value' error no Supabase
+  // Inicialização completa
   const initialFormState = {
     plate: '', associate_id: '', km: 0, status: 'Ativo' as any, notes: '', 
     brand: '', model: '', version: '', year_fab: '', year_model: '', 
@@ -111,8 +111,9 @@ const Vehicles: React.FC = () => {
             plate: formData.plate.toUpperCase().trim(),
             km: Number(formData.km) || 0,
             associate_id: formData.associate_id,
-            renavam: formData.renavam || '', // Garante string vazia se null
-            chassi: formData.chassi?.toUpperCase() || '', // Garante string vazia
+            // Envia NULL se estiver vazio, respeitando a configuração do banco
+            renavam: formData.renavam?.trim() || null, 
+            chassi: formData.chassi?.trim().toUpperCase() || null,
             created_at: editId ? undefined : new Date().toISOString() 
         };
         
@@ -135,7 +136,8 @@ const Vehicles: React.FC = () => {
         if (err.message?.includes('violates unique constraint')) {
             addToast('error', 'Duplicidade', 'Esta placa já está cadastrada.');
         } else if (err.message?.includes('null value')) {
-            addToast('error', 'Campos Obrigatórios', 'O banco de dados exige Renavam ou Chassi. Preencha ou contate o suporte.');
+            // Mensagem genérica caso o usuário tenha esquecido de rodar o SQL para o Chassi também
+            addToast('error', 'Erro de Banco de Dados', 'O sistema tentou salvar um campo opcional que ainda está marcado como obrigatório no banco. Contate o suporte.');
         } else {
             addToast('error', 'Erro ao Salvar', err.message);
         }
@@ -251,17 +253,21 @@ const Vehicles: React.FC = () => {
                                 </select>
                             </div>
 
-                            {/* Novos campos para satisfazer o banco */}
+                            {/* Campos agora marcados como Opcionais */}
                             <div>
-                                <label className="block text-xs font-bold text-slate-600 mb-1 flex items-center gap-1"><FileText size={12}/> Renavam</label>
+                                <label className="block text-xs font-bold text-slate-600 mb-1 flex items-center gap-1">
+                                    <FileText size={12}/> Renavam <span className="text-slate-400 font-normal ml-1">(Opcional)</span>
+                                </label>
                                 <input className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none"
-                                    value={formData.renavam} onChange={e => setFormData({...formData, renavam: e.target.value})} 
+                                    value={formData.renavam || ''} onChange={e => setFormData({...formData, renavam: e.target.value})} 
                                     placeholder="Código Renavam" />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-slate-600 mb-1 flex items-center gap-1"><FileText size={12}/> Chassi</label>
+                                <label className="block text-xs font-bold text-slate-600 mb-1 flex items-center gap-1">
+                                    <FileText size={12}/> Chassi <span className="text-slate-400 font-normal ml-1">(Opcional)</span>
+                                </label>
                                 <input className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none uppercase"
-                                    value={formData.chassi} onChange={e => setFormData({...formData, chassi: e.target.value.toUpperCase()})} 
+                                    value={formData.chassi || ''} onChange={e => setFormData({...formData, chassi: e.target.value.toUpperCase()})} 
                                     placeholder="Número do Chassi" />
                             </div>
 
