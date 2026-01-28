@@ -106,18 +106,34 @@ const Vehicles: React.FC = () => {
 
     setIsSubmitting(true);
     try {
+        // Preparar Payload Inteligente
+        // Envia 'ISENTO' para Chassi/Renavam se estiverem vazios para contornar qualquer restrição NOT NULL do banco
         const payload = { 
-            ...formData, 
             plate: formData.plate.toUpperCase().trim(),
+            associate_id: formData.associate_id, // Padrão snake_case
+            associateId: formData.associate_id,  // Fallback camelCase (se o banco estiver antigo)
             km: Number(formData.km) || 0,
-            associate_id: formData.associate_id,
-            // CORREÇÃO CRÍTICA: Envia string vazia '' em vez de null.
-            // Isso evita erro de Constraint NOT NULL se o banco ainda estiver exigindo valor.
-            renavam: formData.renavam?.trim() || '', 
-            chassi: formData.chassi?.trim().toUpperCase() || '',
+            status: formData.status || 'Ativo',
+            brand: formData.brand?.toUpperCase(),
+            model: formData.model?.toUpperCase(),
+            color: formData.color?.toUpperCase(),
+            
+            // Campos Opcionais (Preenche com ISENTO se vazio para evitar erro)
+            renavam: formData.renavam?.trim() || 'ISENTO', 
+            chassi: formData.chassi?.trim().toUpperCase() || 'ISENTO',
+            
+            // Compatibilidade com colunas antigas (yearFab vs year_fab)
+            year_fab: formData.year_fab,
+            yearFab: formData.year_fab,
+            year_model: formData.year_model,
+            yearModel: formData.year_model,
+            
             created_at: editId ? undefined : new Date().toISOString() 
         };
         
+        // Remove chaves undefined para não enviar lixo
+        Object.keys(payload).forEach(key => (payload as any)[key] === undefined && delete (payload as any)[key]);
+
         let error;
         if (editId) {
             const { error: e } = await supabase.from('vehicles').update(payload).eq('id', editId);
@@ -137,7 +153,7 @@ const Vehicles: React.FC = () => {
         if (err.message?.includes('violates unique constraint')) {
             addToast('error', 'Duplicidade', 'Esta placa já está cadastrada.');
         } else if (err.message?.includes('null value')) {
-            addToast('error', 'Erro de Banco de Dados', 'Campo obrigatório não preenchido. Verifique o Chassi/Renavam.');
+            addToast('error', 'Erro de Banco de Dados', 'Um campo obrigatório do banco está vazio. Verifique o script SQL.');
         } else {
             addToast('error', 'Erro ao Salvar', err.message);
         }
@@ -253,23 +269,8 @@ const Vehicles: React.FC = () => {
                                 </select>
                             </div>
 
-                            {/* Campos agora marcados como Opcionais */}
-                            <div>
-                                <label className="block text-xs font-bold text-slate-600 mb-1 flex items-center gap-1">
-                                    <FileText size={12}/> Renavam <span className="text-slate-400 font-normal ml-1">(Opcional)</span>
-                                </label>
-                                <input className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none"
-                                    value={formData.renavam || ''} onChange={e => setFormData({...formData, renavam: e.target.value})} 
-                                    placeholder="Código Renavam" />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-600 mb-1 flex items-center gap-1">
-                                    <FileText size={12}/> Chassi <span className="text-slate-400 font-normal ml-1">(Opcional)</span>
-                                </label>
-                                <input className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none uppercase"
-                                    value={formData.chassi || ''} onChange={e => setFormData({...formData, chassi: e.target.value.toUpperCase()})} 
-                                    placeholder="Número do Chassi" />
-                            </div>
+                            {/* CAMPOS RENAVAM E CHASSI REMOVIDOS DA TELA CONFORME SOLICITADO */}
+                            {/* O sistema enviará "ISENTO" automaticamente no submit */}
 
                             <div>
                                 <label className="block text-xs font-bold text-slate-600 mb-1">KM Atual</label>
