@@ -163,15 +163,24 @@ const Vehicles: React.FC = () => {
              const isNullError = error.message.includes('null value') && error.message.includes('constraint');
              
              if (isColumnError || isNullError) {
-                console.warn('Tentando fallback para CamelCase devido a erro:', error.message);
+                console.warn('Tentando fallback para CamelCase/Legacy devido a erro:', error.message);
                 
-                const legacyPayload = {
+                const legacyPayload: any = {
                     ...payload,
-                    associateId: cleanAssociateId, // Fallback
+                    associateId: cleanAssociateId, // Fallback comum
                     yearFab: payload.year_fab,
                     yearModel: payload.year_model
                 };
-                // Remove os novos para não dar erro de "coluna não existe" no legado
+
+                // HOTFIX: Se o erro for especificamente na coluna "year", adicionamos ela ao payload
+                if (error.message.includes('column "year"')) {
+                    console.log('Detectado coluna legada "year". Injetando valor...');
+                    // Tenta injetar como inteiro e como string para garantir
+                    const yearVal = payload.year_fab ? parseInt(payload.year_fab.replace(/\D/g, '')) : new Date().getFullYear();
+                    legacyPayload['year'] = yearVal || 2024;
+                }
+
+                // Remove os novos para não dar erro de "coluna não existe" no legado se o banco for antigo
                 delete legacyPayload.associate_id;
                 delete legacyPayload.year_fab;
                 delete legacyPayload.year_model;
@@ -182,6 +191,8 @@ const Vehicles: React.FC = () => {
                     error = null; // Sucesso no retry
                 } else {
                     console.error("Retry também falhou:", retryResult.error.message);
+                    // Se o retry falhar, usamos o erro do retry para mostrar ao usuário, pois é mais provável que seja o erro real de dados
+                    error = retryResult.error;
                 }
              }
         }

@@ -82,7 +82,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.log(`[Auth Event] ${event}`);
             if (!mounted) return;
 
-            if (newSession?.user) {
+            if (newSession?.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION')) {
                 setSession(newSession);
                 setUser(newSession.user);
                 
@@ -95,35 +95,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 if (window.location.hash && window.location.hash.includes('access_token')) {
                     window.history.replaceState(null, '', window.location.pathname);
                 }
+                setLoading(false);
             } else if (event === 'SIGNED_OUT') {
+                // Tratamento redundante para garantir limpeza caso venha do listener
                 setSession(null);
                 setUser(null);
                 setProfile(null);
+                setLoading(false);
             }
-
-            setLoading(false);
         });
 
         // 2. Verificação Inicial
         try {
-            const { data: { user: validUser } } = await supabase.auth.getUser();
+            const { data: { session: currentSession } } = await supabase.auth.getSession();
             
             if (mounted) {
-                if (validUser) {
-                    setUser(validUser);
-                    const { data: { session: currentSession } } = await supabase.auth.getSession();
+                if (currentSession?.user) {
                     setSession(currentSession);
+                    setUser(currentSession.user);
                     
-                    const p = await fetchProfile(validUser.id);
+                    const p = await fetchProfile(currentSession.user.id);
                     if (mounted) setProfile(p);
-                    setLoading(false);
-                } else if (!isOAuthRedirect) {
-                    setLoading(false);
                 }
+                // Sempre finaliza o loading inicial, logado ou não
+                setLoading(false);
             }
         } catch (err) {
             console.error('[Auth] Erro init:', err);
-            if (mounted && !isOAuthRedirect) setLoading(false);
+            if (mounted) setLoading(false);
         }
 
         return subscription;
@@ -156,29 +155,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signOut = async () => {
+    // LOGOUT NUCLEAR: Garante que nada sobrevive para causar re-login automático
     try {
         setLoading(true);
+        
+        // 1. Limpeza de Estado React Imediata (Visual)
+        setUser(null);
+        setSession(null);
+        setProfile(null);
+
+        // 2. Logout no Supabase (Backend)
         await supabase.auth.signOut();
         
-        // --- LIMPEZA COMPLETA DE DADOS ---
-        
-        // 1. Limpar LocalStorage e SessionStorage
+        // 3. Limpeza de Storage (Persistência)
         localStorage.clear();
         sessionStorage.clear();
 
-        // 2. Limpar Cookies (Itera e expira todos)
+        // 4. Limpeza de Cookies (Deep Clean)
         const cookies = document.cookie.split(";");
         for (let i = 0; i < cookies.length; i++) {
             const cookie = cookies[i];
             const eqPos = cookie.indexOf("=");
             const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
-            // Define data de expiração para o passado
             document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
         }
 
+        console.log('[Auth] Sessão encerrada completamente.');
+
     } catch (error) {
-        console.error("Erro ao sair:", error);
-        setLoading(false);
+        console.error("Erro ao sair (forçando limpeza local):", error);
+        localStorage.clear();
+    } finally {
+        // 5. Hard Reload para Login (Limpa memória JS e previne loop de hooks)
+        window.location.href = '/login';
     }
   };
 
@@ -232,7 +241,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 </div>
             </div>
             <p className="text-slate-400 font-black text-[10px] uppercase tracking-[0.3em] animate-pulse">
-                Iniciando Sistema...
+                Carregando Sistema...
             </p>
           </div>
           
@@ -243,7 +252,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 onClick={handleHardReset} 
                 className="flex items-center gap-2 px-6 py-3 bg-white border border-red-100 text-red-500 rounded-xl hover:bg-red-50 hover:border-red-200 transition-all text-xs font-bold uppercase tracking-wider shadow-sm"
               >
-                  <AlertTriangle size={16} /> Corrigir e Recarregar
+                  <AlertTriangle size={16} /> Forçar Logout e Corrigir
               </button>
           </div>
         </div>
