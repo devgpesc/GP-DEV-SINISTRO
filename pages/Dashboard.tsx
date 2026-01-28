@@ -70,12 +70,21 @@ const Dashboard: React.FC = () => {
     }
 
     try {
-        // Tenta buscar dados DIRETAMENTE. Se funcionar, estamos online.
-        // Isso evita que um check de conexão falso-negativo bloqueie o app.
-        const [ordersRes, eventsRes] = await Promise.all([
+        // Tenta buscar dados DIRETAMENTE com timeout.
+        // Se a promessa demorar mais que 10s, forçamos o erro para liberar a UI.
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Tempo limite de conexão excedido (10s)')), 10000)
+        );
+
+        const fetchDataPromise = Promise.all([
             supabase.from('purchase_orders').select('*'),
             supabase.from('events').select('*')
         ]);
+
+        const [ordersRes, eventsRes] = await Promise.race([
+            fetchDataPromise,
+            timeoutPromise
+        ]) as [any, any];
 
         if (ordersRes.error || eventsRes.error) {
             console.error("Erro ao buscar dados:", ordersRes.error || eventsRes.error);
@@ -88,8 +97,9 @@ const Dashboard: React.FC = () => {
             setOrders(ordersRes.data || []);
             setEvents(eventsRes.data || []);
         }
-    } catch (err) {
-        console.error("Erro crítico no dashboard:", err);
+    } catch (err: any) {
+        console.error("Erro crítico ou timeout no dashboard:", err);
+        // Mesmo no catch (timeout), tentamos verificar a conexão rapidamente ou assumimos desconectado
         setDbStatus('disconnected');
     } finally {
         setLoading(false);
@@ -165,6 +175,7 @@ const Dashboard: React.FC = () => {
           <div className="h-[70vh] flex flex-col items-center justify-center text-slate-400 animate-in fade-in duration-500">
               <Loader2 className="animate-spin mb-4 text-blue-600" size={48}/>
               <p className="font-bold text-xs uppercase tracking-[0.2em] animate-pulse">Sincronizando Dados...</p>
+              <p className="text-[10px] text-slate-300 mt-2">Aguardando resposta do servidor...</p>
           </div>
       );
   }
