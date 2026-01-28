@@ -55,23 +55,50 @@ export const lookupService = {
   },
 
   /**
-   * Consulta dados de CNPJ no backend.
+   * Consulta dados de CNPJ no backend ou API Pública.
    */
   async fetchCNPJ(cnpj: string): Promise<{name?: string, fantasy?: string, city?: string, email?: string, phone?: string} | null> {
     const cleanCnpj = cnpj.replace(/\D/g, '');
     if (cleanCnpj.length !== 14) return null;
 
     try {
-      const response = await fetch(`${API_BASE}/cnpj/lookup?cnpj=${cleanCnpj}`);
+      // 1. Tenta Backend Local (Prioridade para Cache e Chaves Privadas)
+      // Usamos um timeout curto para não travar a UI se o backend não estiver rodando
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3s timeout
+
+      const response = await fetch(`${API_BASE}/cnpj/lookup?cnpj=${cleanCnpj}`, {
+         signal: controller.signal
+      });
+      clearTimeout(timeoutId);
       
-      if (!response.ok) {
+      if (response.ok) {
+         return await response.json();
+      }
+      
+      throw new Error('Backend inacessível ou erro na API local');
+
+    } catch (error) {
+      console.warn("Backend offline ou falha. Tentando API Pública (BrasilAPI)...", error);
+      
+      // 2. Fallback: BrasilAPI (Grátis, Pública, Sem Auth)
+      try {
+        const responsePublic = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cleanCnpj}`);
+        if (!responsePublic.ok) return null;
+
+        const data = await responsePublic.json();
+        
+        return {
+          name: data.razao_social,
+          fantasy: data.nome_fantasia || data.razao_social,
+          city: data.municipio,
+          email: data.email,
+          phone: data.ddd_telefone_1 ? `(${data.ddd_telefone_1}) ${data.telefone_1}` : ''
+        };
+      } catch (e) {
+        console.error("Erro definitivo na busca de CNPJ:", e);
         return null;
       }
-
-      return await response.json();
-    } catch (error) {
-      console.error("Erro de conexão com serviço de CNPJ:", error);
-      return null;
     }
   }
 };
