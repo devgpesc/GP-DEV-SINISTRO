@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, Search, UserCheck, Edit3, Trash2, X, Save, 
-  Car, LayoutGrid, List, Phone, Mail, Shield, User, Loader2
+  Car, LayoutGrid, List, Phone, Mail, Shield, User, Loader2, AlertCircle
 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { Vehicle } from '../types';
@@ -26,6 +26,7 @@ const Associates: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   
   const [associateToEdit, setAssociateToEdit] = useState<Associate | null>(null);
   
@@ -54,6 +55,7 @@ const Associates: React.FC = () => {
   };
 
   const handleOpenModal = (associate?: Associate) => {
+    setFormError(null);
     if (associate) {
       setAssociateToEdit(associate);
       setFormData({
@@ -89,14 +91,19 @@ const Associates: React.FC = () => {
           setAssociates(prev => prev.filter(a => a.id !== deleteId));
           setDeleteId(null);
       } catch (error) {
-          alert('Erro ao excluir. Verifique se existem veículos vinculados.');
+          // Keep simple alert for delete error or use toast context if available
+          console.error("Erro exclusão", error);
       }
     }
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.document) return;
+    setFormError(null);
+    if (!formData.name || !formData.document) {
+        setFormError("Preencha os campos obrigatórios (Nome e Documento).");
+        return;
+    }
     
     setIsSubmitting(true);
     
@@ -108,7 +115,6 @@ const Associates: React.FC = () => {
             responsible: formData.responsible,
             email: formData.email,
             phone: formData.phone,
-            // createdAt mantido pelo DB se novo
         };
 
         let result;
@@ -147,9 +153,9 @@ const Associates: React.FC = () => {
         }
 
         setIsModalOpen(false);
-    } catch (error) {
+    } catch (error: any) {
         console.error(error);
-        alert('Erro ao salvar associado.');
+        setFormError(error.message || "Erro ao salvar associado. Verifique os dados.");
     } finally {
         setIsSubmitting(false);
     }
@@ -292,8 +298,14 @@ const Associates: React.FC = () => {
                 <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600"><X size={24}/></button>
              </div>
              
+             {formError && (
+                 <div className="mx-8 mt-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 animate-in slide-in-from-top-2">
+                    <AlertCircle size={20}/>
+                    <span className="text-xs font-bold">{formError}</span>
+                 </div>
+             )}
+
              <form onSubmit={handleSave} className="p-8 space-y-6">
-                {/* ... (Formulário mantido igual, apenas lógica de submit alterada) ... */}
                 <div className="grid grid-cols-2 gap-6">
                    <div className="col-span-2">
                       <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Nome Completo / Razão Social *</label>

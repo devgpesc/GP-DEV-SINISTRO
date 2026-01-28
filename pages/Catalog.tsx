@@ -43,7 +43,6 @@ const Catalog: React.FC = () => {
       setFormData(item);
     } else {
       setItemToEdit(null);
-      // Sugestão de código
       const nextId = items.length + 1;
       setFormData({
         code: `${activeTab === 'Peça' ? 'PC' : 'SV'}-${String(nextId).padStart(3, '0')}`,
@@ -264,10 +263,7 @@ const Catalog: React.FC = () => {
                       >
                          <option value="UN">Unidade (UN)</option>
                          <option value="H">Hora (H)</option>
-                         <option value="KG">Quilo (KG)</option>
-                         <option value="L">Litro (L)</option>
-                         <option value="M">Metro (M)</option>
-                         <option value="JG">Jogo (JG)</option>
+                         <option value="M">Metro Linear (M)</option>
                       </select>
                    </div>
                 </div>
