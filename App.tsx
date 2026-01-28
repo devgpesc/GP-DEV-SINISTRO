@@ -20,6 +20,7 @@ import Login from './pages/Login.tsx';
 import Register from './pages/Register.tsx';
 import SaasAdmin from './pages/SaasAdmin.tsx';
 import Associates from './pages/Associates.tsx';
+import Notifications from './pages/Notifications.tsx';
 import AIAssistant from './components/AIAssistant.tsx';
 
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -57,6 +58,7 @@ const App: React.FC = () => {
                 <Route path="/catalogo" element={<Catalog />} />
                 <Route path="/relatorios" element={<Reports />} />
                 <Route path="/configuracoes" element={<Settings />} />
+                <Route path="/notificacoes" element={<Notifications />} />
                 <Route path="/saas-admin" element={<AdminRoute><SaasAdmin /></AdminRoute>} />
              </Route>
           </Route>
