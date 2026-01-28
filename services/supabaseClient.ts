@@ -22,7 +22,6 @@ if (!envUrl || !envKey) {
 export const isSupabaseConfigured = !!(envUrl && envKey);
 
 // Define valores de fallback seguros para evitar que o createClient lance erro "supabaseUrl is required"
-// Se envUrl for undefined ou string vazia, usa o placeholder.
 const supabaseUrl = (envUrl && typeof envUrl === 'string' && envUrl.trim().length > 0) 
   ? envUrl 
   : 'https://demo.supabase.co'; // URL fictícia válida sintaticamente
@@ -49,32 +48,36 @@ export const checkSupabaseConnection = async () => {
   if (!isSupabaseConfigured) return false;
   
   try {
-    // Aumentamos o timeout para 10s para evitar erros em "Cold Starts" do Supabase Free Tier
+    // Timeout estendido para 15s para conexões lentas ou "Cold Starts"
     const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Timeout')), 10000)
+        setTimeout(() => reject(new Error('Timeout')), 15000)
     );
 
     // Tenta query leve para verificar conexão
-    // count: 'exact', head: true é a forma mais leve de pingar o banco
     const queryPromise = supabase.from('events').select('id', { count: 'exact', head: true });
 
     const { error } = await Promise.race([queryPromise, timeoutPromise]) as any;
 
     if (error) {
-        // Se conecta mas dá erro de tabela não encontrada (42P01) ou permissão (401/403), o banco ESTÁ acessível.
-        // Isso evita que o dashboard mostre "Offline" apenas por falta de permissão ou tabela vazia.
+        // Se conecta mas dá erro de tabela não encontrada ou permissão, o banco ESTÁ acessível.
         if (error.code || error.status === 401 || error.status === 403) {
             return true;
         }
 
         const msg = error.message?.toLowerCase() || '';
-        // Erros de rede indicam falha real de conexão (Internet, DNS, CORS)
+        // Erros de rede indicam falha real de conexão
         if (msg.includes('fetch') || msg.includes('network') || msg.includes('connection') || msg.includes('failed')) {
             return false;
         }
     }
     return true;
   } catch (e: any) {
+    // Se for timeout, assumimos que está ONLINE mas lento, para não bloquear o usuário.
+    // O carregamento real dos dados lidará com o erro se persistir.
+    if (e.message === 'Timeout') {
+        console.warn('[Connection Check] Timeout na verificação inicial (Internet lenta ou DB acordando). Assumindo online.');
+        return true; 
+    }
     console.warn('[Connection Check] Falha de conexão:', e);
     return false;
   }

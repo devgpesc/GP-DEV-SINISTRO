@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 // Fix: Types User and Session not exported in v1, define as any locally
 // import { Session, User } from '@supabase/supabase-js';
@@ -54,42 +55,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let mounted = true;
 
-    // Timeout de segurança: Se o Supabase não responder em 5s, libera a tela
+    // Timeout de segurança: Se o Supabase não responder em 8s, libera a tela
     const safetyTimeout = setTimeout(() => {
         if (loading && mounted) {
             console.warn('[Auth] Loading demorou muito (Timeout). Forçando liberação da UI.');
             setLoading(false);
             setLoadingError(true);
         }
-    }, 5000);
+    }, 8000);
 
     const initializeAuth = async () => {
       try {
-        // Tenta pegar a sessão atual (incluindo parsing do hash da URL #access_token=...)
-        // Fix: Cast auth to any
-        const { data: { session: initialSession }, error } = await (supabase.auth as any).getSession();
-        
-        if (error) {
-            console.error('[Auth] Erro ao obter sessão inicial:', error);
-            throw error;
-        }
+        // CORREÇÃO CRÍTICA: Usamos `getUser()` em vez de `getSession()` para validar o token no servidor.
+        // Isso impede que cookies antigos/inválidos causem comportamento de "Offline" ou erros de RLS.
+        const { data: { user: currentUser }, error: userError } = await (supabase.auth as any).getUser();
+        const { data: { session: currentSession } } = await (supabase.auth as any).getSession();
 
-        if (mounted) {
-            if (initialSession) {
-                console.log('[Auth] Sessão encontrada/restaurada.');
-                setSession(initialSession);
-                setUser(initialSession.user);
-                
-                // SEGURANÇA: Limpa o hash da URL para não expor o token visualmente
-                if (window.location.hash && window.location.hash.includes('access_token')) {
-                    window.history.replaceState(null, '', window.location.pathname);
-                }
-
-                const p = await fetchProfile(initialSession.user.id);
-                if (mounted) setProfile(p);
-            } else {
-                console.log('[Auth] Nenhuma sessão ativa.');
+        if (userError) {
+            // Se o token for inválido, limpamos tudo para forçar novo login limpo
+            console.warn('[Auth] Token inválido ou expirado. Forçando logout limpo.', userError.message);
+            if (currentSession) await (supabase.auth as any).signOut();
+            setSession(null);
+            setUser(null);
+        } else if (mounted && currentUser) {
+            console.log('[Auth] Sessão validada com sucesso.');
+            setSession(currentSession);
+            setUser(currentUser);
+            
+            // SEGURANÇA: Limpa o hash da URL para não expor o token visualmente
+            if (window.location.hash && window.location.hash.includes('access_token')) {
+                window.history.replaceState(null, '', window.location.pathname);
             }
+
+            const p = await fetchProfile(currentUser.id);
+            if (mounted) setProfile(p);
+        } else {
+            console.log('[Auth] Nenhuma sessão ativa.');
         }
       } catch (err) {
         console.error('[Auth] Erro crítico na inicialização:', err);
@@ -104,7 +105,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initializeAuth();
 
     // Escuta mudanças de estado (Login, Logout, Token Refresh)
-    // Fix: Cast auth to any
     const { data: { subscription } } = (supabase.auth as any).onAuthStateChange(async (event: any, newSession: any) => {
       console.log(`[Auth Event] ${event}`);
 
@@ -132,11 +132,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       clearTimeout(safetyTimeout);
       subscription.unsubscribe();
     };
-  }, [fetchProfile]); // Removido 'profile' das dependências para evitar loop
+  }, [fetchProfile]); 
 
   const signInWithGoogle = async () => {
     try {
-        // Fix: Cast auth to any
         const { error } = await (supabase.auth as any).signInWithOAuth({
           provider: 'google',
           options: {
@@ -154,7 +153,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = async () => {
     try {
         setLoading(true);
-        // Fix: Cast auth to any
         await (supabase.auth as any).signOut();
         // O estado será limpo pelo onAuthStateChange
     } catch (error) {

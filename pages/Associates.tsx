@@ -127,39 +127,58 @@ const Associates: React.FC = () => {
                 ...payload,
                 created_at: new Date().toISOString()
             }]).select().single();
+            
             if (error) throw error;
+            if (!data) throw new Error("Erro ao criar registro: Nenhum dado retornado.");
+            
             result = data;
             setAssociates([result, ...associates]);
             addToast('success', 'Criado', 'Novo associado cadastrado.');
         }
 
         // Lógica de Vínculo de Veículo Rápido
-        if (formData.linkedPlate && formData.linkedPlate.length >= 7) {
+        // CORREÇÃO: Usar 'associate_id' (snake_case) em vez de 'associateId'
+        if (result && formData.linkedPlate && formData.linkedPlate.length >= 7) {
             const cleanPlate = formData.linkedPlate.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            
+            // Verifica se o veículo existe
             const { data: existing } = await supabase.from('vehicles').select('id').eq('plate', cleanPlate).maybeSingle();
             
             if (existing) {
-                await supabase.from('vehicles').update({ associateId: result.id }).eq('id', existing.id);
-                addToast('info', 'Veículo Vinculado', `Placa ${cleanPlate} associada.`);
+                // Atualiza veículo existente
+                const { error: linkError } = await supabase
+                    .from('vehicles')
+                    .update({ associate_id: result.id }) // Fix: associate_id
+                    .eq('id', existing.id);
+                
+                if (linkError) console.warn("Erro ao vincular veículo existente:", linkError);
+                else addToast('info', 'Veículo Vinculado', `Placa ${cleanPlate} associada.`);
+                
             } else {
+                // Cria novo veículo
                 const { error: vError } = await supabase.from('vehicles').insert([{
                     plate: cleanPlate,
-                    associateId: result.id,
+                    associate_id: result.id, // Fix: associate_id
                     status: 'Ativo',
                     brand: 'A DEFINIR',
                     model: 'CADASTRO RÁPIDO',
                     created_at: new Date().toISOString()
                 }]);
-                if (!vError) {
-                   addToast('info', 'Veículo Criado', `Placa ${cleanPlate} cadastrada automaticamente.`);
-                }
+                
+                if (vError) console.warn("Erro ao criar veículo:", vError);
+                else addToast('info', 'Veículo Criado', `Placa ${cleanPlate} cadastrada automaticamente.`);
             }
         }
 
         setIsModalOpen(false);
     } catch (error: any) {
-        console.error(error);
-        addToast('error', 'Erro ao Salvar', error.message || 'Falha na operação.');
+        console.error("Erro no cadastro:", error);
+        // Tratamento específico para erro de permissão RLS (42501)
+        if (error.code === '42501' || error.message?.includes('violates row-level security')) {
+             addToast('error', 'Permissão Negada', 'Verifique se você rodou o script SQL de permissões (RLS) para INSERT.');
+        } else {
+             addToast('error', 'Erro ao Salvar', error.message || 'Falha na operação.');
+        }
     } finally {
         setIsSubmitting(false);
     }
@@ -202,7 +221,7 @@ const Associates: React.FC = () => {
         </div>
       </div>
 
-      {/* Grid e List Views (Mesmo código anterior, apenas omitido para brevidade pois não muda lógica) */}
+      {/* Grid e List Views */}
       {viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in duration-300">
           {filteredAssociates.map(associate => (
