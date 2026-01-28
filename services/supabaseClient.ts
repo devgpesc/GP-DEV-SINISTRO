@@ -44,18 +44,31 @@ export const mockStorage = {
 export const checkSupabaseConnection = async () => {
   if (!isSupabaseConfigured) return false;
   try {
-    // Tenta um select simples para verificar conectividade
-    // Usamos 'profiles' pois é uma tabela padrão, mas pode ser qualquer uma existente
-    const { error } = await supabase.from('profiles').select('id').limit(1);
-    // Se der erro de tabela não existe (404/PGRST204) ou erro de conexão, retorna false
-    // Se der erro de permissão (401), a conexão existe, então é true
-    if (error && error.code !== 'PGRST116' && error.code !== '42P01') {
-        // Se for erro de permissão, consideramos conectado
-        return error.code === '401' || error.code === 'PGRST301';
+    // Tenta um select simples para verificar conectividade na tabela de configurações
+    // Usamos timeout no fetch para não travar a UI se a rede estiver pendurada
+    const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout')), 5000)
+    );
+
+    const queryPromise = supabase.from('saas_settings').select('id').limit(1);
+
+    const { error } = await Promise.race([queryPromise, timeoutPromise]) as any;
+
+    // Lógica de Conexão:
+    // Se não houver erro, está conectado.
+    // Se o erro for de permissão (401), tabela não encontrada (42P01) ou linhas (PGRST116),
+    // SIGNIFICA QUE CONECTOU no servidor, apenas a query falhou. Retorna TRUE.
+    // Só retorna FALSE se for erro de rede (fetch failed).
+    if (error) {
+        const msg = error.message?.toLowerCase() || '';
+        if (msg.includes('fetch') || msg.includes('network') || msg.includes('connection')) {
+            console.error('Supabase Network Error:', error);
+            return false;
+        }
     }
     return true;
   } catch (e) {
-    console.error('Supabase connection failed:', e);
+    console.error('Supabase connection check failed:', e);
     return false;
   }
 };

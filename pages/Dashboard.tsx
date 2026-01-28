@@ -13,7 +13,8 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
-  Package
+  Package,
+  WifiOff
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -59,26 +60,46 @@ const Dashboard: React.FC = () => {
   const [events, setEvents] = useState<Event[]>([]);
 
   useEffect(() => {
-    const initDashboard = async () => {
-      setLoading(true);
-      // 1. Check DB Connection
-      const isConnected = await checkSupabaseConnection();
-      setDbStatus(isConnected ? 'connected' : 'disconnected');
+    let isMounted = true;
 
-      // 2. Fetch Real Data
+    // Timeout de segurança: Se em 6 segundos não carregar, libera a tela
+    const safetyTimer = setTimeout(() => {
+        if (isMounted && loading) {
+            console.warn("Dashboard loading timeout - forcing render");
+            setLoading(false);
+            if (dbStatus === 'checking') setDbStatus('disconnected');
+        }
+    }, 6000);
+
+    const initDashboard = async () => {
       try {
-        const { data: ordersData } = await supabase.from('purchase_orders').select('*');
-        const { data: eventsData } = await supabase.from('events').select('*');
-        
-        setOrders(ordersData || []);
-        setEvents(eventsData || []);
+        // 1. Check DB Connection
+        const isConnected = await checkSupabaseConnection();
+        if (isMounted) setDbStatus(isConnected ? 'connected' : 'disconnected');
+
+        // 2. Fetch Real Data (Only if connected, or try anyway)
+        if (isConnected) {
+            const { data: ordersData } = await supabase.from('purchase_orders').select('*');
+            const { data: eventsData } = await supabase.from('events').select('*');
+            
+            if (isMounted) {
+                setOrders(ordersData || []);
+                setEvents(eventsData || []);
+            }
+        }
       } catch (err) {
         console.error("Erro ao carregar dados do dashboard", err);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     };
+
     initDashboard();
+
+    return () => {
+        isMounted = false;
+        clearTimeout(safetyTimer);
+    };
   }, []);
 
   // --- KPI CALCULATIONS ---
@@ -141,24 +162,27 @@ const Dashboard: React.FC = () => {
 
   const pendingOrders = orders.filter(o => o.status === 'Gerada').slice(0, 5);
 
+  if (loading) {
+      return (
+          <div className="h-[70vh] flex flex-col items-center justify-center text-slate-400 animate-in fade-in duration-500">
+              <Loader2 className="animate-spin mb-4 text-blue-600" size={48}/>
+              <p className="font-bold text-xs uppercase tracking-[0.2em] animate-pulse">Sincronizando Banco de Dados...</p>
+          </div>
+      );
+  }
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 animate-in fade-in duration-500">
       {/* DB Connection Status Bar */}
-      <div className={`p-4 rounded-2xl border flex items-center justify-between animate-in fade-in slide-in-from-top-4 ${
+      <div className={`p-4 rounded-2xl border flex items-center justify-between ${
         dbStatus === 'connected' 
           ? 'bg-green-50 border-green-200 text-green-800' 
-          : dbStatus === 'disconnected'
-            ? 'bg-red-50 border-red-200 text-red-800'
-            : 'bg-blue-50 border-blue-200 text-blue-800'
+          : 'bg-red-50 border-red-200 text-red-800'
       }`}>
         <div className="flex items-center gap-3">
-           {dbStatus === 'checking' && <div className="w-2 h-2 rounded-full bg-blue-500 animate-ping"></div>}
-           {dbStatus === 'connected' && <CheckCircle size={20} />}
-           {dbStatus === 'disconnected' && <XCircle size={20} />}
+           {dbStatus === 'connected' ? <CheckCircle size={20} /> : <WifiOff size={20} />}
            <span className="text-sm font-bold">
-             {dbStatus === 'checking' && 'Verificando conexão com Supabase...'}
-             {dbStatus === 'connected' && 'Sistema Operacional: Conectado ao Banco de Dados de Produção.'}
-             {dbStatus === 'disconnected' && 'Atenção: Sistema Offline ou Variáveis de Ambiente Ausentes.'}
+             {dbStatus === 'connected' ? 'Sistema Online: Conectado ao Supabase.' : 'Sistema Offline: Verifique sua conexão ou configurações.'}
            </span>
         </div>
         <div className="text-xs font-black uppercase tracking-widest opacity-70 flex items-center gap-2">
@@ -166,13 +190,7 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {loading ? (
-          <div className="h-96 flex flex-col items-center justify-center text-slate-400">
-              <Loader2 className="animate-spin mb-4" size={40}/>
-              <p className="font-bold text-sm uppercase tracking-widest">Carregando Indicadores...</p>
-          </div>
-      ) : (
-        <>
+      <>
             {/* KPI Section */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <KPICard title="Total Compras" value={`R$ ${kpis.totalPurchases.toLocaleString('pt-BR', {maximumFractionDigits: 0})}`} trend="up" icon={ShoppingBag} color="blue" />
@@ -317,8 +335,7 @@ const Dashboard: React.FC = () => {
                 </div>
                 </div>
             </div>
-        </>
-      )}
+      </>
     </div>
   );
 };

@@ -59,13 +59,24 @@ const Login: React.FC = () => {
 
   const handleGoogle = async () => {
     setLocalLoading(true);
+    setError(null);
     try {
-      await supabase.auth.signInWithOAuth({
+      const { error } = await supabase.auth.signInWithOAuth({
          provider: 'google',
-         options: { redirectTo: window.location.origin }
+         options: { 
+            redirectTo: window.location.origin,
+            queryParams: {
+                access_type: 'offline',
+                prompt: 'consent',
+            },
+         }
       });
+      
+      if (error) throw error;
+      // Se não houver erro, o redirecionamento acontecerá automaticamente
     } catch (err: any) {
-      setError('Não foi possível iniciar o login com Google.');
+      console.error("Google Auth Error:", err);
+      setError('Não foi possível iniciar o login com Google. Verifique a configuração do Supabase.');
       setLocalLoading(false);
     }
   };
