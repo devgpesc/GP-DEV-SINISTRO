@@ -4,16 +4,16 @@ import {
   Plus, Search, UserCheck, Edit3, Trash2, X, Save, 
   Car, LayoutGrid, List, Phone, Mail, Shield, User, Loader2
 } from 'lucide-react';
-import { mockStorage } from '../services/supabaseClient';
+import { supabase } from '../services/supabaseClient';
 import { Vehicle } from '../types';
 import ActionModal from '../components/ActionModal';
 
 interface Associate {
   id: string;
   name: string;
-  document: string; // CPF ou CNPJ
+  document: string; 
   type: 'PF' | 'PJ';
-  responsible?: string; // Novo Campo
+  responsible?: string;
   email?: string;
   phone?: string;
   createdAt: string;
@@ -33,7 +33,7 @@ const Associates: React.FC = () => {
     name: '',
     document: '',
     type: 'PF' as 'PF' | 'PJ',
-    responsible: '', // Novo Campo
+    responsible: '', 
     email: '',
     phone: '',
     linkedPlate: ''
@@ -43,9 +43,14 @@ const Associates: React.FC = () => {
     loadAssociates();
   }, []);
 
-  const loadAssociates = () => {
-    const data = mockStorage.get('associates') || [];
-    setAssociates(data);
+  const loadAssociates = async () => {
+    try {
+        const { data, error } = await supabase.from('associates').select('*').order('created_at', { ascending: false });
+        if (error) throw error;
+        setAssociates(data || []);
+    } catch (error) {
+        console.error('Erro ao carregar associados:', error);
+    }
   };
 
   const handleOpenModal = (associate?: Associate) => {
@@ -75,16 +80,17 @@ const Associates: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (deleteId) {
-      const updated = associates.filter(a => a.id !== deleteId);
-      setAssociates(updated);
-      mockStorage.set('associates', updated);
-      
-      const vehicles: Vehicle[] = mockStorage.get('vehicles') || [];
-      const updatedVehicles = vehicles.map(v => v.associateId === deleteId ? { ...v, associateId: '' } : v);
-      mockStorage.set('vehicles', updatedVehicles);
-      setDeleteId(null);
+      try {
+          const { error } = await supabase.from('associates').delete().eq('id', deleteId);
+          if (error) throw error;
+          
+          setAssociates(prev => prev.filter(a => a.id !== deleteId));
+          setDeleteId(null);
+      } catch (error) {
+          alert('Erro ao excluir. Verifique se existem veículos vinculados.');
+      }
     }
   };
 
@@ -93,56 +99,60 @@ const Associates: React.FC = () => {
     if (!formData.name || !formData.document) return;
     
     setIsSubmitting(true);
-    await new Promise(r => setTimeout(r, 600));
-
-    const newId = associateToEdit ? associateToEdit.id : Math.random().toString(36).substr(2, 9);
     
-    const newAssociate: Associate = {
-      id: newId,
-      name: formData.name,
-      document: formData.document,
-      type: formData.type,
-      responsible: formData.responsible,
-      email: formData.email,
-      phone: formData.phone,
-      createdAt: associateToEdit ? associateToEdit.createdAt : new Date().toISOString()
-    };
+    try {
+        const payload = {
+            name: formData.name,
+            document: formData.document,
+            type: formData.type,
+            responsible: formData.responsible,
+            email: formData.email,
+            phone: formData.phone,
+            // createdAt mantido pelo DB se novo
+        };
 
-    let updatedAssociates;
-    if (associateToEdit) {
-      updatedAssociates = associates.map(a => a.id === associateToEdit.id ? newAssociate : a);
-    } else {
-      updatedAssociates = [newAssociate, ...associates];
-    }
-    setAssociates(updatedAssociates);
-    mockStorage.set('associates', updatedAssociates);
-
-    // Lógica de Vínculo de Veículo
-    if (formData.linkedPlate && formData.linkedPlate.length >= 7) {
-        const vehicles: Vehicle[] = mockStorage.get('vehicles') || [];
-        const cleanPlate = formData.linkedPlate.toUpperCase().replace(/[^A-Z0-9]/g, '');
-        
-        const existingVehicleIndex = vehicles.findIndex(v => v.plate.replace(/[^A-Z0-9]/g, '') === cleanPlate);
-
-        if (existingVehicleIndex >= 0) {
-            vehicles[existingVehicleIndex].associateId = newId;
+        let result;
+        if (associateToEdit) {
+            const { data, error } = await supabase.from('associates').update(payload).eq('id', associateToEdit.id).select().single();
+            if (error) throw error;
+            result = data;
+            setAssociates(associates.map(a => a.id === result.id ? result : a));
         } else {
-            const newVehicle: Vehicle = {
-                id: Math.random().toString(36).substr(2, 9),
-                createdAt: new Date().toISOString(),
-                plate: cleanPlate,
-                associateId: newId,
-                status: 'Ativo',
-                km: 0,
-                brand: '', model: 'A DEFINIR (Editar em Veículos)', version: '', yearFab: '', yearModel: '', color: '', fuel: '', type: ''
-            };
-            vehicles.unshift(newVehicle);
+            const { data, error } = await supabase.from('associates').insert([{
+                ...payload,
+                created_at: new Date().toISOString()
+            }]).select().single();
+            if (error) throw error;
+            result = data;
+            setAssociates([result, ...associates]);
         }
-        mockStorage.set('vehicles', vehicles);
-    }
 
-    setIsSubmitting(false);
-    setIsModalOpen(false);
+        // Lógica de Vínculo de Veículo Rápido
+        if (formData.linkedPlate && formData.linkedPlate.length >= 7) {
+            const cleanPlate = formData.linkedPlate.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            // Verificar se veículo existe
+            const { data: existing } = await supabase.from('vehicles').select('id').eq('plate', cleanPlate).maybeSingle();
+            
+            if (existing) {
+                await supabase.from('vehicles').update({ associateId: result.id }).eq('id', existing.id);
+            } else {
+                await supabase.from('vehicles').insert([{
+                    plate: cleanPlate,
+                    associateId: result.id,
+                    status: 'Ativo',
+                    model: 'A DEFINIR',
+                    created_at: new Date().toISOString()
+                }]);
+            }
+        }
+
+        setIsModalOpen(false);
+    } catch (error) {
+        console.error(error);
+        alert('Erro ao salvar associado.');
+    } finally {
+        setIsSubmitting(false);
+    }
   };
 
   const filteredAssociates = associates.filter(a => 
@@ -283,16 +293,11 @@ const Associates: React.FC = () => {
              </div>
              
              <form onSubmit={handleSave} className="p-8 space-y-6">
+                {/* ... (Formulário mantido igual, apenas lógica de submit alterada) ... */}
                 <div className="grid grid-cols-2 gap-6">
                    <div className="col-span-2">
                       <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Nome Completo / Razão Social *</label>
-                      <input 
-                        required 
-                        className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all" 
-                        value={formData.name} 
-                        onChange={e => setFormData({...formData, name: e.target.value})}
-                        placeholder="Ex: João da Silva"
-                      />
+                      <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Ex: João da Silva" />
                    </div>
                    
                    <div>
@@ -305,44 +310,22 @@ const Associates: React.FC = () => {
 
                    <div>
                       <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Documento (CPF/CNPJ) *</label>
-                      <input 
-                        required 
-                        className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all" 
-                        value={formData.document} 
-                        onChange={e => setFormData({...formData, document: e.target.value})}
-                        placeholder={formData.type === 'PF' ? '000.000.000-00' : '00.000.000/0001-00'}
-                      />
+                      <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all" value={formData.document} onChange={e => setFormData({...formData, document: e.target.value})} placeholder={formData.type === 'PF' ? '000.000.000-00' : '00.000.000/0001-00'} />
                    </div>
 
                    <div className="col-span-2">
                       <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Nome do Responsável</label>
-                      <input 
-                        className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all"
-                        value={formData.responsible}
-                        onChange={e => setFormData({...formData, responsible: e.target.value})}
-                        placeholder="Nome do contato principal (se houver)"
-                      />
+                      <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all" value={formData.responsible} onChange={e => setFormData({...formData, responsible: e.target.value})} placeholder="Nome do contato principal (se houver)" />
                    </div>
 
                    <div>
                       <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">E-mail</label>
-                      <input 
-                        type="email"
-                        className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all"
-                        value={formData.email}
-                        onChange={e => setFormData({...formData, email: e.target.value})}
-                        placeholder="email@exemplo.com"
-                      />
+                      <input type="email" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="email@exemplo.com" />
                    </div>
 
                    <div>
                       <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Telefone / WhatsApp</label>
-                      <input 
-                        className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all"
-                        value={formData.phone}
-                        onChange={e => setFormData({...formData, phone: e.target.value})}
-                        placeholder="(00) 90000-0000"
-                      />
+                      <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="(00) 90000-0000" />
                    </div>
 
                    {!associateToEdit && (
@@ -356,13 +339,7 @@ const Associates: React.FC = () => {
                                 <span className="font-bold text-blue-600">Se a placa não existir, o sistema criará o veículo automaticamente.</span>
                                 <br/>Você poderá editar os detalhes depois na aba Veículos.
                              </p>
-                             <input 
-                                className="w-full p-4 bg-white border border-blue-100 rounded-2xl font-black text-lg text-slate-800 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all uppercase tracking-[0.2em] text-center placeholder:text-slate-300 placeholder:normal-case placeholder:tracking-normal placeholder:font-medium"
-                                value={formData.linkedPlate}
-                                onChange={e => setFormData({...formData, linkedPlate: e.target.value.toUpperCase()})}
-                                placeholder="ABC1D23"
-                                maxLength={7}
-                             />
+                             <input className="w-full p-4 bg-white border border-blue-100 rounded-2xl font-black text-lg text-slate-800 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all uppercase tracking-[0.2em] text-center placeholder:text-slate-300 placeholder:normal-case placeholder:tracking-normal placeholder:font-medium" value={formData.linkedPlate} onChange={e => setFormData({...formData, linkedPlate: e.target.value.toUpperCase()})} placeholder="ABC1D23" maxLength={7} />
                           </div>
                        </div>
                    )}
@@ -379,7 +356,6 @@ const Associates: React.FC = () => {
         </div>
       )}
 
-      {/* ActionModal de Exclusão */}
       <ActionModal 
         isOpen={!!deleteId}
         onClose={() => setDeleteId(null)}

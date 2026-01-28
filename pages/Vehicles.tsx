@@ -2,11 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, Search, Car, Loader2, User, LayoutGrid, List, 
-  Trash2, Edit, Save, CheckCircle2, AlertCircle, X, CloudLightning, Keyboard
+  Trash2, Edit, Save, AlertCircle, X, CloudLightning, Keyboard
 } from 'lucide-react';
-import { vehicleService } from '../services/vehicleService';
 import { lookupService } from '../services/lookupService';
-import { mockStorage } from '../services/supabaseClient';
+import { supabase } from '../services/supabaseClient';
 import { Vehicle } from '../types';
 
 interface Associate {
@@ -22,13 +21,10 @@ const Vehicles: React.FC = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Modal & Form States
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSearchingPlate, setIsSearchingPlate] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
-  
-  // Tabs: 'auto' (API) vs 'manual' (Digitado)
   const [inputMode, setInputMode] = useState<'auto' | 'manual'>('auto');
   
   const [formData, setFormData] = useState<Partial<Vehicle>>({
@@ -37,7 +33,6 @@ const Vehicles: React.FC = () => {
     km: 0,
     status: 'Ativo',
     notes: '',
-    // Campos Auto
     brand: '', model: '', version: '', yearFab: '', yearModel: '', 
     color: '', fuel: '', type: '', chassi: '', renavam: '', uf: '', city: ''
   });
@@ -51,11 +46,10 @@ const Vehicles: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      // Em produção, isso viria do Supabase
-      const vs = mockStorage.get('vehicles') || [];
-      const as = mockStorage.get('associates') || [];
-      setVehicles(vs);
-      setAssociates(as);
+      const { data: vs } = await supabase.from('vehicles').select('*').order('created_at', { ascending: false });
+      const { data: as } = await supabase.from('associates').select('id, name, document');
+      setVehicles(vs || []);
+      setAssociates(as || []);
     } finally {
       setLoading(false);
     }
@@ -65,7 +59,7 @@ const Vehicles: React.FC = () => {
     if (vehicleToEdit) {
       setEditId(vehicleToEdit.id);
       setFormData(vehicleToEdit);
-      setInputMode('manual'); // Edição é sempre manual/híbrida
+      setInputMode('manual'); 
     } else {
       setEditId(null);
       setFormData({ plate: '', associateId: '', km: 0, status: 'Ativo', notes: '', brand: '', model: '' });
@@ -82,16 +76,12 @@ const Vehicles: React.FC = () => {
     try {
       const data = await lookupService.fetchPlate(formData.plate);
       if (data) {
-        setFormData(prev => ({
-          ...prev,
-          ...data // Preenche automaticamente os campos técnicos
-        }));
+        setFormData(prev => ({ ...prev, ...data }));
       } else {
-        setLookupError('Placa não encontrada na base nacional. Verifique os dados ou mude para o modo manual.');
+        setLookupError('Placa não encontrada. Preencha manualmente.');
       }
     } catch (e) {
-      console.error(e);
-      setLookupError('Erro de conexão ao buscar placa. Tente novamente.');
+      setLookupError('Erro de conexão.');
     } finally {
       setIsSearchingPlate(false);
     }
@@ -106,22 +96,18 @@ const Vehicles: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-        const vehicleData: Vehicle = {
-            id: editId || Math.random().toString(36).substr(2, 9),
-            createdAt: new Date().toISOString(),
-            ...formData as Vehicle
-        };
+        const payload = { ...formData, created_at: editId ? undefined : new Date().toISOString() };
         
-        let updated;
         if (editId) {
-            updated = vehicles.map(v => v.id === editId ? vehicleData : v);
+            await supabase.from('vehicles').update(payload).eq('id', editId);
         } else {
-            updated = [vehicleData, ...vehicles];
+            await supabase.from('vehicles').insert([payload]);
         }
         
-        setVehicles(updated);
-        mockStorage.set('vehicles', updated);
+        await loadData();
         setIsModalOpen(false);
+    } catch (err) {
+        alert('Erro ao salvar veículo.');
     } finally {
         setIsSubmitting(false);
     }
@@ -144,7 +130,6 @@ const Vehicles: React.FC = () => {
         </button>
       </div>
 
-      {/* Lista */}
       <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
          <div className="flex justify-between items-center mb-6">
             <div className="relative w-96">
@@ -183,7 +168,6 @@ const Vehicles: React.FC = () => {
          )}
       </div>
 
-      {/* Modal Simplificado com Abas */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setIsModalOpen(false)}></div>
@@ -192,10 +176,7 @@ const Vehicles: React.FC = () => {
                     <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><Car className="text-blue-600"/> {editId ? 'Editar Veículo' : 'Cadastro de Veículo'}</h3>
                     <button onClick={() => setIsModalOpen(false)}><X className="text-slate-400 hover:text-slate-600"/></button>
                 </div>
-                
                 <form onSubmit={handleSave} className="p-8 space-y-8">
-                    
-                    {/* Tabs de Modo */}
                     {!editId && (
                         <div className="flex bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
                             <button type="button" onClick={() => setInputMode('auto')} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all flex items-center justify-center gap-2 ${inputMode === 'auto' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>
@@ -206,59 +187,41 @@ const Vehicles: React.FC = () => {
                             </button>
                         </div>
                     )}
-
-                    {/* Alerta de Erro */}
                     {lookupError && inputMode === 'auto' && (
                         <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 animate-in fade-in slide-in-from-top-2">
                             <AlertCircle className="shrink-0" size={20} />
-                            <div className="flex-1">
-                                <p className="text-xs font-black uppercase tracking-wide">Erro na Busca</p>
-                                <p className="text-sm font-medium">{lookupError}</p>
-                            </div>
-                            <button type="button" onClick={() => setLookupError(null)} className="text-red-400 hover:text-red-600"><X size={18}/></button>
+                            <div className="flex-1"><p className="text-sm font-medium">{lookupError}</p></div>
                         </div>
                     )}
-
-                    {/* Seção 1: Entrada do Usuário */}
                     <section>
                         <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">1. Identificação Básica</h4>
                         <div className="grid grid-cols-2 gap-6">
                             <div className="relative">
                                 <label className="block text-xs font-bold text-slate-600 mb-1">Placa *</label>
-                                <input 
-                                    className={`w-full p-4 bg-slate-50 border rounded-2xl font-black text-xl uppercase outline-none tracking-widest transition-all ${lookupError ? 'border-red-300 bg-red-50 text-red-600 focus:ring-4 focus:ring-red-500/10' : 'border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'}`}
-                                    placeholder="ABC1D23"
-                                    maxLength={7}
-                                    value={formData.plate}
-                                    onChange={e => {
-                                        setFormData({...formData, plate: e.target.value.toUpperCase()});
-                                        if(lookupError) setLookupError(null);
-                                    }}
-                                    onBlur={() => inputMode === 'auto' && handlePlateLookup()}
-                                />
+                                <input className="w-full p-4 bg-slate-50 border rounded-2xl font-black text-xl uppercase outline-none tracking-widest transition-all"
+                                    placeholder="ABC1D23" maxLength={7} value={formData.plate}
+                                    onChange={e => setFormData({...formData, plate: e.target.value.toUpperCase()})}
+                                    onBlur={() => inputMode === 'auto' && handlePlateLookup()} />
                                 <div className="absolute right-4 top-9 text-blue-600">
-                                    {isSearchingPlate ? <Loader2 className="animate-spin"/> : (inputMode === 'auto' && <CloudLightning size={20} className={lookupError ? 'text-red-400' : 'text-blue-600'}/>)}
+                                    {isSearchingPlate ? <Loader2 className="animate-spin"/> : (inputMode === 'auto' && <CloudLightning size={20}/>)}
                                 </div>
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-slate-600 mb-1">Proprietário *</label>
-                                <select 
-                                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:border-blue-500 transition-all"
-                                    value={formData.associateId}
-                                    onChange={e => setFormData({...formData, associateId: e.target.value})}
-                                >
+                                <select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm outline-none"
+                                    value={formData.associateId} onChange={e => setFormData({...formData, associateId: e.target.value})}>
                                     <option value="">Selecione...</option>
                                     {associates.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                                 </select>
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-slate-600 mb-1">KM Atual</label>
-                                <input type="number" className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none focus:border-blue-500 transition-all" 
+                                <input type="number" className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none" 
                                     value={formData.km} onChange={e => setFormData({...formData, km: Number(e.target.value)})} />
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-slate-600 mb-1">Status</label>
-                                <select className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none focus:border-blue-500 transition-all"
+                                <select className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none"
                                     value={formData.status} onChange={e => setFormData({...formData, status: e.target.value as any})}>
                                     <option>Ativo</option>
                                     <option>Inativo</option>
@@ -267,62 +230,16 @@ const Vehicles: React.FC = () => {
                             </div>
                         </div>
                     </section>
-
-                    {/* Seção 2: Dados Técnicos */}
                     <section className="bg-slate-50 p-6 rounded-[32px] border border-slate-100">
-                        <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-4 flex items-center gap-2">
-                            {inputMode === 'auto' ? <CloudLightning size={14}/> : <Keyboard size={14}/>} 
-                            {inputMode === 'auto' ? 'Dados Técnicos (Automático)' : 'Dados Técnicos (Preenchimento Manual)'}
-                        </h4>
+                        <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-4">Dados Técnicos</h4>
                         <div className="grid grid-cols-3 gap-4">
-                            <div className="col-span-1">
-                                <label className="block text-[10px] font-bold text-slate-400 uppercase">Marca</label>
-                                <input 
-                                    className={`w-full bg-transparent font-black text-slate-800 border-b border-slate-200 py-1 outline-none ${inputMode === 'auto' ? 'pointer-events-none opacity-70' : ''}`}
-                                    value={formData.brand} 
-                                    onChange={e => setFormData({...formData, brand: e.target.value})} 
-                                    placeholder="---"
-                                />
-                            </div>
-                            <div className="col-span-2">
-                                <label className="block text-[10px] font-bold text-slate-400 uppercase">Modelo</label>
-                                <input 
-                                    className={`w-full bg-transparent font-black text-slate-800 border-b border-slate-200 py-1 outline-none ${inputMode === 'auto' ? 'pointer-events-none opacity-70' : ''}`}
-                                    value={formData.model} 
-                                    onChange={e => setFormData({...formData, model: e.target.value})} 
-                                    placeholder="---"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-bold text-slate-400 uppercase">Ano/Mod</label>
-                                <input 
-                                    className={`w-full bg-transparent font-bold text-slate-600 border-b border-slate-200 py-1 outline-none ${inputMode === 'auto' ? 'pointer-events-none opacity-70' : ''}`}
-                                    value={formData.yearModel} 
-                                    onChange={e => setFormData({...formData, yearModel: e.target.value})} 
-                                    placeholder="---"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-bold text-slate-400 uppercase">Cor</label>
-                                <input 
-                                    className={`w-full bg-transparent font-bold text-slate-600 border-b border-slate-200 py-1 outline-none ${inputMode === 'auto' ? 'pointer-events-none opacity-70' : ''}`}
-                                    value={formData.color} 
-                                    onChange={e => setFormData({...formData, color: e.target.value})} 
-                                    placeholder="---"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-bold text-slate-400 uppercase">Chassi</label>
-                                <input 
-                                    className={`w-full bg-transparent font-bold text-slate-600 border-b border-slate-200 py-1 outline-none ${inputMode === 'auto' ? 'pointer-events-none opacity-70' : ''}`}
-                                    value={formData.chassi} 
-                                    onChange={e => setFormData({...formData, chassi: e.target.value})} 
-                                    placeholder="---"
-                                />
-                            </div>
+                            <div><label className="block text-[10px] font-bold text-slate-400 uppercase">Marca</label><input className="w-full bg-transparent font-black text-slate-800 border-b border-slate-200 py-1 outline-none" value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})} placeholder="---"/></div>
+                            <div className="col-span-2"><label className="block text-[10px] font-bold text-slate-400 uppercase">Modelo</label><input className="w-full bg-transparent font-black text-slate-800 border-b border-slate-200 py-1 outline-none" value={formData.model} onChange={e => setFormData({...formData, model: e.target.value})} placeholder="---"/></div>
+                            <div><label className="block text-[10px] font-bold text-slate-400 uppercase">Ano/Mod</label><input className="w-full bg-transparent font-bold text-slate-600 border-b border-slate-200 py-1 outline-none" value={formData.yearModel} onChange={e => setFormData({...formData, yearModel: e.target.value})} placeholder="---"/></div>
+                            <div><label className="block text-[10px] font-bold text-slate-400 uppercase">Cor</label><input className="w-full bg-transparent font-bold text-slate-600 border-b border-slate-200 py-1 outline-none" value={formData.color} onChange={e => setFormData({...formData, color: e.target.value})} placeholder="---"/></div>
+                            <div><label className="block text-[10px] font-bold text-slate-400 uppercase">Chassi</label><input className="w-full bg-transparent font-bold text-slate-600 border-b border-slate-200 py-1 outline-none" value={formData.chassi} onChange={e => setFormData({...formData, chassi: e.target.value})} placeholder="---"/></div>
                         </div>
                     </section>
-
                     <div className="flex justify-end pt-4">
                         <button type="submit" disabled={isSubmitting} className="px-10 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl flex items-center gap-2 hover:bg-blue-700 transition-all">
                             {isSubmitting ? <Loader2 className="animate-spin"/> : <><Save size={18}/> Salvar Veículo</>}
