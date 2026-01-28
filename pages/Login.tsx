@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
@@ -47,7 +46,8 @@ const Login: React.FC = () => {
     setError(null);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      // Fix: Cast auth to any
+      const { error } = await (supabase.auth as any).signInWithPassword({ email, password });
       if (error) throw error;
       // Sucesso é tratado pelo AuthContext
     } catch (err: any) {
@@ -61,7 +61,8 @@ const Login: React.FC = () => {
     setLocalLoading(true);
     setError(null);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
+      // Fix: Cast auth to any
+      const { error } = await (supabase.auth as any).signInWithOAuth({
          provider: 'google',
          options: { 
             redirectTo: window.location.origin,

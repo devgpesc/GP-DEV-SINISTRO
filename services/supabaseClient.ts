@@ -49,23 +49,26 @@ export const checkSupabaseConnection = async () => {
   if (!isSupabaseConfigured) return false;
   
   try {
+    // Aumentamos o timeout para 10s para evitar erros em "Cold Starts" do Supabase Free Tier
     const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Timeout')), 5000)
+        setTimeout(() => reject(new Error('Timeout')), 10000)
     );
 
     // Tenta query leve para verificar conexão
+    // count: 'exact', head: true é a forma mais leve de pingar o banco
     const queryPromise = supabase.from('events').select('id', { count: 'exact', head: true });
 
     const { error } = await Promise.race([queryPromise, timeoutPromise]) as any;
 
     if (error) {
-        // Se conecta mas dá erro de tabela não encontrada (42P01) ou permissão (401), o banco está acessível
+        // Se conecta mas dá erro de tabela não encontrada (42P01) ou permissão (401/403), o banco ESTÁ acessível.
+        // Isso evita que o dashboard mostre "Offline" apenas por falta de permissão ou tabela vazia.
         if (error.code || error.status === 401 || error.status === 403) {
             return true;
         }
 
         const msg = error.message?.toLowerCase() || '';
-        // Erros de rede indicam falha real de conexão
+        // Erros de rede indicam falha real de conexão (Internet, DNS, CORS)
         if (msg.includes('fetch') || msg.includes('network') || msg.includes('connection') || msg.includes('failed')) {
             return false;
         }

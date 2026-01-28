@@ -1,6 +1,8 @@
-
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { Session, User } from '@supabase/supabase-js';
+// Fix: Types User and Session not exported in v1, define as any locally
+// import { Session, User } from '@supabase/supabase-js';
+type Session = any;
+type User = any;
 import { supabase } from '../services/supabaseClient';
 import { Car } from 'lucide-react';
 
@@ -64,7 +66,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const initializeAuth = async () => {
       try {
         // Tenta pegar a sessão atual (incluindo parsing do hash da URL #access_token=...)
-        const { data: { session: initialSession }, error } = await supabase.auth.getSession();
+        // Fix: Cast auth to any
+        const { data: { session: initialSession }, error } = await (supabase.auth as any).getSession();
         
         if (error) {
             console.error('[Auth] Erro ao obter sessão inicial:', error);
@@ -101,7 +104,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initializeAuth();
 
     // Escuta mudanças de estado (Login, Logout, Token Refresh)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+    // Fix: Cast auth to any
+    const { data: { subscription } } = (supabase.auth as any).onAuthStateChange(async (event: any, newSession: any) => {
       console.log(`[Auth Event] ${event}`);
 
       if (!mounted) return;
@@ -132,7 +136,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signInWithGoogle = async () => {
     try {
-        const { error } = await supabase.auth.signInWithOAuth({
+        // Fix: Cast auth to any
+        const { error } = await (supabase.auth as any).signInWithOAuth({
           provider: 'google',
           options: {
             redirectTo: window.location.origin, 
@@ -149,7 +154,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = async () => {
     try {
         setLoading(true);
-        await supabase.auth.signOut();
+        // Fix: Cast auth to any
+        await (supabase.auth as any).signOut();
         // O estado será limpo pelo onAuthStateChange
     } catch (error) {
         console.error("Erro ao sair:", error);

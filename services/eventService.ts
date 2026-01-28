@@ -1,4 +1,3 @@
-
 import { supabase } from './supabaseClient';
 import { Event } from '../types';
 
@@ -41,7 +40,8 @@ export const eventService = {
         throw new Error('Inconsistência: O veículo selecionado não pertence ao associado informado.');
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
+    // Fix: Cast auth to any to support v2 methods despite v1 types
+    const { data: { user } } = await (supabase.auth as any).getUser();
     
     // 3. Preparar payload (remove campos relacionais virtuais se existirem)
     const { attachments, history, ...cleanEventData } = eventData;

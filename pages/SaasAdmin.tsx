@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   Globe, Building, Users, Database, 
@@ -59,7 +58,8 @@ const SaasAdmin: React.FC = () => {
     
     setCreating(true);
     try {
-        const { data: { user } } = await supabase.auth.getUser();
+        // Fix: Cast auth to any
+        const { data: { user } } = await (supabase.auth as any).getUser();
         
         const { error } = await supabase.from('saas_tenants').insert([{
             name: newTenantData.name,

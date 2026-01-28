@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
@@ -20,7 +19,8 @@ const Register: React.FC = () => {
     setError(null);
 
     try {
-      const { data, error: signUpError } = await supabase.auth.signUp({
+      // Fix: Cast auth to any
+      const { data, error: signUpError } = await (supabase.auth as any).signUp({
         email,
         password,
         options: {
