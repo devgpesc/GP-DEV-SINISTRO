@@ -156,23 +156,34 @@ const Vehicles: React.FC = () => {
         // Tentativa 1: Enviar Snake Case
         let { error } = await performSave(payload);
 
-        // Se falhar por erro de coluna não encontrada, tenta enviar CamelCase (Fallback para legado)
-        if (error && error.message.includes('column') && error.message.includes('does not exist')) {
-            console.warn('Banco legado detectado. Tentando fallback para camelCase...');
-            
-            const legacyPayload = {
-                ...payload,
-                associateId: cleanAssociateId, // Fallback
-                yearFab: payload.year_fab,
-                yearModel: payload.year_model
-            };
-            // Remove os novos para não dar erro de novo
-            delete legacyPayload.associate_id;
-            delete legacyPayload.year_fab;
-            delete legacyPayload.year_model;
+        // Lógica de Retry Inteligente
+        // Se falhar porque a coluna nova não existe OU porque uma coluna antiga obrigatória recebeu NULL
+        if (error) {
+             const isColumnError = error.message.includes('column') && error.message.includes('does not exist');
+             const isNullError = error.message.includes('null value') && error.message.includes('constraint');
+             
+             if (isColumnError || isNullError) {
+                console.warn('Tentando fallback para CamelCase devido a erro:', error.message);
+                
+                const legacyPayload = {
+                    ...payload,
+                    associateId: cleanAssociateId, // Fallback
+                    yearFab: payload.year_fab,
+                    yearModel: payload.year_model
+                };
+                // Remove os novos para não dar erro de "coluna não existe" no legado
+                delete legacyPayload.associate_id;
+                delete legacyPayload.year_fab;
+                delete legacyPayload.year_model;
 
-            const retryResult = await performSave(legacyPayload, true);
-            error = retryResult.error;
+                const retryResult = await performSave(legacyPayload, true);
+                
+                if (!retryResult.error) {
+                    error = null; // Sucesso no retry
+                } else {
+                    console.error("Retry também falhou:", retryResult.error.message);
+                }
+             }
         }
 
         if (error) throw error;
@@ -185,7 +196,10 @@ const Vehicles: React.FC = () => {
         if (err.message?.includes('violates unique constraint')) {
             addToast('error', 'Duplicidade', 'Esta placa já está cadastrada.');
         } else if (err.message?.includes('null value')) {
-            addToast('error', 'Erro de Banco de Dados', 'Execute o script SQL "20240305_absolute_fix.sql" no Supabase.');
+            // Extrai nome da coluna do erro se possível
+            const colMatch = err.message.match(/column "(.+?)"/);
+            const colName = colMatch ? colMatch[1] : 'desconhecida';
+            addToast('error', 'Erro de Banco de Dados', `Campo obrigatório vazio no banco: ${colName}. Execute o script SQL "20240305_absolute_fix.sql".`);
         } else {
             addToast('error', 'Erro ao Salvar', err.message);
         }

@@ -1,18 +1,14 @@
 
--- SCRIPT DE CORREÇÃO ABSOLUTA - VEÍCULOS
--- Executar no SQL Editor do Supabase
-
+-- SCRIPT DE CORREÇÃO ABSOLUTA - VEÍCULOS (V2)
 DO $$
 BEGIN
-    -- 1. Garante que as colunas existam (evita erro se tabela for antiga)
+    -- 1. Garante colunas snake_case
     ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS associate_id uuid REFERENCES public.associates(id) ON DELETE SET NULL;
-    ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS type text;
-    ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS fuel text;
-    ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS version text;
-    ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS uf text;
-    ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS city text;
+    ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS year_fab text;
+    ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS year_model text;
     
-    -- 2. REMOVE OBRIGATORIEDADE DE TUDO (Exceto ID e Placa)
+    -- 2. Relaxa constraints em TUDO que pode dar erro
+    -- Colunas padrão snake_case
     ALTER TABLE public.vehicles ALTER COLUMN associate_id DROP NOT NULL;
     ALTER TABLE public.vehicles ALTER COLUMN renavam DROP NOT NULL;
     ALTER TABLE public.vehicles ALTER COLUMN chassi DROP NOT NULL;
@@ -23,8 +19,9 @@ BEGIN
     ALTER TABLE public.vehicles ALTER COLUMN color DROP NOT NULL;
     ALTER TABLE public.vehicles ALTER COLUMN year_fab DROP NOT NULL;
     ALTER TABLE public.vehicles ALTER COLUMN year_model DROP NOT NULL;
-    
-    -- Se colunas antigas (CamelCase) existirem, também relaxa a restrição
+
+    -- 3. Colunas LEGACY (CamelCase) - Onde o bicho pega
+    -- Verifica versão com aspas (Case Sensitive)
     IF EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name = 'vehicles' AND column_name = 'associateId') THEN
         ALTER TABLE public.vehicles ALTER COLUMN "associateId" DROP NOT NULL;
     END IF;
@@ -35,7 +32,12 @@ BEGIN
         ALTER TABLE public.vehicles ALTER COLUMN "yearModel" DROP NOT NULL;
     END IF;
 
+    -- Verifica versão lowercase (se foi criado sem aspas, mas com nome camelCase na cabeça do dev)
+    IF EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name = 'vehicles' AND column_name = 'associateid') THEN
+        ALTER TABLE public.vehicles ALTER COLUMN associateid DROP NOT NULL;
+    END IF;
+
 END $$;
 
--- 3. Recarregar cache de esquema
+-- 4. Recarregar cache de esquema
 NOTIFY pgrst, 'reload config';
