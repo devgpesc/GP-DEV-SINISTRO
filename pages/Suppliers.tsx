@@ -39,12 +39,31 @@ const Suppliers: React.FC = () => {
 
   async function loadSuppliers() {
     setLoading(true);
-    const { data, error } = await supabase.from('suppliers').select('*').order('created_at', { ascending: false });
-    if (error) {
-        addToast('error', 'Erro', 'Falha ao carregar fornecedores.');
+    try {
+        const { data, error } = await supabase.from('suppliers').select('*').order('created_at', { ascending: false });
+        
+        if (error) {
+            // Código 42P01 = Tabela não existe
+            if (error.code === '42P01') {
+                console.warn('Tabela de fornecedores não encontrada.');
+                setSuppliers([]);
+            } else {
+                console.error("Erro Supabase:", error);
+                addToast('error', 'Erro', 'Falha ao carregar fornecedores: ' + error.message);
+            }
+        } else {
+            // Mapeia contact_name (snake_case do banco) para contactName (camelCase do frontend) se necessário
+            const mappedData = data?.map((s: any) => ({
+                ...s,
+                contactName: s.contact_name || s.contactName // Suporta ambos os formatos
+            }));
+            setSuppliers(mappedData || []);
+        }
+    } catch (e) {
+        console.error("Erro inesperado:", e);
+    } finally {
+        setLoading(false);
     }
-    setSuppliers(data || []);
-    setLoading(false);
   }
 
   const handleEdit = (s: Supplier) => {
@@ -134,9 +153,19 @@ const Suppliers: React.FC = () => {
     e.preventDefault();
     setIsSaving(true);
 
+    // Mapeia para snake_case para o banco de dados
     const payload = {
-        ...formData,
+        name: formData.name,
         cnpj: formData.cnpj.replace(/\D/g, ''),
+        segment: formData.segment,
+        whatsapp: formData.whatsapp,
+        email: formData.email,
+        city: formData.city,
+        address: formData.address,
+        cep: formData.cep,
+        status: formData.status,
+        rating: formData.rating,
+        contact_name: formData.contactName, // Correção crucial: Frontend (camel) -> DB (snake)
         created_at: supplierToEdit ? undefined : new Date().toISOString()
     };
 
@@ -155,7 +184,8 @@ const Suppliers: React.FC = () => {
         setFormData({name: '', cnpj: '', segment: 'Peças', whatsapp: '', email: '', cep: '', address: '', city: '', status: 'Ativo', rating: 5, contactName: ''});
         addToast('success', 'Salvo', 'Fornecedor atualizado com sucesso.');
     } catch (err: any) {
-        addToast('error', 'Erro ao Salvar', err.message);
+        console.error("Erro ao salvar:", err);
+        addToast('error', 'Erro ao Salvar', err.message || 'Verifique as permissões do banco.');
     } finally {
         setIsSaving(false);
     }

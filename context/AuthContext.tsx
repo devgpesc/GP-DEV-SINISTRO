@@ -5,7 +5,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 type Session = any;
 type User = any;
 import { supabase } from '../services/supabaseClient';
-import { Car } from 'lucide-react';
+import { Car, RefreshCw, Trash2 } from 'lucide-react';
 
 interface AuthContextType {
   user: User | null;
@@ -206,6 +206,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Função de Emergência para Limpar Cache e Recarregar
+  const handleHardReset = () => {
+      if (window.confirm('Isso irá limpar seus dados de login locais e recarregar a página para corrigir erros. Continuar?')) {
+          localStorage.clear();
+          sessionStorage.clear();
+          window.location.href = '/login';
+      }
+  };
+
   const value = {
     user,
     session,
@@ -221,22 +230,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <AuthContext.Provider value={value}>
       {!loading && children} 
       {loading && (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
-          <div className="relative flex items-center justify-center mb-6 animate-in zoom-in duration-500">
-             <div className="w-16 h-16 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
-             <div className="absolute inset-0 flex items-center justify-center">
-                <Car className="text-blue-600" size={24} />
-             </div>
+        <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-6">
+          <div className="flex flex-col items-center">
+            <div className="relative flex items-center justify-center mb-6 animate-in zoom-in duration-500">
+                <div className="w-16 h-16 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                    <Car className="text-blue-600" size={24} />
+                </div>
+            </div>
+            <p className="text-slate-400 font-black text-[10px] uppercase tracking-[0.3em] animate-pulse">
+                {loadingError ? 'Conexão lenta detectada...' : 'Autenticando...'}
+            </p>
           </div>
-          <p className="text-slate-400 font-black text-[10px] uppercase tracking-[0.3em] animate-pulse">
-             {loadingError ? 'Tempo limite excedido. Tente recarregar.' : 'Autenticando...'}
-          </p>
           
-          {loadingError && (
-              <button onClick={() => window.location.reload()} className="mt-8 px-4 py-2 bg-slate-200 rounded text-xs font-bold text-slate-600 hover:bg-slate-300">
-                  Recarregar Página
-              </button>
-          )}
+          {/* Botão de Emergência para Limpar Cache */}
+          <button 
+            onClick={handleHardReset} 
+            className="flex items-center gap-2 px-5 py-3 bg-white border border-slate-200 text-slate-500 rounded-xl hover:bg-red-50 hover:text-red-600 hover:border-red-100 transition-all text-xs font-bold uppercase tracking-wider shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-700"
+          >
+              <Trash2 size={16} /> Limpar Cache e Recarregar
+          </button>
         </div>
       )}
     </AuthContext.Provider>
