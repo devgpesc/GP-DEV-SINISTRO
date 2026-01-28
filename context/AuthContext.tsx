@@ -157,21 +157,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = async () => {
     // LOGOUT NUCLEAR: Garante que nada sobrevive para causar re-login automático
     try {
-        setLoading(true);
+        // NÃO ativar setLoading(true) aqui.
+        // Isso evita que a tela de "Carregando Sistema" apareça, o que confundia o usuário achando que estava logando de novo.
         
         // 1. Limpeza de Estado React Imediata (Visual)
+        // Isso fará com que o PrivateRoute redirecione para /login instantaneamente se estiver dentro do app
         setUser(null);
         setSession(null);
         setProfile(null);
 
-        // 2. Logout no Supabase (Backend)
-        await supabase.auth.signOut();
-        
-        // 3. Limpeza de Storage (Persistência)
+        // 2. Limpeza de Storage (Persistência)
         localStorage.clear();
         sessionStorage.clear();
 
-        // 4. Limpeza de Cookies (Deep Clean)
+        // 3. Limpeza de Cookies (Deep Clean)
         const cookies = document.cookie.split(";");
         for (let i = 0; i < cookies.length; i++) {
             const cookie = cookies[i];
@@ -180,6 +179,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
         }
 
+        // 4. Logout no Supabase (Backend)
+        // Fazemos isso por último ou em paralelo para não bloquear a UI visualmente
+        await supabase.auth.signOut();
+        
         console.log('[Auth] Sessão encerrada completamente.');
 
     } catch (error) {
