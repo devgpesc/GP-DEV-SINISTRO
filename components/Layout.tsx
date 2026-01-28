@@ -58,10 +58,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   // Inicializa dados do formulário quando o modal abre
   useEffect(() => {
-    if (showProfileModal && profile) {
-        setEditName(profile.full_name || user?.user_metadata?.full_name || '');
-        setEditAvatar(profile.avatar_url || user?.user_metadata?.avatar_url || '');
-        setEditRole(profile.role || 'user');
+    if (showProfileModal && (profile || user)) {
+        setEditName(profile?.full_name || user?.user_metadata?.full_name || '');
+        setEditAvatar(profile?.avatar_url || user?.user_metadata?.avatar_url || '');
+        setEditRole(profile?.role || 'user');
     }
   }, [showProfileModal, profile, user]);
   
@@ -90,6 +90,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Validação de tamanho (max 1MB para base64 performance)
+      if (file.size > 1024 * 1024) {
+        addToast('warning', 'Arquivo muito grande', 'A imagem deve ter no máximo 1MB.');
+        return;
+      }
+      
       const reader = new FileReader();
       reader.onloadend = () => {
         setEditAvatar(reader.result as string);
@@ -114,9 +120,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         
         addToast('success', 'Perfil Atualizado', 'Suas informações foram salvas com sucesso.');
         setTimeout(() => setShowProfileModal(false), 1000);
-    } catch (error) {
+    } catch (error: any) {
         console.error(error);
-        addToast('error', 'Erro ao Salvar', 'Não foi possível atualizar o perfil. Tente novamente.');
+        addToast('error', 'Erro ao Salvar', error.message || 'Não foi possível atualizar o perfil.');
     } finally {
         setIsSavingProfile(false);
     }
@@ -303,13 +309,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               <div className="h-28 bg-gradient-to-br from-indigo-600 to-blue-700 relative flex justify-end p-4">
                  <button 
                     onClick={() => setShowProfileModal(false)} 
-                    className="bg-white/20 hover:bg-white/30 text-white p-2 rounded-full transition-all backdrop-blur-sm"
+                    className="bg-white/20 hover:bg-white/30 text-white p-2 rounded-full transition-all backdrop-blur-sm z-20"
                  >
                     <X size={18}/>
                  </button>
               </div>
 
-              <div className="px-8 pb-8 -mt-14 relative">
+              {/* Conteúdo do Modal - Z-Index 10 para ficar acima do background do header na margem negativa */}
+              <div className="px-8 pb-8 -mt-14 relative z-10">
                  {/* Avatar Area */}
                  <div className="flex justify-center mb-6">
                     <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
@@ -340,7 +347,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Nome de Exibição</label>
                        <div className="relative group">
                           <input 
-                             className="w-full text-center text-2xl font-black text-slate-800 bg-transparent border-b-2 border-slate-100 hover:border-blue-300 focus:border-blue-500 outline-none pb-2 transition-all placeholder:text-slate-300"
+                             className="w-full text-center text-2xl font-black text-slate-800 bg-transparent border-b-2 border-slate-100 hover:border-blue-300 focus:border-blue-500 outline-none pb-2 transition-all placeholder:text-slate-300 relative z-20"
                              value={editName}
                              onChange={e => setEditName(e.target.value)}
                              placeholder="Seu Nome"
@@ -351,21 +358,27 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
-                       <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col items-center justify-center gap-1 relative overflow-hidden group">
+                       <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col items-center justify-center gap-1 relative overflow-hidden group hover:border-blue-200 transition-colors">
                           <ShieldCheck size={20} className="text-blue-600"/>
                           <p className="text-[9px] font-black text-slate-400 uppercase">Função</p>
                           
+                          {/* Seletor invisível cobrindo toda a área para garantir clique */}
                           <select 
                             value={editRole} 
                             onChange={e => setEditRole(e.target.value)}
-                            className="appearance-none bg-transparent text-xs font-bold text-slate-700 capitalize text-center w-full outline-none cursor-pointer relative z-10"
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
                           >
                              <option value="user">User</option>
                              <option value="gerente">Gerente</option>
                              <option value="admin">Admin</option>
                              <option value="super_admin">Super Admin</option>
                           </select>
-                          <ChevronDown size={12} className="absolute right-2 bottom-3 text-slate-300 pointer-events-none group-hover:text-blue-500 transition-colors"/>
+                          
+                          {/* Display Visual */}
+                          <div className="flex items-center gap-1 relative z-10">
+                              <span className="text-xs font-bold text-slate-700 capitalize">{editRole}</span>
+                              <ChevronDown size={12} className="text-slate-300 group-hover:text-blue-500 transition-colors"/>
+                          </div>
                        </div>
                        <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col items-center justify-center gap-1">
                           <Key size={20} className="text-amber-500"/>

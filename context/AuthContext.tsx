@@ -129,6 +129,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const updates = {
             id: user.id,
             ...data,
+            // Garante que campos obrigatórios existam em caso de insert
+            email: user.email, 
             updated_at: new Date().toISOString(),
         };
 
@@ -136,7 +138,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .from('profiles')
             .upsert(updates);
 
-        if (error) throw error;
+        if (error) {
+            console.error("Supabase Error:", error);
+            throw error;
+        }
 
         // Atualiza estado local imediatamente para refletir na UI
         setProfile((prev: any) => ({ ...prev, ...data }));

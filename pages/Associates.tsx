@@ -155,7 +155,11 @@ const Associates: React.FC = () => {
         setIsModalOpen(false);
     } catch (error: any) {
         console.error(error);
-        setFormError(error.message || "Erro ao salvar associado. Verifique os dados.");
+        if (error.message?.includes('Could not find the table')) {
+             setFormError("Erro de Configuração: Tabela 'associates' não encontrada. Execute as migrações do banco.");
+        } else {
+             setFormError(error.message || "Erro ao salvar associado. Verifique os dados.");
+        }
     } finally {
         setIsSubmitting(false);
     }
