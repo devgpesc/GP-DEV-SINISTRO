@@ -1,6 +1,7 @@
+
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { Session, User } from '@supabase/supabase-js';
-import { supabase } from '../services/supabaseClient';
+import { supabase, mockStorage } from '../services/supabaseClient';
 
 interface AuthContextType {
   user: User | null;
@@ -9,6 +10,7 @@ interface AuthContextType {
   loading: boolean;
   signOut: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
+  updateProfile: (data: { full_name?: string; avatar_url?: string }) => Promise<void>;
   isSuperAdmin: boolean;
 }
 
@@ -23,8 +25,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Função isolada para buscar perfil com Timeout para evitar travamento
   const fetchProfile = useCallback(async (userId: string) => {
     try {
-      console.log('[Auth] Buscando perfil para:', userId);
-      
       // Timeout de segurança
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Timeout ao buscar perfil')), 3000)
@@ -42,6 +42,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) console.error('[Auth] Erro ao buscar perfil (DB):', error.message);
       
+      // Se não encontrar perfil no banco, tenta buscar do mock storage de usuários
+      if (!data) {
+          const appUsers = mockStorage.get('app_users') || [];
+          const localUser = appUsers.find((u: any) => u.id === userId || u.email === user?.email);
+          if (localUser) {
+              return {
+                  id: userId,
+                  full_name: localUser.name,
+                  role: localUser.role,
+                  avatar_url: localUser.avatar_url || ''
+              };
+          }
+      }
+
       return data || { 
         id: userId, 
         role: 'user', 
@@ -55,7 +69,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         full_name: 'Usuário (Offline)' 
       };
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     let mounted = true;
@@ -112,7 +126,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [fetchProfile]); // Removido 'profile' das dependências para evitar loops
+  }, [fetchProfile]);
 
   const signInWithGoogle = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
@@ -130,6 +144,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await supabase.auth.signOut();
   };
 
+  const updateProfile = async (data: { full_name?: string; avatar_url?: string }) => {
+    if (!user) return;
+
+    try {
+        // Atualiza no Supabase (Real ou Mock)
+        const { error } = await supabase
+            .from('profiles')
+            .update(data)
+            .eq('id', user.id);
+
+        if (error) throw error;
+
+        // Atualiza estado local imediatamente
+        setProfile((prev: any) => ({ ...prev, ...data }));
+
+        // Atualiza também na lista de usuários do sistema (app_users) para consistência
+        const appUsers = mockStorage.get('app_users') || [];
+        const updatedUsers = appUsers.map((u: any) => {
+            if (u.id === user.id || u.email === user.email) {
+                return { 
+                    ...u, 
+                    name: data.full_name || u.name, 
+                    avatar_url: data.avatar_url || u.avatar_url 
+                };
+            }
+            return u;
+        });
+        mockStorage.set('app_users', updatedUsers);
+
+    } catch (error) {
+        console.error("Erro ao atualizar perfil:", error);
+        throw error;
+    }
+  };
+
   const value = {
     user,
     session,
@@ -137,6 +186,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loading,
     signOut,
     signInWithGoogle,
+    updateProfile,
     isSuperAdmin: profile?.role === 'super_admin'
   };
 

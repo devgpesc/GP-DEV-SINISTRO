@@ -1,10 +1,11 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, Outlet } from 'react-router-dom';
 import { 
   LayoutDashboard, FileText, ShoppingCart, Users, Truck, 
   BarChart3, Settings, Package, Car, Bell, Search, UserCircle, X, ShoppingBag, Clock, Trash2, CheckCheck,
-  Globe, ShieldCheck, Wifi, WifiOff, AlertTriangle, CheckCircle2, UserCheck, Mail, Phone, MapPin, Key
+  Globe, ShieldCheck, Wifi, WifiOff, AlertTriangle, CheckCircle2, UserCheck, Mail, Phone, MapPin, Key,
+  Camera, Save, Loader2, Edit3
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { isSupabaseConfigured } from '../services/supabaseClient';
@@ -34,9 +35,23 @@ const NavItem = ({ to, icon: Icon, label, active, badge }: { to: string, icon: a
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
-  const { user, profile, isSuperAdmin, signOut } = useAuth();
+  const { user, profile, isSuperAdmin, signOut, updateProfile } = useAuth();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  
+  // Profile Edit States
+  const [editName, setEditName] = useState('');
+  const [editAvatar, setEditAvatar] = useState('');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Inicializa dados do formulário quando o modal abre
+  useEffect(() => {
+    if (showProfileModal && profile) {
+        setEditName(profile.full_name || '');
+        setEditAvatar(profile.avatar_url || '');
+    }
+  }, [showProfileModal, profile]);
   
   const [notifications, setNotifications] = useState([
     { id: 1, title: 'Aprovação Pendente', desc: 'OC-2024-001 aguardando sua assinatura.', time: '10 min', icon: ShoppingBag, color: 'blue', read: false },
@@ -50,6 +65,37 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const clearAllNotifications = () => {
     setNotifications([]);
+  };
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setEditAvatar(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    if (!editName.trim()) return alert("O nome não pode estar vazio.");
+    
+    setIsSavingProfile(true);
+    try {
+        await updateProfile({
+            full_name: editName,
+            avatar_url: editAvatar
+        });
+        // Feedback visual rápido
+        const btn = document.getElementById('save-profile-btn');
+        if (btn) btn.innerText = "Salvo!";
+        setTimeout(() => setShowProfileModal(false), 800);
+    } catch (error) {
+        alert("Erro ao salvar perfil.");
+    } finally {
+        setIsSavingProfile(false);
+    }
   };
 
   return (
@@ -97,7 +143,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
           <div className="flex items-center gap-3 px-2 py-3 cursor-pointer hover:bg-slate-800 rounded-lg transition-colors" onClick={() => setShowProfileModal(true)}>
             {profile?.avatar_url ? (
-                <img src={profile.avatar_url} className="w-10 h-10 rounded-full border-2 border-slate-700" alt="Avatar" />
+                <img src={profile.avatar_url} className="w-10 h-10 rounded-full border-2 border-slate-700 object-cover" alt="Avatar" />
             ) : (
                 <div className="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center">
                     <UserCircle size={24} className="text-slate-400" />
@@ -111,7 +157,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                         <ShieldCheck size={8}/> Super Admin
                     </span>
                 ) : (
-                    <p className="text-xs text-slate-500 italic">Usuário</p>
+                    <p className="text-xs text-slate-500 italic capitalize">{profile?.role || 'Usuário'}</p>
                 )}
               </div>
             </div>
@@ -141,7 +187,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   )}
               </button>
 
-              {/* Dropdown de Notificações Melhorado */}
+              {/* Dropdown de Notificações */}
               {showNotifications && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)}></div>
@@ -204,7 +250,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         {children || <Outlet />}
       </main>
 
-      {/* Modal de Perfil */}
+      {/* Modal de Configuração de Perfil */}
       {showProfileModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowProfileModal(false)}></div>
@@ -216,36 +262,58 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               </div>
               <div className="px-8 pb-8">
                  <div className="relative -mt-12 mb-6 flex justify-between items-end">
-                    <div className="w-24 h-24 rounded-[32px] bg-white p-1.5 shadow-xl">
-                       {profile?.avatar_url ? (
-                          <img src={profile.avatar_url} className="w-full h-full rounded-[28px] object-cover" />
-                       ) : (
-                          <div className="w-full h-full rounded-[28px] bg-slate-100 flex items-center justify-center text-slate-400">
-                             <UserCircle size={40}/>
-                          </div>
-                       )}
+                    <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                       <div className="w-24 h-24 rounded-[32px] bg-white p-1.5 shadow-xl">
+                          {editAvatar ? (
+                             <img src={editAvatar} className="w-full h-full rounded-[28px] object-cover" />
+                          ) : (
+                             <div className="w-full h-full rounded-[28px] bg-slate-100 flex items-center justify-center text-slate-400">
+                                <UserCircle size={40}/>
+                             </div>
+                          )}
+                       </div>
+                       <div className="absolute inset-0 bg-black/40 rounded-[32px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white m-1.5">
+                          <Camera size={24}/>
+                       </div>
+                       <input 
+                          type="file" 
+                          ref={fileInputRef} 
+                          className="hidden" 
+                          accept="image/*" 
+                          onChange={handleAvatarChange}
+                        />
                     </div>
+                    
                     <div className="flex gap-2 mb-2">
-                       <button className="p-2.5 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 rounded-xl transition-all" title="Editar Perfil"><Settings size={20}/></button>
-                       <button onClick={signOut} className="p-2.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-all" title="Sair"><X size={20}/></button>
+                       <button onClick={signOut} className="p-2.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-all flex items-center gap-2 text-xs font-bold uppercase" title="Sair">
+                          Sair
+                       </button>
                     </div>
                  </div>
                  
                  <div className="space-y-6">
                     <div>
-                       <h3 className="text-2xl font-black text-slate-800">{profile?.full_name || 'Usuário'}</h3>
-                       <p className="text-sm font-medium text-slate-500">{user?.email}</p>
+                       <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Nome de Exibição</label>
+                       <div className="relative">
+                          <input 
+                             className="w-full text-2xl font-black text-slate-800 border-b-2 border-slate-100 focus:border-blue-500 outline-none pb-2 bg-transparent"
+                             value={editName}
+                             onChange={e => setEditName(e.target.value)}
+                          />
+                          <Edit3 className="absolute right-0 bottom-2 text-slate-300 pointer-events-none" size={18}/>
+                       </div>
+                       <p className="text-sm font-medium text-slate-500 mt-1">{user?.email}</p>
                     </div>
 
                     <div className="space-y-3">
-                       <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl">
+                       <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
                           <div className="p-2 bg-white rounded-lg text-blue-600 shadow-sm"><ShieldCheck size={20}/></div>
                           <div>
-                             <p className="text-[10px] font-black text-slate-400 uppercase">Função</p>
+                             <p className="text-[10px] font-black text-slate-400 uppercase">Função (Sistema)</p>
                              <p className="font-bold text-slate-700 capitalize">{profile?.role || 'Colaborador'}</p>
                           </div>
                        </div>
-                       <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl">
+                       <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
                           <div className="p-2 bg-white rounded-lg text-amber-600 shadow-sm"><Key size={20}/></div>
                           <div>
                              <p className="text-[10px] font-black text-slate-400 uppercase">Último Acesso</p>
@@ -254,8 +322,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                        </div>
                     </div>
 
-                    <button className="w-full py-4 border border-slate-200 hover:border-slate-300 text-slate-600 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all">
-                       Alterar Senha
+                    <button 
+                       id="save-profile-btn"
+                       onClick={handleSaveProfile}
+                       disabled={isSavingProfile}
+                       className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-600/20 hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
+                    >
+                       {isSavingProfile ? <Loader2 className="animate-spin" size={18}/> : <><Save size={18}/> Salvar Alterações</>}
                     </button>
                  </div>
               </div>
