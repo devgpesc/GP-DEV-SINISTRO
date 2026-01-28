@@ -52,7 +52,16 @@ const Vehicles: React.FC = () => {
       const { data: as, error: aError } = await supabase.from('associates').select('id, name, document');
       if (aError) console.warn("Erro ao buscar associados:", aError);
 
-      setVehicles(vs || []);
+      // Normalização de dados (Resiliência para snake_case vs camelCase)
+      // Isso garante que a listagem funcione independente de como está no banco
+      const mappedVehicles = vs?.map((v: any) => ({
+        ...v,
+        associate_id: v.associate_id || v.associateId, // Fallback de leitura
+        year_fab: v.year_fab || v.yearFab,
+        year_model: v.year_model || v.yearModel
+      })) || [];
+
+      setVehicles(mappedVehicles);
       setAssociates(as || []);
     } catch (err) {
       console.error("Erro ao carregar dados de veículos:", err);
@@ -106,27 +115,25 @@ const Vehicles: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-        // Preparar Payload Inteligente
-        // Envia 'ISENTO' para Chassi/Renavam se estiverem vazios para contornar qualquer restrição NOT NULL do banco
+        // CORREÇÃO CRÍTICA: Enviar APENAS campos snake_case.
+        // O erro "Could not find column associateId" ocorre porque o frontend estava enviando
+        // a chave antiga (camelCase) para um banco que já foi migrado.
         const payload = { 
             plate: formData.plate.toUpperCase().trim(),
-            associate_id: formData.associate_id, // Padrão snake_case
-            associateId: formData.associate_id,  // Fallback camelCase (se o banco estiver antigo)
+            associate_id: formData.associate_id, // Somente snake_case
             km: Number(formData.km) || 0,
             status: formData.status || 'Ativo',
             brand: formData.brand?.toUpperCase(),
             model: formData.model?.toUpperCase(),
             color: formData.color?.toUpperCase(),
             
-            // Campos Opcionais (Preenche com ISENTO se vazio para evitar erro)
+            // Campos Opcionais (Preenche com ISENTO se vazio para evitar erro de constraint)
             renavam: formData.renavam?.trim() || 'ISENTO', 
             chassi: formData.chassi?.trim().toUpperCase() || 'ISENTO',
             
-            // Compatibilidade com colunas antigas (yearFab vs year_fab)
+            // Somente snake_case para anos
             year_fab: formData.year_fab,
-            yearFab: formData.year_fab,
             year_model: formData.year_model,
-            yearModel: formData.year_model,
             
             created_at: editId ? undefined : new Date().toISOString() 
         };
@@ -153,7 +160,9 @@ const Vehicles: React.FC = () => {
         if (err.message?.includes('violates unique constraint')) {
             addToast('error', 'Duplicidade', 'Esta placa já está cadastrada.');
         } else if (err.message?.includes('null value')) {
-            addToast('error', 'Erro de Banco de Dados', 'Um campo obrigatório do banco está vazio. Verifique o script SQL.');
+            addToast('error', 'Erro de Banco de Dados', 'Um campo obrigatório do banco está vazio.');
+        } else if (err.message?.includes('associateId')) {
+            addToast('error', 'Erro de Schema', 'Recarregue a página (F5) para atualizar o cache do navegador.');
         } else {
             addToast('error', 'Erro ao Salvar', err.message);
         }
