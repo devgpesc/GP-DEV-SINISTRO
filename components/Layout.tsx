@@ -8,7 +8,7 @@ import {
   Camera, Save, Loader2, Edit3, AlertCircle, LogOut, ChevronDown
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { isSupabaseConfigured } from '../services/supabaseClient';
+import { isSupabaseConfigured, supabase } from '../services/supabaseClient';
 
 interface LayoutProps {
   children?: React.ReactNode;
@@ -46,6 +46,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   
+  // Company Logo
+  const [companyLogo, setCompanyLogo] = useState('');
+  
   // Profile Edit States
   const [editName, setEditName] = useState('');
   const [editAvatar, setEditAvatar] = useState('');
@@ -56,7 +59,19 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   // Toast State
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  // CORREÇÃO AQUI: Dependência apenas do showProfileModal para não resetar enquanto digita
+  useEffect(() => {
+    // Carrega logo da empresa
+    const fetchLogo = async () => {
+        try {
+            const { data } = await supabase.from('saas_settings').select('logo_url').limit(1).maybeSingle();
+            if (data?.logo_url) setCompanyLogo(data.logo_url);
+        } catch (e) {
+            console.error("Erro logo", e);
+        }
+    };
+    fetchLogo();
+  }, []);
+
   useEffect(() => {
     if (showProfileModal) {
         // Carrega os dados apenas quando o modal abre
@@ -64,7 +79,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         setEditAvatar(profile?.avatar_url || user?.user_metadata?.avatar_url || '');
         setEditRole(profile?.role || 'user');
     }
-  }, [showProfileModal]); // Removido 'profile' e 'user' das dependências para evitar loop de reset
+  }, [showProfileModal]); 
   
   const [notifications, setNotifications] = useState([
     { id: 1, title: 'Aprovação Pendente', desc: 'OC-2024-001 aguardando sua assinatura.', time: '10 min', icon: ShoppingBag, color: 'blue', read: false },
@@ -115,7 +130,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         await updateProfile({
             full_name: editName,
             avatar_url: editAvatar,
-            // role: editRole // Role geralmente não é editado pelo próprio usuário em self-service, mas mantido se for admin
         });
         
         addToast('success', 'Perfil Atualizado', 'Suas informações foram salvas com sucesso.');
@@ -152,7 +166,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       <aside className="w-64 bg-slate-900 text-white flex flex-col fixed h-full z-20 print:hidden">
         <div className="p-6">
           <div className="flex items-center gap-2 mb-8">
-            <div className="bg-blue-600 p-2 rounded-lg"><Car className="text-white" size={24} /></div>
+            {companyLogo ? (
+                <img src={companyLogo} className="h-8 w-auto bg-white/10 rounded p-1 object-contain" alt="Logo" />
+            ) : (
+                <div className="bg-blue-600 p-2 rounded-lg"><Car className="text-white" size={24} /></div>
+            )}
             <h1 className="text-xl font-bold tracking-tight">AutoClaims<span className="text-blue-500">Pro</span></h1>
           </div>
           

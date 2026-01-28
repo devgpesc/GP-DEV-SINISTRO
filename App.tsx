@@ -2,6 +2,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext.tsx';
+import { ToastProvider } from './context/ToastContext.tsx';
 import { PrivateRoute } from './components/PrivateRoute.tsx';
 import Layout from './components/Layout.tsx';
 
@@ -25,7 +26,6 @@ import AIAssistant from './components/AIAssistant.tsx';
 
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isSuperAdmin } = useAuth();
-  // Se chegou aqui, user já existe (garantido pelo PrivateRoute)
   if (!isSuperAdmin) return <Navigate to="/" replace />;
   return <>{children}</>;
 };
@@ -38,36 +38,38 @@ const AuthOnlyAssistant = () => {
 const App: React.FC = () => {
   return (
     <AuthProvider>
-      <Router>
-        <Routes>
-          {/* Rotas Públicas */}
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          
-          {/* Rotas Protegidas */}
-          <Route element={<PrivateRoute />}>
-             <Route element={<Layout />}>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/eventos" element={<Events />} />
-                <Route path="/cotacoes" element={<Quotations />} />
-                <Route path="/compras" element={<Purchases />} />
-                <Route path="/entregas" element={<Deliveries />} />
-                <Route path="/fornecedores" element={<Suppliers />} />
-                <Route path="/associados" element={<Associates />} />
-                <Route path="/veiculos" element={<Vehicles />} />
-                <Route path="/catalogo" element={<Catalog />} />
-                <Route path="/relatorios" element={<Reports />} />
-                <Route path="/configuracoes" element={<Settings />} />
-                <Route path="/notificacoes" element={<Notifications />} />
-                <Route path="/saas-admin" element={<AdminRoute><SaasAdmin /></AdminRoute>} />
-             </Route>
-          </Route>
+      <ToastProvider>
+        <Router>
+          <Routes>
+            {/* Rotas Públicas */}
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            
+            {/* Rotas Protegidas */}
+            <Route element={<PrivateRoute />}>
+               <Route element={<Layout />}>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/eventos" element={<Events />} />
+                  <Route path="/cotacoes" element={<Quotations />} />
+                  <Route path="/compras" element={<Purchases />} />
+                  <Route path="/entregas" element={<Deliveries />} />
+                  <Route path="/fornecedores" element={<Suppliers />} />
+                  <Route path="/associados" element={<Associates />} />
+                  <Route path="/veiculos" element={<Vehicles />} />
+                  <Route path="/catalogo" element={<Catalog />} />
+                  <Route path="/relatorios" element={<Reports />} />
+                  <Route path="/configuracoes" element={<Settings />} />
+                  <Route path="/notificacoes" element={<Notifications />} />
+                  <Route path="/saas-admin" element={<AdminRoute><SaasAdmin /></AdminRoute>} />
+               </Route>
+            </Route>
 
-          {/* Catch-all */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-        <AuthOnlyAssistant />
-      </Router>
+            {/* Catch-all */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+          <AuthOnlyAssistant />
+        </Router>
+      </ToastProvider>
     </AuthProvider>
   );
 };

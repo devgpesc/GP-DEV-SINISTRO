@@ -1,6 +1,6 @@
 
--- CORREÇÃO DA TABELA PROFILES
--- Executar no SQL Editor do Supabase para corrigir o erro "Could not find the 'avatar_url' column"
+-- CORREÇÃO DA TABELA PROFILES (Versão Atualizada)
+-- Executar no SQL Editor do Supabase para corrigir erros de colunas faltantes (avatar_url, role, updated_at)
 
 -- 1. Garante que a tabela existe com a estrutura básica
 CREATE TABLE IF NOT EXISTS public.profiles (
@@ -17,18 +17,27 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 -- 2. Adiciona colunas individualmente caso a tabela já exista mas as colunas não
 DO $$ 
 BEGIN 
+  -- Adiciona updated_at (Correção do erro atual)
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'updated_at') THEN 
+    ALTER TABLE public.profiles ADD COLUMN updated_at timestamp with time zone DEFAULT now(); 
+  END IF;
+
+  -- Adiciona avatar_url
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'avatar_url') THEN 
     ALTER TABLE public.profiles ADD COLUMN avatar_url text; 
   END IF;
 
+  -- Adiciona role
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'role') THEN 
     ALTER TABLE public.profiles ADD COLUMN role text DEFAULT 'user'; 
   END IF;
 
+  -- Adiciona full_name
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'full_name') THEN 
     ALTER TABLE public.profiles ADD COLUMN full_name text; 
   END IF;
     
+  -- Adiciona email
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'email') THEN 
     ALTER TABLE public.profiles ADD COLUMN email text; 
   END IF;
@@ -56,13 +65,14 @@ CREATE POLICY "Users can update own profile." ON public.profiles
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.profiles (id, full_name, avatar_url, email, role)
+  INSERT INTO public.profiles (id, full_name, avatar_url, email, role, updated_at)
   VALUES (
     new.id, 
     new.raw_user_meta_data->>'full_name', 
     new.raw_user_meta_data->>'avatar_url', 
     new.email, 
-    'user'
+    'user',
+    now()
   )
   ON CONFLICT (id) DO NOTHING;
   RETURN new;

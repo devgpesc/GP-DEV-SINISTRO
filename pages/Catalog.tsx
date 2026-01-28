@@ -3,8 +3,10 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Search, Package, Settings, Trash2, Edit3, Tag, LayoutGrid, List, X, Loader2 } from 'lucide-react';
 import { CatalogItem } from '../types';
 import { supabase } from '../services/supabaseClient';
+import { useToast } from '../context/ToastContext';
 
 const Catalog: React.FC = () => {
+  const { addToast } = useToast();
   const [activeTab, setActiveTab] = useState<'Peça' | 'Serviço'>('Peça');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchTerm, setSearchTerm] = useState('');
@@ -58,7 +60,10 @@ const Catalog: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.code) return;
+    if (!formData.name || !formData.code) {
+        addToast('warning', 'Campos Obrigatórios', 'Preencha nome e código.');
+        return;
+    }
     
     setIsSaving(true);
     try {
@@ -72,16 +77,21 @@ const Catalog: React.FC = () => {
         };
 
         if (itemToEdit) {
-            await supabase.from('catalog_items').update(payload).eq('id', itemToEdit.id);
+            const { error } = await supabase.from('catalog_items').update(payload).eq('id', itemToEdit.id);
+            if (error) throw error;
+            addToast('success', 'Item Atualizado', 'Alterações salvas no catálogo.');
         } else {
-            await supabase.from('catalog_items').insert([payload]);
+            const { error } = await supabase.from('catalog_items').insert([payload]);
+            if (error) throw error;
+            addToast('success', 'Item Criado', 'Novo item adicionado ao catálogo.');
         }
         
+        // Recarrega items após sucesso para garantir sincronia
         await loadItems();
         setIsModalOpen(false);
-    } catch (error) {
+    } catch (error: any) {
         console.error('Erro ao salvar item', error);
-        // Fallback or better error handling can be added here
+        addToast('error', 'Erro ao Salvar', error.message || 'Falha ao salvar item.');
     } finally {
         setIsSaving(false);
     }
@@ -91,9 +101,10 @@ const Catalog: React.FC = () => {
     if (window.confirm('Tem certeza que deseja remover este item do catálogo?')) {
       const { error } = await supabase.from('catalog_items').delete().eq('id', id);
       if (error) {
-          alert('Erro ao excluir: ' + error.message);
+          addToast('error', 'Erro ao Excluir', error.message);
       } else {
           setItems(items.filter(i => i.id !== id));
+          addToast('success', 'Item Removido', 'O item foi excluído com sucesso.');
       }
     }
   };

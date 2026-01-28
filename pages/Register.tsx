@@ -2,9 +2,11 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
+import { useToast } from '../context/ToastContext';
 import { Car, Mail, Lock, User, Loader2, ArrowLeft, ShieldCheck } from 'lucide-react';
 
 const Register: React.FC = () => {
+  const { addToast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -33,8 +35,10 @@ const Register: React.FC = () => {
         setError(signUpError.message);
         setLoading(false);
       } else if (data.user) {
-        alert("Cadastro realizado com sucesso! Verifique seu e-mail para confirmar a conta antes de tentar logar.");
-        navigate('/login');
+        addToast('success', 'Cadastro Realizado!', 'Verifique seu e-mail para confirmar a conta antes de logar.');
+        setTimeout(() => {
+            navigate('/login');
+        }, 2000);
       }
     } catch (err) {
       setError("Erro ao conectar com o servidor de autenticação.");

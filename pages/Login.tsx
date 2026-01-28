@@ -23,11 +23,19 @@ const Login: React.FC = () => {
     if (user) {
       navigate('/', { replace: true });
     }
-    // Tenta carregar config da empresa do banco (se existir tabela settings)
-    // Se não, usa default
+    // Tenta carregar config da empresa do banco
     const fetchSettings = async () => {
-        const { data } = await supabase.from('saas_settings').select('*').single();
-        if (data) setCompany({ name: data.company_name || 'AutoClaims Pro', logo: data.logo_url || '' });
+        try {
+            const { data } = await supabase.from('saas_settings').select('*').limit(1).maybeSingle();
+            if (data) {
+                setCompany({ 
+                    name: data.company_name || 'AutoClaims Pro', 
+                    logo: data.logo_url || '' 
+                });
+            }
+        } catch (e) {
+            console.error("Erro ao carregar branding", e);
+        }
     };
     fetchSettings();
   }, [user, navigate]);
@@ -73,7 +81,7 @@ const Login: React.FC = () => {
         <div className="relative z-10">
           <div className="flex items-center gap-4 mb-10">
              {company.logo ? (
-                <img src={company.logo} className="h-12 w-auto bg-white/10 rounded-lg p-1 backdrop-blur-sm" alt="Logo" />
+                <img src={company.logo} className="h-12 w-auto bg-white/10 rounded-lg p-1 backdrop-blur-sm object-contain" alt="Logo" />
              ) : (
                 <div className="bg-blue-600 p-2.5 rounded-xl shadow-lg shadow-blue-900/50">
                    <Car className="text-white" size={24} />
@@ -176,7 +184,7 @@ const Login: React.FC = () => {
                     <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
                     <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                  </svg>
-                 Entrar com Google Workspace
+                 Entrar com Google
               </button>
             </div>
 
