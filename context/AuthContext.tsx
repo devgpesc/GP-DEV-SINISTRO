@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../services/supabaseClient';
-import { Car, AlertTriangle } from 'lucide-react';
+import { Car } from 'lucide-react';
 
 interface AuthContextType {
   user: User | null;
@@ -52,32 +52,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let mounted = true;
 
-    // Timeout de segurança para não ficar travado no loading
+    // Timeout de segurança: Se o Supabase não responder em 5s, libera a tela
     const safetyTimeout = setTimeout(() => {
         if (loading && mounted) {
-            console.warn('[Auth] Loading demorou muito. Forçando render.');
+            console.warn('[Auth] Loading demorou muito (Timeout). Forçando liberação da UI.');
             setLoading(false);
             setLoadingError(true);
         }
-    }, 8000);
+    }, 5000);
 
     const initializeAuth = async () => {
       try {
+        // Tenta pegar a sessão atual (incluindo parsing do hash da URL #access_token=...)
         const { data: { session: initialSession }, error } = await supabase.auth.getSession();
         
-        if (error) throw error;
+        if (error) {
+            console.error('[Auth] Erro ao obter sessão inicial:', error);
+            throw error;
+        }
 
         if (mounted) {
             if (initialSession) {
+                console.log('[Auth] Sessão encontrada/restaurada.');
                 setSession(initialSession);
                 setUser(initialSession.user);
-                // Busca perfil apenas se tiver usuário
+                
+                // SEGURANÇA: Limpa o hash da URL para não expor o token visualmente
+                if (window.location.hash && window.location.hash.includes('access_token')) {
+                    window.history.replaceState(null, '', window.location.pathname);
+                }
+
                 const p = await fetchProfile(initialSession.user.id);
                 if (mounted) setProfile(p);
+            } else {
+                console.log('[Auth] Nenhuma sessão ativa.');
             }
         }
       } catch (err) {
-        console.error('[Auth] Erro na inicialização:', err);
+        console.error('[Auth] Erro crítico na inicialização:', err);
       } finally {
         if (mounted) {
             setLoading(false);
@@ -88,6 +100,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     initializeAuth();
 
+    // Escuta mudanças de estado (Login, Logout, Token Refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       console.log(`[Auth Event] ${event}`);
 
@@ -97,13 +110,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(newSession?.user ?? null);
 
       if (newSession?.user) {
-         // Otimização: Só busca se o ID mudou para evitar loop
-         const p = await fetchProfile(newSession.user.id);
-         if (mounted) setProfile(p);
+         // Otimização: Só busca se o ID mudou ou se não temos perfil ainda
+         if (!profile || profile.id !== newSession.user.id) {
+             const p = await fetchProfile(newSession.user.id);
+             if (mounted) setProfile(p);
+         }
       } else {
         setProfile(null);
       }
       
+      // Garante que o loading saia após qualquer evento de auth
       setLoading(false);
     });
 
@@ -112,8 +128,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       clearTimeout(safetyTimeout);
       subscription.unsubscribe();
     };
-    // REMOVIDO 'profile' DA DEPENDÊNCIA PARA EVITAR LOOP INFINITO
-  }, [fetchProfile]);
+  }, [fetchProfile]); // Removido 'profile' das dependências para evitar loop
 
   const signInWithGoogle = async () => {
     try {
@@ -135,7 +150,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
         setLoading(true);
         await supabase.auth.signOut();
-        // O estado será atualizado pelo onAuthStateChange
+        // O estado será limpo pelo onAuthStateChange
     } catch (error) {
         console.error("Erro ao sair:", error);
         setLoading(false);
@@ -149,7 +164,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const updates = {
             id: user.id,
             ...data,
-            // Garante que campos obrigatórios existam em caso de insert
             email: user.email, 
             updated_at: new Date().toISOString(),
         };
@@ -163,7 +177,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             throw error;
         }
 
-        // Atualiza estado local imediatamente para refletir na UI sem refresh
         setProfile((prev: any) => ({ ...prev, ...data }));
 
     } catch (error) {
@@ -194,7 +207,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 <Car className="text-blue-600" size={24} />
              </div>
           </div>
-          <p className="text-slate-400 font-black text-[10px] uppercase tracking-[0.3em] animate-pulse">Conectando...</p>
+          <p className="text-slate-400 font-black text-[10px] uppercase tracking-[0.3em] animate-pulse">
+             {loadingError ? 'Conexão lenta... Finalizando.' : 'Autenticando...'}
+          </p>
           
           {loadingError && (
               <button onClick={() => window.location.reload()} className="mt-8 px-4 py-2 bg-slate-200 rounded text-xs font-bold text-slate-600 hover:bg-slate-300">
