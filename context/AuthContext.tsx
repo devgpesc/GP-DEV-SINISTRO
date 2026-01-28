@@ -55,87 +55,103 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let mounted = true;
 
-    // Timeout de segurança: Se o Supabase não responder em 8s, libera a tela
+    // Detecção Crítica: Estamos voltando de um login social?
+    // Se houver hash na URL, NÃO podemos liberar o loading até o Supabase processar.
+    const isOAuthRedirect = typeof window !== 'undefined' && 
+                            window.location.hash && 
+                            window.location.hash.includes('access_token');
+
+    // Timeout de segurança estendido para casos de OAuth lento
     const safetyTimeout = setTimeout(() => {
         if (loading && mounted) {
-            console.warn('[Auth] Loading demorou muito (Timeout). Forçando liberação da UI.');
+            console.warn('[Auth] Timeout de segurança atingido. Liberando interface.');
             setLoading(false);
-            setLoadingError(true);
+            if (!user) setLoadingError(true);
         }
-    }, 8000);
+    }, isOAuthRedirect ? 15000 : 8000); // Mais tempo se for OAuth
 
-    const initializeAuth = async () => {
-      try {
-        // CORREÇÃO CRÍTICA: Usamos `getUser()` em vez de `getSession()` para validar o token no servidor.
-        // Isso impede que cookies antigos/inválidos causem comportamento de "Offline" ou erros de RLS.
-        const { data: { user: currentUser }, error: userError } = await (supabase.auth as any).getUser();
-        const { data: { session: currentSession } } = await (supabase.auth as any).getSession();
-
-        if (userError) {
-            // Se o token for inválido, limpamos tudo para forçar novo login limpo
-            console.warn('[Auth] Token inválido ou expirado. Forçando logout limpo.', userError.message);
-            if (currentSession) await (supabase.auth as any).signOut();
-            setSession(null);
-            setUser(null);
-        } else if (mounted && currentUser) {
-            console.log('[Auth] Sessão validada com sucesso.');
-            setSession(currentSession);
-            setUser(currentUser);
+    const initAuth = async () => {
+        // 1. Configurar Listener PRIMEIRO para capturar eventos de hash instantaneamente
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+            console.log(`[Auth Event] ${event}`);
             
-            // SEGURANÇA: Limpa o hash da URL para não expor o token visualmente
-            if (window.location.hash && window.location.hash.includes('access_token')) {
-                window.history.replaceState(null, '', window.location.pathname);
+            if (!mounted) return;
+
+            if (newSession?.user) {
+                setSession(newSession);
+                setUser(newSession.user);
+                
+                // Fetch profile apenas se mudou o usuário ou ainda não temos
+                if (!profile || profile.id !== newSession.user.id) {
+                    const p = await fetchProfile(newSession.user.id);
+                    if (mounted) setProfile(p);
+                }
+                
+                // SEGURANÇA: Limpa hash da URL após sucesso
+                if (window.location.hash && window.location.hash.includes('access_token')) {
+                    window.history.replaceState(null, '', window.location.pathname);
+                }
+            } else {
+                // Se foi logout explícito, limpa estado
+                if (event === 'SIGNED_OUT') {
+                    setSession(null);
+                    setUser(null);
+                    setProfile(null);
+                }
             }
 
-            const p = await fetchProfile(currentUser.id);
-            if (mounted) setProfile(p);
-        } else {
-            console.log('[Auth] Nenhuma sessão ativa.');
-        }
-      } catch (err) {
-        console.error('[Auth] Erro crítico na inicialização:', err);
-      } finally {
-        if (mounted) {
+            // Qualquer evento de mudança de estado encerra o loading
+            // (SIGNED_IN, TOKEN_REFRESHED, INITIAL_SESSION, etc)
             setLoading(false);
-            clearTimeout(safetyTimeout);
+        });
+
+        // 2. Verificação Inicial Robusta (Server-Side Validation)
+        try {
+            // Tenta pegar usuário validado no servidor (evita cookies falsos)
+            const { data: { user: validUser }, error } = await supabase.auth.getUser();
+            
+            if (mounted) {
+                if (validUser) {
+                    // Usuário válido já existe
+                    setUser(validUser);
+                    const { data: { session: currentSession } } = await supabase.auth.getSession();
+                    setSession(currentSession);
+                    
+                    const p = await fetchProfile(validUser.id);
+                    if (mounted) setProfile(p);
+                    
+                    setLoading(false);
+                } else {
+                    // Nenhum usuário ativo no storage/servidor.
+                    // CRÍTICO: Se for redirect OAuth, NÃO setamos loading false aqui.
+                    // Esperamos o evento do onAuthStateChange processar o hash.
+                    if (!isOAuthRedirect) {
+                        setLoading(false);
+                    } else {
+                        console.log('[Auth] Aguardando processamento de hash OAuth...');
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('[Auth] Erro na inicialização:', err);
+            if (mounted && !isOAuthRedirect) setLoading(false);
         }
-      }
+
+        return subscription;
     };
 
-    initializeAuth();
-
-    // Escuta mudanças de estado (Login, Logout, Token Refresh)
-    const { data: { subscription } } = (supabase.auth as any).onAuthStateChange(async (event: any, newSession: any) => {
-      console.log(`[Auth Event] ${event}`);
-
-      if (!mounted) return;
-
-      setSession(newSession);
-      setUser(newSession?.user ?? null);
-
-      if (newSession?.user) {
-         // Otimização: Só busca se o ID mudou ou se não temos perfil ainda
-         if (!profile || profile.id !== newSession.user.id) {
-             const p = await fetchProfile(newSession.user.id);
-             if (mounted) setProfile(p);
-         }
-      } else {
-        setProfile(null);
-      }
-      
-      // Garante que o loading saia após qualquer evento de auth
-      setLoading(false);
-    });
+    const subPromise = initAuth();
 
     return () => {
       mounted = false;
       clearTimeout(safetyTimeout);
-      subscription.unsubscribe();
+      subPromise.then(sub => sub?.unsubscribe());
     };
   }, [fetchProfile]); 
 
   const signInWithGoogle = async () => {
     try {
+        setLoading(true); // Bloqueia UI durante início do redirecionamento
         const { error } = await (supabase.auth as any).signInWithOAuth({
           provider: 'google',
           options: {
@@ -146,6 +162,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (error) throw error;
     } catch (error) {
         console.error("Erro no login Google:", error);
+        setLoading(false);
         alert("Erro ao iniciar login com Google. Verifique o console.");
     }
   };
@@ -153,8 +170,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = async () => {
     try {
         setLoading(true);
-        await (supabase.auth as any).signOut();
-        // O estado será limpo pelo onAuthStateChange
+        await supabase.auth.signOut();
+        // O estado será limpo pelo onAuthStateChange -> SIGNED_OUT
     } catch (error) {
         console.error("Erro ao sair:", error);
         setLoading(false);
@@ -212,7 +229,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
              </div>
           </div>
           <p className="text-slate-400 font-black text-[10px] uppercase tracking-[0.3em] animate-pulse">
-             {loadingError ? 'Conexão lenta... Finalizando.' : 'Autenticando...'}
+             {loadingError ? 'Tempo limite excedido. Tente recarregar.' : 'Autenticando...'}
           </p>
           
           {loadingError && (
