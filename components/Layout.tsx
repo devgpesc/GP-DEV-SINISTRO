@@ -5,13 +5,20 @@ import {
   LayoutDashboard, FileText, ShoppingCart, Users, Truck, 
   BarChart3, Settings, Package, Car, Bell, Search, UserCircle, X, ShoppingBag, Clock, Trash2, CheckCheck,
   Globe, ShieldCheck, Wifi, WifiOff, AlertTriangle, CheckCircle2, UserCheck, Mail, Phone, MapPin, Key,
-  Camera, Save, Loader2, Edit3
+  Camera, Save, Loader2, Edit3, AlertCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 
 interface LayoutProps {
   children?: React.ReactNode;
+}
+
+interface ToastMessage {
+  id: number;
+  type: 'success' | 'error' | 'warning';
+  title: string;
+  message: string;
 }
 
 const NavItem = ({ to, icon: Icon, label, active, badge }: { to: string, icon: any, label: string, active: boolean, badge?: string }) => (
@@ -45,6 +52,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Toast State
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
   // Inicializa dados do formulário quando o modal abre
   useEffect(() => {
     if (showProfileModal && profile) {
@@ -58,6 +68,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { id: 2, title: 'SLA Crítico', desc: 'Evento EVT-2024-022 excedeu 48h sem cotação.', time: '2h', icon: AlertTriangle, color: 'red', read: false },
     { id: 3, title: 'Entrega Realizada', desc: 'Peças da OC-2024-003 recebidas na oficina.', time: '1d', icon: CheckCircle2, color: 'green', read: true },
   ]);
+
+  const addToast = (type: 'success' | 'error' | 'warning', title: string, message: string) => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, type, title, message }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 4000);
+  };
 
   const removeNotification = (id: number) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
@@ -79,7 +97,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   };
 
   const handleSaveProfile = async () => {
-    if (!editName.trim()) return alert("O nome não pode estar vazio.");
+    if (!editName.trim()) {
+        addToast('warning', 'Nome Obrigatório', 'Por favor, informe seu nome de exibição.');
+        return;
+    }
     
     setIsSavingProfile(true);
     try {
@@ -87,12 +108,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             full_name: editName,
             avatar_url: editAvatar
         });
-        // Feedback visual rápido
-        const btn = document.getElementById('save-profile-btn');
-        if (btn) btn.innerText = "Salvo!";
-        setTimeout(() => setShowProfileModal(false), 800);
+        
+        addToast('success', 'Perfil Atualizado', 'Suas informações foram salvas com sucesso.');
+        setTimeout(() => setShowProfileModal(false), 1000);
     } catch (error) {
-        alert("Erro ao salvar perfil.");
+        console.error(error);
+        addToast('error', 'Erro ao Salvar', 'Não foi possível atualizar o perfil. Tente novamente.');
     } finally {
         setIsSavingProfile(false);
     }
@@ -100,6 +121,25 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   return (
     <div className="flex min-h-screen bg-slate-50 print:bg-white">
+      {/* Toast Container */}
+      <div className="fixed top-6 right-6 z-[120] flex flex-col gap-3">
+        {toasts.map(toast => (
+          <div key={toast.id} className="bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-2xl border border-slate-200 flex items-start gap-4 min-w-[320px] animate-in slide-in-from-right-10 duration-300">
+             <div className={`p-2 rounded-xl ${
+                toast.type === 'success' ? 'bg-green-100 text-green-600' : 
+                toast.type === 'error' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'
+             }`}>
+                {toast.type === 'success' ? <CheckCircle2 size={20}/> : 
+                 toast.type === 'error' ? <X size={20}/> : <AlertCircle size={20}/>}
+             </div>
+             <div>
+                <h4 className="text-sm font-bold text-slate-800">{toast.title}</h4>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">{toast.message}</p>
+             </div>
+          </div>
+        ))}
+      </div>
+
       <aside className="w-64 bg-slate-900 text-white flex flex-col fixed h-full z-20 print:hidden">
         <div className="p-6">
           <div className="flex items-center gap-2 mb-8">
@@ -326,7 +366,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                        id="save-profile-btn"
                        onClick={handleSaveProfile}
                        disabled={isSavingProfile}
-                       className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-600/20 hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
+                       className={`w-full py-4 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-600/20 transition-all flex items-center justify-center gap-2 ${isSavingProfile ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
                     >
                        {isSavingProfile ? <Loader2 className="animate-spin" size={18}/> : <><Save size={18}/> Salvar Alterações</>}
                     </button>

@@ -50,6 +50,45 @@ const createMockBuilder = (table: string) => {
       return Promise.resolve({ data: newRows[0], error: null });
     },
 
+    // IMPLEMENTAÇÃO DE UPSERT REAL (Insert ou Update)
+    upsert: function(rows: any | any[]) {
+      const currentData = getData();
+      const inputRows = Array.isArray(rows) ? rows : [rows];
+      const updatedData = [...currentData];
+      const processedRows: any[] = [];
+
+      inputRows.forEach(newRow => {
+          if (!newRow.id) {
+              // Se não tem ID, gera um e insere como novo
+              const rowWithId = { 
+                  ...newRow, 
+                  id: Math.random().toString(36).substr(2, 9),
+                  created_at: new Date().toISOString() 
+              };
+              updatedData.unshift(rowWithId);
+              processedRows.push(rowWithId);
+          } else {
+              const idx = updatedData.findIndex(r => r.id === newRow.id);
+              if (idx >= 0) {
+                  // Update existente
+                  updatedData[idx] = { ...updatedData[idx], ...newRow };
+                  processedRows.push(updatedData[idx]);
+              } else {
+                  // Insert com ID específico
+                  const rowWithTimestamp = {
+                      ...newRow,
+                      created_at: newRow.created_at || new Date().toISOString()
+                  };
+                  updatedData.unshift(rowWithTimestamp);
+                  processedRows.push(rowWithTimestamp);
+              }
+          }
+      });
+
+      mockStorage.set(table, updatedData);
+      return Promise.resolve({ data: processedRows, error: null });
+    },
+
     // IMPLEMENTAÇÃO DE UPDATE REAL
     update: function(updates: any) {
         this.updates = updates;
@@ -176,9 +215,6 @@ const createMockAuth = () => {
           const session = { access_token: `mock-token-${foundUser.id}`, user };
           localStorage.setItem('autoclaims_mock_session', JSON.stringify(session));
           
-          // Salvar perfil simulado para o AuthContext ler
-          // mockStorage.set('profiles', [...(mockStorage.get('profiles')||[]), user]);
-
           await new Promise(resolve => setTimeout(resolve, 500));
           window.location.reload();
           return { data: { session, user }, error: null };

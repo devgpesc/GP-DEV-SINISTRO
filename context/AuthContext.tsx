@@ -148,18 +148,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user) return;
 
     try {
-        // Atualiza no Supabase (Real ou Mock)
+        // Usa UPSERT para criar se não existir ou atualizar se existir
         const { error } = await supabase
             .from('profiles')
-            .update(data)
-            .eq('id', user.id);
+            .upsert({ id: user.id, ...data, updated_at: new Date().toISOString() });
 
         if (error) throw error;
 
         // Atualiza estado local imediatamente
         setProfile((prev: any) => ({ ...prev, ...data }));
 
-        // Atualiza também na lista de usuários do sistema (app_users) para consistência
+        // Atualiza também na lista de usuários do sistema (app_users) para consistência no mock
         const appUsers = mockStorage.get('app_users') || [];
         const updatedUsers = appUsers.map((u: any) => {
             if (u.id === user.id || u.email === user.email) {
