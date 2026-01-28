@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   Globe, Building, Users, Database, 
@@ -43,27 +44,10 @@ const SaasAdmin: React.FC = () => {
       setPlans(plansData || []);
 
     } catch (error) {
-        console.warn("Modo Demo Admin: Carregando dados fictícios", error);
-        // DADOS MOCK PARA DEMO
-        setPlans([
-            { id: 'p1', name: 'Start', price: 499, max_users: 5, max_events: 50, features: {} },
-            { id: 'p2', name: 'Growth', price: 999, max_users: 20, max_events: 200, features: {} },
-            { id: 'p3', name: 'Enterprise', price: 2499, max_users: 999, max_events: 9999, features: {} }
-        ]);
-        setTenants([
-            { 
-                id: 't1', name: 'Transportadora Rápido', document: '11.111.111/0001-11', plan_id: 'p2', status: 'active', created_at: new Date().toISOString(),
-                saas_plans: { id: 'p2', name: 'Growth', price: 999, max_users: 20, max_events: 200, features: {} }
-            },
-            { 
-                id: 't2', name: 'Logística Segura', document: '22.222.222/0001-22', plan_id: 'p1', status: 'active', created_at: new Date().toISOString(),
-                saas_plans: { id: 'p1', name: 'Start', price: 499, max_users: 5, max_events: 50, features: {} }
-            },
-            { 
-                id: 't3', name: 'Frotas Brasil', document: '33.333.333/0001-33', plan_id: 'p3', status: 'blocked', created_at: new Date().toISOString(),
-                saas_plans: { id: 'p3', name: 'Enterprise', price: 2499, max_users: 999, max_events: 9999, features: {} }
-            }
-        ]);
+        console.error("Erro ao carregar dados do admin:", error);
+        // Em caso de erro, manter listas vazias, sem mocks.
+        setTenants([]);
+        setPlans([]);
     } finally {
       setLoading(false);
     }
@@ -92,20 +76,7 @@ const SaasAdmin: React.FC = () => {
         setNewTenantData({ name: '', document: '', plan_id: '' });
         alert("Empresa criada com sucesso!");
     } catch (err: any) {
-        // Fallback demo para criação
-        const fakePlan = plans.find(p => p.id === newTenantData.plan_id);
-        const newFakeTenant: SaasTenant = {
-            id: Math.random().toString(),
-            name: newTenantData.name,
-            document: newTenantData.document,
-            plan_id: newTenantData.plan_id,
-            status: 'active',
-            created_at: new Date().toISOString(),
-            saas_plans: fakePlan
-        };
-        setTenants([newFakeTenant, ...tenants]);
-        setIsModalOpen(false);
-        alert("Empresa criada (Simulação Demo)!");
+        alert("Erro ao criar empresa: " + err.message);
     } finally {
         setCreating(false);
     }
@@ -187,7 +158,7 @@ const SaasAdmin: React.FC = () => {
            ) : (
              <div className="space-y-4">
                 {filtered.length === 0 && (
-                    <div className="text-center py-10 text-slate-400 font-bold uppercase text-xs tracking-widest">Nenhuma empresa encontrada. Crie a primeira!</div>
+                    <div className="text-center py-10 text-slate-400 font-bold uppercase text-xs tracking-widest">Nenhuma empresa encontrada.</div>
                 )}
                 {filtered.map(tenant => (
                   <div key={tenant.id} className="flex flex-col md:flex-row items-center justify-between p-6 bg-white border border-slate-100 rounded-3xl hover:border-blue-200 hover:shadow-md transition-all group">

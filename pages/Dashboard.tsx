@@ -32,24 +32,6 @@ import {
 import { checkSupabaseConnection, supabase, isSupabaseConfigured } from '../services/supabaseClient';
 import { PurchaseOrder, Event } from '../types';
 
-// DADOS MOCKADOS PARA MODO DEMO
-const DEMO_ORDERS: any[] = [
-    { id: '1', code: 'OC-2024-001', total: 12500, status: 'Aprovada', createdAt: new Date(Date.now() - 86400000 * 2).toISOString(), supplierId: 's1' },
-    { id: '2', code: 'OC-2024-002', total: 3450, status: 'Gerada', createdAt: new Date(Date.now() - 86400000).toISOString(), supplierId: 's2' },
-    { id: '3', code: 'OC-2024-003', total: 890, status: 'Recebida', createdAt: new Date().toISOString(), supplierId: 's3' },
-    { id: '4', code: 'OC-2024-004', total: 4500, status: 'Gerada', createdAt: new Date().toISOString(), supplierId: 's1' },
-];
-
-const DEMO_EVENTS: any[] = [
-    { id: 'e1', status: 'Aguardando' },
-    { id: 'e2', status: 'Em Cotação' },
-    { id: 'e3', status: 'Em Cotação' },
-    { id: 'e4', status: 'Aprovado' },
-    { id: 'e5', status: 'Concluído' },
-    { id: 'e6', status: 'Concluído' },
-    { id: 'e7', status: 'Aguardando' },
-];
-
 const KPICard = ({ title, value, change, trend, icon: Icon, color }: any) => (
   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
     <div className="flex justify-between items-start mb-4">
@@ -69,7 +51,7 @@ const KPICard = ({ title, value, change, trend, icon: Icon, color }: any) => (
 );
 
 const Dashboard: React.FC = () => {
-  const [dbStatus, setDbStatus] = useState<'checking' | 'connected' | 'disconnected' | 'demo'>('checking');
+  const [dbStatus, setDbStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   const [loading, setLoading] = useState(true);
   
   // Real Data State
@@ -81,6 +63,8 @@ const Dashboard: React.FC = () => {
     try {
         const { data, error } = await supabase.from(table).select('*');
         if (error) {
+            // Código 42P01 significa "Tabela não existe" no Postgres. 
+            // Tratamos como sucesso (array vazio) para não travar o sistema.
             if (error.code === '42P01') {
                 return [];
             }
@@ -88,6 +72,7 @@ const Dashboard: React.FC = () => {
         }
         return data || [];
     } catch (err) {
+        console.error(`Erro ao buscar ${table}:`, err);
         return [];
     }
   };
@@ -95,13 +80,8 @@ const Dashboard: React.FC = () => {
   const loadDashboardData = async () => {
     setLoading(true);
     
-    // MODO DEMO AUTOMÁTICO SE NÃO HOUVER CONFIG
     if (!isSupabaseConfigured) {
-        console.log('[Dashboard] Variáveis não configuradas. Carregando dados de demonstração.');
-        await new Promise(r => setTimeout(r, 600)); // Simula loading suave
-        setOrders(DEMO_ORDERS);
-        setEvents(DEMO_EVENTS);
-        setDbStatus('demo');
+        setDbStatus('disconnected');
         setLoading(false);
         return;
     }
@@ -110,20 +90,16 @@ const Dashboard: React.FC = () => {
         // 1. Verificação Rápida de Conexão
         const isConnected = await checkSupabaseConnection();
         if (!isConnected) {
-            // Se falhar a conexão, também cai no modo demo em vez de mostrar erro
-            console.warn('[Dashboard] Falha na conexão. Ativando fallback para Modo Demo.');
-            setOrders(DEMO_ORDERS);
-            setEvents(DEMO_EVENTS);
-            setDbStatus('demo'); // Fallback gracioso
+            setDbStatus('disconnected');
             setLoading(false);
             return;
         }
 
         setDbStatus('connected');
 
-        // 2. Busca de Dados com Timeout Seguro
+        // 2. Busca de Dados Reais
         const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Timeout na busca de dados')), 8000)
+            setTimeout(() => reject(new Error('Timeout na busca de dados')), 10000)
         );
 
         const fetchDataPromise = Promise.all([
@@ -136,21 +112,17 @@ const Dashboard: React.FC = () => {
             timeoutPromise
         ]) as [any[], any[]];
 
-        // Se o banco estiver vazio (tabelas criadas mas sem dados), usa demo para não ficar feio
-        if (ordersData.length === 0 && eventsData.length === 0) {
-             setOrders(DEMO_ORDERS);
-             setEvents(DEMO_EVENTS);
-             setDbStatus('demo'); // Considera demo pois não tem dados reais
-        } else {
-             setOrders(ordersData);
-             setEvents(eventsData);
-        }
+        setOrders(ordersData);
+        setEvents(eventsData);
 
     } catch (err: any) {
-        console.error("Erro no dashboard, ativando fallback:", err);
-        setOrders(DEMO_ORDERS);
-        setEvents(DEMO_EVENTS);
-        setDbStatus('demo');
+        console.error("Erro no dashboard:", err);
+        if (err.message?.includes('Timeout')) {
+            setDbStatus('disconnected');
+        } else {
+            // Erros de SQL não devem desconectar o dashboard, apenas mostrar dados vazios
+            setDbStatus('connected'); 
+        }
     } finally {
         setLoading(false);
     }
@@ -166,7 +138,7 @@ const Dashboard: React.FC = () => {
         .filter(o => o.status !== 'Cancelada')
         .reduce((acc, curr) => acc + curr.total, 0);
     
-    const savings = totalPurchases * 0.12; 
+    const savings = totalPurchases * 0.12; // Estimativa baseada em dados reais
     
     const openEvents = events.filter(e => e.status !== 'Concluído' && e.status !== 'Cancelado' as any).length;
     
@@ -222,7 +194,7 @@ const Dashboard: React.FC = () => {
       return (
           <div className="h-[70vh] flex flex-col items-center justify-center text-slate-400 animate-in fade-in duration-500">
               <Loader2 className="animate-spin mb-4 text-blue-600" size={48}/>
-              <p className="font-bold text-xs uppercase tracking-[0.2em] animate-pulse">Sincronizando Dashboard...</p>
+              <p className="font-bold text-xs uppercase tracking-[0.2em] animate-pulse">Sincronizando Dados Reais...</p>
           </div>
       );
   }
@@ -231,31 +203,25 @@ const Dashboard: React.FC = () => {
     <div className="space-y-8 animate-in fade-in duration-500">
       
       {/* STATUS BANNER */}
-      {dbStatus === 'demo' && (
-          <div className="flex items-center justify-end">
-              <span className="text-[10px] font-black uppercase tracking-widest text-amber-600 flex items-center gap-2 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-100">
-                  <Zap size={12} className="fill-current"/> Modo Demonstração (Dados Locais)
-              </span>
+      {dbStatus === 'disconnected' && (
+          <div className="p-4 rounded-2xl border flex items-center justify-between bg-red-50 border-red-200 text-red-800 animate-in slide-in-from-top-2">
+            <div className="flex items-center gap-3">
+               <WifiOff size={20} />
+               <span className="text-sm font-bold">
+                 {!isSupabaseConfigured ? 'Erro de Configuração: Variáveis de ambiente ausentes.' : 'Sistema Offline: Falha ao conectar com o banco de dados.'}
+               </span>
+            </div>
+            <button onClick={loadDashboardData} className="text-xs font-black uppercase tracking-widest bg-white/50 hover:bg-white px-3 py-2 rounded-lg transition-colors flex items-center gap-2">
+               <RefreshCw size={14}/> Tentar Novamente
+            </button>
           </div>
       )}
 
       {dbStatus === 'connected' && (
           <div className="flex items-center justify-end">
               <span className="text-[10px] font-black uppercase tracking-widest text-green-600 flex items-center gap-2 bg-green-50 px-3 py-1.5 rounded-lg border border-green-100">
-                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div> Sistema Online
+                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div> Produção Online
               </span>
-          </div>
-      )}
-
-      {dbStatus === 'disconnected' && (
-          <div className="p-4 rounded-2xl border flex items-center justify-between bg-red-50 border-red-200 text-red-800 animate-in slide-in-from-top-2">
-            <div className="flex items-center gap-3">
-               <WifiOff size={20} />
-               <span className="text-sm font-bold">Conexão Interrompida. Tentando reconectar...</span>
-            </div>
-            <button onClick={loadDashboardData} className="text-xs font-black uppercase tracking-widest bg-white/50 hover:bg-white px-3 py-2 rounded-lg transition-colors flex items-center gap-2">
-               <RefreshCw size={14}/> Reconectar
-            </button>
           </div>
       )}
 
