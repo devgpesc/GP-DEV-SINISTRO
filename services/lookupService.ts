@@ -1,4 +1,5 @@
 
+
 import { Vehicle } from '../types';
 
 /**
@@ -37,8 +38,8 @@ export const lookupService = {
         brand: data.brand,
         model: data.model,
         version: data.version,
-        yearFab: data.yearFab,
-        yearModel: data.yearModel,
+        year_fab: data.yearFab,
+        year_model: data.yearModel,
         color: data.color,
         fuel: data.fuel,
         type: data.type,

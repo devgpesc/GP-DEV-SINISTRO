@@ -87,7 +87,7 @@ const Events: React.FC = () => {
 
   const availableVehicles = useMemo(() => {
     if (!formData.associateId) return [];
-    return vehicles.filter(v => v.associateId === formData.associateId);
+    return vehicles.filter(v => v.associate_id === formData.associateId);
   }, [vehicles, formData.associateId]);
 
   const isFormLocked = !formData.associateId || !formData.vehicleId;

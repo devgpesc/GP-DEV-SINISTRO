@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, Search, Car, Loader2, User, LayoutGrid, List, 
-  Trash2, Edit, Save, AlertCircle, X, CloudLightning, Keyboard
+  Trash2, Edit, Save, AlertCircle, X, CloudLightning, Keyboard, Calendar, Palette
 } from 'lucide-react';
 import { lookupService } from '../services/lookupService';
 import { supabase } from '../services/supabaseClient';
@@ -31,11 +31,11 @@ const Vehicles: React.FC = () => {
   
   const [formData, setFormData] = useState<Partial<Vehicle>>({
     plate: '',
-    associateId: '',
+    associate_id: '',
     km: 0,
     status: 'Ativo',
     notes: '',
-    brand: '', model: '', version: '', yearFab: '', yearModel: '', 
+    brand: '', model: '', version: '', year_fab: '', year_model: '', 
     color: '', fuel: '', type: '', chassi: '', renavam: '', uf: '', city: ''
   });
 
@@ -70,7 +70,7 @@ const Vehicles: React.FC = () => {
       setInputMode('manual'); 
     } else {
       setEditId(null);
-      setFormData({ plate: '', associateId: '', km: 0, status: 'Ativo', notes: '', brand: '', model: '' });
+      setFormData({ plate: '', associate_id: '', km: 0, status: 'Ativo', notes: '', brand: '', model: '', color: '', year_fab: '', year_model: '' });
       setInputMode('auto');
     }
     setIsModalOpen(true);
@@ -84,7 +84,10 @@ const Vehicles: React.FC = () => {
     try {
       const data = await lookupService.fetchPlate(formData.plate);
       if (data) {
-        setFormData(prev => ({ ...prev, ...data }));
+        setFormData(prev => ({ 
+            ...prev, 
+            ...data
+        }));
         addToast('success', 'Placa Encontrada', 'Dados do veículo carregados.');
       } else {
         setLookupError('Placa não encontrada. Preencha manualmente.');
@@ -98,7 +101,7 @@ const Vehicles: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.plate || !formData.associateId) {
+    if (!formData.plate || !formData.associate_id) {
         addToast('warning', 'Campos Obrigatórios', 'Placa e Proprietário são necessários.');
         return;
     }
@@ -109,6 +112,7 @@ const Vehicles: React.FC = () => {
             ...formData, 
             plate: formData.plate.toUpperCase().trim(),
             km: Number(formData.km) || 0,
+            associate_id: formData.associate_id, // Garante que estamos enviando o campo correto
             created_at: editId ? undefined : new Date().toISOString() 
         };
         
@@ -184,10 +188,10 @@ const Vehicles: React.FC = () => {
                             <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${v.status === 'Ativo' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{v.status}</span>
                         </div>
                         <h4 className="font-black text-slate-800 uppercase text-sm truncate">{v.model || 'A DEFINIR'}</h4>
-                        <p className="text-xs text-slate-500 font-bold uppercase mb-4">{v.brand} • {v.yearModel}</p>
+                        <p className="text-xs text-slate-500 font-bold uppercase mb-4">{v.brand} • {v.year_model || v.year_fab || '----'}</p>
                         
                         <div className="pt-4 border-t border-slate-200 flex justify-between items-center text-xs">
-                            <span className="font-bold text-slate-600 flex items-center gap-1"><User size={12}/> {associates.find(a => a.id === v.associateId)?.name || 'N/A'}</span>
+                            <span className="font-bold text-slate-600 flex items-center gap-1"><User size={12}/> {associates.find(a => a.id === v.associate_id)?.name || 'N/A'}</span>
                             <span className="font-mono text-slate-400">{v.km} km</span>
                         </div>
                     </div>
@@ -221,6 +225,8 @@ const Vehicles: React.FC = () => {
                             <div className="flex-1"><p className="text-sm font-medium">{lookupError}</p></div>
                         </div>
                     )}
+                    
+                    {/* SECTION 1: Identificação Básica */}
                     <section>
                         <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">1. Identificação Básica</h4>
                         <div className="grid grid-cols-2 gap-6">
@@ -237,7 +243,7 @@ const Vehicles: React.FC = () => {
                             <div>
                                 <label className="block text-xs font-bold text-slate-600 mb-1">Proprietário *</label>
                                 <select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm outline-none"
-                                    value={formData.associateId} onChange={e => setFormData({...formData, associateId: e.target.value})}>
+                                    value={formData.associate_id} onChange={e => setFormData({...formData, associate_id: e.target.value})}>
                                     <option value="">Selecione...</option>
                                     {associates.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                                 </select>
@@ -258,7 +264,43 @@ const Vehicles: React.FC = () => {
                             </div>
                         </div>
                     </section>
-                    {/* ... Rest of the form remains the same ... */}
+
+                    {/* SECTION 2: Características do Veículo */}
+                    <section className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                           <Car size={14}/> 2. Características do Veículo
+                        </h4>
+                        <div className="grid grid-cols-2 gap-4">
+                           <div>
+                              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Marca</label>
+                              <input className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none uppercase" 
+                                    value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value.toUpperCase()})} placeholder="Ex: TOYOTA" />
+                           </div>
+                           <div>
+                              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Modelo</label>
+                              <input className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none uppercase" 
+                                    value={formData.model} onChange={e => setFormData({...formData, model: e.target.value.toUpperCase()})} placeholder="Ex: COROLLA XEI" />
+                           </div>
+                           <div>
+                              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 flex items-center gap-1"><Palette size={10}/> Cor</label>
+                              <input className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none uppercase" 
+                                    value={formData.color} onChange={e => setFormData({...formData, color: e.target.value.toUpperCase()})} placeholder="Ex: PRATA" />
+                           </div>
+                           <div className="flex gap-2">
+                               <div className="flex-1">
+                                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 flex items-center gap-1"><Calendar size={10}/> Ano Fab.</label>
+                                  <input type="number" className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none text-center" 
+                                        value={formData.year_fab} onChange={e => setFormData({...formData, year_fab: e.target.value})} placeholder="2023" />
+                               </div>
+                               <div className="flex-1">
+                                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 flex items-center gap-1"><Calendar size={10}/> Ano Mod.</label>
+                                  <input type="number" className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none text-center" 
+                                        value={formData.year_model} onChange={e => setFormData({...formData, year_model: e.target.value})} placeholder="2024" />
+                               </div>
+                           </div>
+                        </div>
+                    </section>
+                    
                     <div className="flex justify-end pt-4">
                         <button type="submit" disabled={isSubmitting} className="px-10 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl flex items-center gap-2 hover:bg-blue-700 transition-all">
                             {isSubmitting ? <Loader2 className="animate-spin"/> : <><Save size={18}/> Salvar Veículo</>}

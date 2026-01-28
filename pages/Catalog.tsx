@@ -34,9 +34,24 @@ const Catalog: React.FC = () => {
 
   const loadItems = async () => {
     setLoading(true);
-    const { data } = await supabase.from('catalog_items').select('*');
-    setItems(data || []);
-    setLoading(false);
+    try {
+        const { data, error } = await supabase.from('catalog_items').select('*');
+        if (error) {
+            // Tabela pode não existir ainda
+            if (error.code === '42P01') {
+                console.warn('Tabela catalog_items não existe. Por favor rode a migration.');
+                setItems([]);
+            } else {
+                throw error;
+            }
+        } else {
+            setItems(data || []);
+        }
+    } catch (e) {
+        console.error('Erro ao carregar catálogo', e);
+    } finally {
+        setLoading(false);
+    }
   };
 
   const handleOpenModal = (item?: CatalogItem) => {
@@ -51,7 +66,7 @@ const Catalog: React.FC = () => {
         name: '',
         category: '',
         type: activeTab,
-        unit: activeTab === 'Peça' ? 'UN' : 'H',
+        unit: activeTab === 'Peça' ? 'UN' : 'HL',
         description: ''
       });
     }
@@ -91,7 +106,7 @@ const Catalog: React.FC = () => {
         setIsModalOpen(false);
     } catch (error: any) {
         console.error('Erro ao salvar item', error);
-        addToast('error', 'Erro ao Salvar', error.message || 'Falha ao salvar item.');
+        addToast('error', 'Erro ao Salvar', error.message || 'Falha ao salvar item. Verifique se a migration foi aplicada.');
     } finally {
         setIsSaving(false);
     }
@@ -261,8 +276,8 @@ const Catalog: React.FC = () => {
                    <div>
                       <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Tipo</label>
                       <div className="flex bg-slate-50 p-1 rounded-2xl border border-slate-100">
-                         <button type="button" onClick={() => setFormData({...formData, type: 'Peça'})} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all ${formData.type === 'Peça' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>Peça</button>
-                         <button type="button" onClick={() => setFormData({...formData, type: 'Serviço'})} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all ${formData.type === 'Serviço' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>Serviço</button>
+                         <button type="button" onClick={() => setFormData({...formData, type: 'Peça', unit: 'UN'})} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all ${formData.type === 'Peça' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>Peça</button>
+                         <button type="button" onClick={() => setFormData({...formData, type: 'Serviço', unit: 'HL'})} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all ${formData.type === 'Serviço' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>Serviço</button>
                       </div>
                    </div>
 
@@ -274,8 +289,9 @@ const Catalog: React.FC = () => {
                         onChange={e => setFormData({...formData, unit: e.target.value})}
                       >
                          <option value="UN">Unidade (UN)</option>
-                         <option value="H">Hora (H)</option>
-                         <option value="M">Metro Linear (M)</option>
+                         <option value="HL">Hora Linear (HL)</option>
+                         <option value="KG">Quilograma (KG)</option>
+                         <option value="LT">Litro (LT)</option>
                       </select>
                    </div>
                 </div>

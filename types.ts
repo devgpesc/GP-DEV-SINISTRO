@@ -78,21 +78,21 @@ export interface Delivery {
 export interface Vehicle {
   // Campos de Sistema
   id: string;
-  createdAt: string;
+  created_at?: string;
   
   // Campos Preenchidos pelo Usuário
   plate: string;          // Placa (Chave de busca)
-  associateId: string;    // Proprietário
+  associate_id: string;    // Proprietário (Atualizado para snake_case)
   km: number;             // KM Atual
   status: 'Ativo' | 'Inativo' | 'Manutenção';
   notes?: string;
 
-  // Campos Automáticos (Via API / Read-only recommended)
+  // Campos Automáticos ou Manuais
   brand: string;          // Marca
   model: string;          // Modelo
   version?: string;       // Versão
-  yearFab: string;        // Ano Fabricação
-  yearModel: string;      // Ano Modelo
+  year_fab: string;        // Ano Fabricação (snake_case)
+  year_model: string;      // Ano Modelo (snake_case)
   color: string;          // Cor
   fuel: string;           // Combustível
   type: string;           // Tipo (Automóvel, Moto, etc)
