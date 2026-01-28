@@ -61,14 +61,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                             window.location.hash && 
                             window.location.hash.includes('access_token');
 
-    // Timeout de segurança estendido para casos de OAuth lento
+    // Timeout de segurança reduzido para agilizar o carregamento
     const safetyTimeout = setTimeout(() => {
         if (loading && mounted) {
             console.warn('[Auth] Timeout de segurança atingido. Liberando interface.');
             setLoading(false);
             if (!user) setLoadingError(true);
         }
-    }, isOAuthRedirect ? 15000 : 8000); // Mais tempo se for OAuth
+    }, isOAuthRedirect ? 6000 : 3000); // 3s para normal, 6s para OAuth (muito mais rápido)
 
     const initAuth = async () => {
         // 1. Configurar Listener PRIMEIRO para capturar eventos de hash instantaneamente

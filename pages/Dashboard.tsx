@@ -14,8 +14,7 @@ import {
   Loader2,
   Package,
   WifiOff,
-  RefreshCw,
-  Zap
+  RefreshCw
 } from 'lucide-react';
 import { 
   XAxis, 
@@ -29,7 +28,7 @@ import {
   Pie,
   Cell
 } from 'recharts';
-import { checkSupabaseConnection, supabase, isSupabaseConfigured } from '../services/supabaseClient';
+import { supabase } from '../services/supabaseClient';
 import { PurchaseOrder, Event } from '../types';
 
 const KPICard = ({ title, value, change, trend, icon: Icon, color }: any) => (
@@ -51,7 +50,6 @@ const KPICard = ({ title, value, change, trend, icon: Icon, color }: any) => (
 );
 
 const Dashboard: React.FC = () => {
-  const [dbStatus, setDbStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   const [loading, setLoading] = useState(true);
   
   // Real Data State
@@ -63,66 +61,34 @@ const Dashboard: React.FC = () => {
     try {
         const { data, error } = await supabase.from(table).select('*');
         if (error) {
-            // Código 42P01 significa "Tabela não existe" no Postgres. 
-            // Tratamos como sucesso (array vazio) para não travar o sistema.
+            // Código 42P01 significa "Tabela não existe". Tratamos como sucesso (array vazio).
             if (error.code === '42P01') {
                 return [];
             }
-            throw error;
+            console.warn(`Info: Tabela ${table} inacessível ou vazia.`);
+            return [];
         }
         return data || [];
     } catch (err) {
-        console.error(`Erro ao buscar ${table}:`, err);
         return [];
     }
   };
 
   const loadDashboardData = async () => {
     setLoading(true);
-    
-    if (!isSupabaseConfigured) {
-        setDbStatus('disconnected');
-        setLoading(false);
-        return;
-    }
 
     try {
-        // 1. Verificação Rápida de Conexão
-        const isConnected = await checkSupabaseConnection();
-        if (!isConnected) {
-            setDbStatus('disconnected');
-            setLoading(false);
-            return;
-        }
-
-        setDbStatus('connected');
-
-        // 2. Busca de Dados Reais
-        const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Timeout na busca de dados')), 10000)
-        );
-
-        const fetchDataPromise = Promise.all([
+        // Busca paralela otimizada sem verificações de conexão redundantes
+        const [ordersData, eventsData] = await Promise.all([
             safeFetch('purchase_orders'),
             safeFetch('events')
         ]);
-
-        const [ordersData, eventsData] = await Promise.race([
-            fetchDataPromise,
-            timeoutPromise
-        ]) as [any[], any[]];
 
         setOrders(ordersData);
         setEvents(eventsData);
 
     } catch (err: any) {
-        console.error("Erro no dashboard:", err);
-        if (err.message?.includes('Timeout')) {
-            setDbStatus('disconnected');
-        } else {
-            // Erros de SQL não devem desconectar o dashboard, apenas mostrar dados vazios
-            setDbStatus('connected'); 
-        }
+        console.error("Erro ao carregar dashboard:", err);
     } finally {
         setLoading(false);
     }
@@ -192,40 +158,15 @@ const Dashboard: React.FC = () => {
 
   if (loading) {
       return (
-          <div className="h-[70vh] flex flex-col items-center justify-center text-slate-400 animate-in fade-in duration-500">
+          <div className="h-[70vh] flex flex-col items-center justify-center text-slate-400 animate-in fade-in duration-300">
               <Loader2 className="animate-spin mb-4 text-blue-600" size={48}/>
-              <p className="font-bold text-xs uppercase tracking-[0.2em] animate-pulse">Sincronizando Dados Reais...</p>
+              <p className="font-bold text-xs uppercase tracking-[0.2em] animate-pulse">Atualizando Indicadores...</p>
           </div>
       );
   }
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
-      
-      {/* STATUS BANNER */}
-      {dbStatus === 'disconnected' && (
-          <div className="p-4 rounded-2xl border flex items-center justify-between bg-red-50 border-red-200 text-red-800 animate-in slide-in-from-top-2">
-            <div className="flex items-center gap-3">
-               <WifiOff size={20} />
-               <span className="text-sm font-bold">
-                 {!isSupabaseConfigured ? 'Erro de Configuração: Variáveis de ambiente ausentes.' : 'Sistema Offline: Falha ao conectar com o banco de dados.'}
-               </span>
-            </div>
-            <button onClick={loadDashboardData} className="text-xs font-black uppercase tracking-widest bg-white/50 hover:bg-white px-3 py-2 rounded-lg transition-colors flex items-center gap-2">
-               <RefreshCw size={14}/> Tentar Novamente
-            </button>
-          </div>
-      )}
-
-      {dbStatus === 'connected' && (
-          <div className="flex items-center justify-end">
-              <span className="text-[10px] font-black uppercase tracking-widest text-green-600 flex items-center gap-2 bg-green-50 px-3 py-1.5 rounded-lg border border-green-100">
-                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div> Produção Online
-              </span>
-          </div>
-      )}
-
-      <>
             {/* KPI Section */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <KPICard title="Total Compras" value={`R$ ${kpis.totalPurchases.toLocaleString('pt-BR', {maximumFractionDigits: 0})}`} trend="up" icon={ShoppingBag} color="blue" />
@@ -369,7 +310,6 @@ const Dashboard: React.FC = () => {
                 </div>
                 </div>
             </div>
-      </>
     </div>
   );
 };
