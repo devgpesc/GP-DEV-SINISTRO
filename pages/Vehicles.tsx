@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, Search, Car, Loader2, User, LayoutGrid, List, 
-  Trash2, Edit, Save, AlertCircle, X, CloudLightning, Keyboard, Calendar, Palette, FileText
+  Trash2, Edit, Save, AlertCircle, X, CloudLightning, Keyboard, Calendar, Palette
 } from 'lucide-react';
 import { lookupService } from '../services/lookupService';
 import { supabase } from '../services/supabaseClient';
@@ -125,17 +125,26 @@ const Vehicles: React.FC = () => {
     try {
         const cleanAssociateId = formData.associate_id === '' ? null : formData.associate_id;
 
-        // 1. Payload Padrão (snake_case)
+        // 1. Payload Completo com Defaults para evitar erros de NOT NULL
         const payload: any = { 
-            plate: formData.plate.toUpperCase().trim(),
+            plate: formData.plate ? formData.plate.toUpperCase().trim() : '',
             associate_id: cleanAssociateId,
             km: Number(formData.km) || 0,
             status: formData.status || 'Ativo',
-            brand: formData.brand?.toUpperCase() || '',
-            model: formData.model?.toUpperCase() || '',
-            color: formData.color?.toUpperCase() || '',
-            renavam: formData.renavam?.trim() || 'ISENTO', 
-            chassi: formData.chassi?.trim().toUpperCase() || 'ISENTO',
+            brand: formData.brand ? formData.brand.toUpperCase() : '',
+            model: formData.model ? formData.model.toUpperCase() : '',
+            color: formData.color ? formData.color.toUpperCase() : '',
+            
+            // Campos Opcionais com Default Seguro
+            renavam: formData.renavam ? formData.renavam.trim() : 'ISENTO', 
+            chassi: formData.chassi ? formData.chassi.trim().toUpperCase() : 'ISENTO',
+            type: formData.type || 'Automóvel', // Default seguro
+            fuel: formData.fuel || 'Flex',      // Default seguro
+            version: formData.version || '',
+            uf: formData.uf || '',
+            city: formData.city || '',
+            notes: formData.notes || '',
+            
             year_fab: formData.year_fab || '',
             year_model: formData.year_model || '',
             created_at: editId ? undefined : new Date().toISOString() 
@@ -176,7 +185,7 @@ const Vehicles: React.FC = () => {
         if (err.message?.includes('violates unique constraint')) {
             addToast('error', 'Duplicidade', 'Esta placa já está cadastrada.');
         } else if (err.message?.includes('null value')) {
-            addToast('error', 'Erro de Banco de Dados', 'Verifique se o script SQL de correção foi executado no Supabase.');
+            addToast('error', 'Erro de Banco de Dados', 'Execute o script SQL "20240305_absolute_fix.sql" no Supabase.');
         } else {
             addToast('error', 'Erro ao Salvar', err.message);
         }
@@ -186,8 +195,8 @@ const Vehicles: React.FC = () => {
   };
 
   const filteredVehicles = vehicles.filter(v => 
-    v.plate?.includes(searchTerm.toUpperCase()) || 
-    v.model?.toLowerCase().includes(searchTerm.toLowerCase())
+    (v.plate && v.plate.includes(searchTerm.toUpperCase())) || 
+    (v.model && v.model.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
@@ -292,7 +301,7 @@ const Vehicles: React.FC = () => {
                                 </select>
                             </div>
 
-                            {/* RENAVAM E CHASSI OCULTOS (Visualmente) e enviados como 'ISENTO' */}
+                            {/* RENAVAM E CHASSI OCULTOS e com default */}
 
                             <div>
                                 <label className="block text-xs font-bold text-slate-600 mb-1">KM Atual</label>

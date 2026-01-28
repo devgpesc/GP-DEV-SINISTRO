@@ -159,7 +159,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
         setLoading(true);
         await supabase.auth.signOut();
-        localStorage.clear(); // Garante limpeza total no logout
+        
+        // --- LIMPEZA COMPLETA DE DADOS ---
+        
+        // 1. Limpar LocalStorage e SessionStorage
+        localStorage.clear();
+        sessionStorage.clear();
+
+        // 2. Limpar Cookies (Itera e expira todos)
+        const cookies = document.cookie.split(";");
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i];
+            const eqPos = cookie.indexOf("=");
+            const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+            // Define data de expiração para o passado
+            document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+        }
+
     } catch (error) {
         console.error("Erro ao sair:", error);
         setLoading(false);
