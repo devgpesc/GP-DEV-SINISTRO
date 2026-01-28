@@ -29,7 +29,7 @@ const Vehicles: React.FC = () => {
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [inputMode, setInputMode] = useState<'auto' | 'manual'>('auto');
   
-  // Inicialização completa
+  // Inicialização completa com snake_case preferencial
   const initialFormState = {
     plate: '', associate_id: '', km: 0, status: 'Ativo' as any, notes: '', 
     brand: '', model: '', version: '', year_fab: '', year_model: '', 
@@ -52,11 +52,10 @@ const Vehicles: React.FC = () => {
       const { data: as, error: aError } = await supabase.from('associates').select('id, name, document');
       if (aError) console.warn("Erro ao buscar associados:", aError);
 
-      // Normalização de dados (Resiliência para snake_case vs camelCase)
-      // Isso garante que a listagem funcione independente de como está no banco
+      // Normalização de dados (Resiliência para snake_case vs camelCase na leitura)
       const mappedVehicles = vs?.map((v: any) => ({
         ...v,
-        associate_id: v.associate_id || v.associateId, // Fallback de leitura
+        associate_id: v.associate_id || v.associateId, // Prioriza snake_case
         year_fab: v.year_fab || v.yearFab,
         year_model: v.year_model || v.yearModel
       })) || [];
@@ -77,7 +76,7 @@ const Vehicles: React.FC = () => {
       setInputMode('manual'); 
     } else {
       setEditId(null);
-      setFormData(initialFormState); // Reset completo
+      setFormData(initialFormState);
       setInputMode('auto');
     }
     setIsModalOpen(true);
@@ -115,29 +114,32 @@ const Vehicles: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-        // CORREÇÃO CRÍTICA: Enviar APENAS campos snake_case.
-        // O erro "Could not find column associateId" ocorre porque o frontend estava enviando
-        // a chave antiga (camelCase) para um banco que já foi migrado.
-        const payload = { 
+        // Montagem Limpa do Payload (Evita campos camelCase antigos)
+        const payload: any = { 
             plate: formData.plate.toUpperCase().trim(),
             associate_id: formData.associate_id, // Somente snake_case
             km: Number(formData.km) || 0,
             status: formData.status || 'Ativo',
-            brand: formData.brand?.toUpperCase(),
-            model: formData.model?.toUpperCase(),
-            color: formData.color?.toUpperCase(),
+            brand: formData.brand?.toUpperCase() || '',
+            model: formData.model?.toUpperCase() || '',
+            color: formData.color?.toUpperCase() || '',
             
             // Campos Opcionais (Preenche com ISENTO se vazio para evitar erro de constraint)
             renavam: formData.renavam?.trim() || 'ISENTO', 
             chassi: formData.chassi?.trim().toUpperCase() || 'ISENTO',
             
             // Somente snake_case para anos
-            year_fab: formData.year_fab,
-            year_model: formData.year_model,
+            year_fab: formData.year_fab || '',
+            year_model: formData.year_model || '',
             
             created_at: editId ? undefined : new Date().toISOString() 
         };
         
+        // Remove explicitamente chaves antigas se por ventura entrarem
+        delete payload.associateId;
+        delete payload.yearFab;
+        delete payload.yearModel;
+
         // Remove chaves undefined para não enviar lixo
         Object.keys(payload).forEach(key => (payload as any)[key] === undefined && delete (payload as any)[key]);
 
@@ -162,7 +164,7 @@ const Vehicles: React.FC = () => {
         } else if (err.message?.includes('null value')) {
             addToast('error', 'Erro de Banco de Dados', 'Um campo obrigatório do banco está vazio.');
         } else if (err.message?.includes('associateId')) {
-            addToast('error', 'Erro de Schema', 'Recarregue a página (F5) para atualizar o cache do navegador.');
+            addToast('error', 'Cache Antigo', 'Recarregue a página para atualizar o esquema do banco.');
         } else {
             addToast('error', 'Erro ao Salvar', err.message);
         }
@@ -278,8 +280,7 @@ const Vehicles: React.FC = () => {
                                 </select>
                             </div>
 
-                            {/* CAMPOS RENAVAM E CHASSI REMOVIDOS DA TELA CONFORME SOLICITADO */}
-                            {/* O sistema enviará "ISENTO" automaticamente no submit */}
+                            {/* RENAVAM E CHASSI REMOVIDOS VISUALMENTE. Enviados como 'ISENTO' no submit. */}
 
                             <div>
                                 <label className="block text-xs font-bold text-slate-600 mb-1">KM Atual</label>
