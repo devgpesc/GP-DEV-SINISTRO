@@ -23,7 +23,7 @@ const Suppliers: React.FC = () => {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [dbError, setDbError] = useState(false);
+  const [dbError, setDbError] = useState<{message: string} | null>(null);
   
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [isLookingCep, setIsLookingCep] = useState(false);
@@ -40,18 +40,26 @@ const Suppliers: React.FC = () => {
 
   async function loadSuppliers() {
     setLoading(true);
-    setDbError(false);
+    setDbError(null);
     try {
-        const { data, error } = await supabase.from('suppliers').select('*').order('created_at', { ascending: false });
+        // Tenta carregar ordenando por data. Se falhar (coluna faltando), tenta fallback.
+        let query = supabase.from('suppliers').select('*').order('created_at', { ascending: false });
+        let { data, error } = await query;
         
         if (error) {
-            console.error("Supabase Error:", error);
-            if (error.message.includes('does not exist') || error.code === '42P01' || error.code === '42703') {
-                setDbError(true);
-                addToast('error', 'Banco de Dados Desatualizado', 'Rode o script SQL de correção no Supabase.');
-            } else {
-                addToast('error', 'Erro', 'Falha ao carregar fornecedores.');
+            console.warn("Erro ao carregar (tentativa 1):", error.message);
+            // Fallback: Tenta carregar sem ordenar por created_at se ela não existir
+            if (error.message?.includes('does not exist') || error.code === '42703') {
+                 const retry = await supabase.from('suppliers').select('*');
+                 data = retry.data;
+                 error = retry.error as any;
             }
+        }
+        
+        if (error) {
+            console.error("Supabase Error Final:", error);
+            setDbError({ message: error.message });
+            addToast('error', 'Erro no Banco de Dados', error.message);
         } else {
             const mappedData = data?.map((s: any) => ({
                 ...s,
@@ -59,8 +67,9 @@ const Suppliers: React.FC = () => {
             }));
             setSuppliers(mappedData || []);
         }
-    } catch (e) {
+    } catch (e: any) {
         console.error("Erro inesperado:", e);
+        setDbError({ message: e.message });
     } finally {
         setLoading(false);
     }
@@ -166,32 +175,30 @@ const Suppliers: React.FC = () => {
         status: formData.status,
         rating: formData.rating,
         contact_name: formData.contactName, // Importante: snake_case
-        // created_at é automático no DB, enviamos apenas se for insert manual necessário, 
-        // mas o DB default deve cuidar disso. Para update, updated_at seria ideal.
     };
 
     try {
+        let error;
         if (supplierToEdit) {
-            const { error } = await supabase.from('suppliers').update(payload).eq('id', supplierToEdit.id);
-            if (error) throw error;
+            const res = await supabase.from('suppliers').update(payload).eq('id', supplierToEdit.id);
+            error = res.error;
         } else {
-            const { error } = await supabase.from('suppliers').insert([payload]);
-            if (error) throw error;
+            const res = await supabase.from('suppliers').insert([payload]);
+            error = res.error;
         }
+
+        if (error) throw error;
 
         await loadSuppliers();
         setIsModalOpen(false);
         setSupplierToEdit(null);
         setFormData({name: '', cnpj: '', segment: 'Peças', whatsapp: '', email: '', cep: '', address: '', city: '', status: 'Ativo', rating: 5, contactName: ''});
-        addToast('success', 'Salvo', 'Fornecedor atualizado com sucesso.');
+        addToast('success', 'Salvo', 'Fornecedor salvo com sucesso.');
     } catch (err: any) {
         console.error("Erro ao salvar:", err);
-        // Tratamento amigável
-        if (err.message?.includes('column') || err.message?.includes('schema')) {
-             addToast('error', 'Erro de Estrutura', 'A tabela no banco não tem as colunas corretas. Rode o script SQL.');
-        } else {
-             addToast('error', 'Erro ao Salvar', err.message);
-        }
+        // Mensagem detalhada para ajudar a identificar a coluna faltante
+        addToast('error', 'Erro ao Salvar', `Detalhe: ${err.message || 'Erro desconhecido'}`);
+        setDbError({ message: `Falha ao salvar: ${err.message}. Verifique o Script SQL.` });
     } finally {
         setIsSaving(false);
     }
@@ -204,11 +211,12 @@ const Suppliers: React.FC = () => {
   return (
     <div className="space-y-6">
       {dbError && (
-          <div className="p-4 bg-red-100 text-red-700 rounded-2xl flex items-center gap-3 border border-red-200">
-              <AlertTriangle size={24}/>
+          <div className="p-4 bg-red-100 text-red-700 rounded-2xl flex items-start gap-3 border border-red-200 animate-in slide-in-from-top-2">
+              <AlertTriangle size={24} className="shrink-0 mt-0.5"/>
               <div>
-                  <p className="font-bold">Atenção: Banco de Dados Desatualizado</p>
-                  <p className="text-xs">A tabela 'suppliers' precisa de ajuste nas colunas. Execute o Script SQL fornecido no Supabase.</p>
+                  <p className="font-bold">Atenção: Erro no Banco de Dados</p>
+                  <p className="text-xs font-mono mt-1 bg-red-200/50 p-2 rounded">{dbError.message}</p>
+                  <p className="text-xs mt-2">Execute o Script SQL de correção no Supabase para resolver.</p>
               </div>
           </div>
       )}

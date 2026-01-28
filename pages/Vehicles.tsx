@@ -111,9 +111,10 @@ const Vehicles: React.FC = () => {
             plate: formData.plate.toUpperCase().trim(),
             km: Number(formData.km) || 0,
             associate_id: formData.associate_id,
-            // Envia NULL se estiver vazio, respeitando a configuração do banco
-            renavam: formData.renavam?.trim() || null, 
-            chassi: formData.chassi?.trim().toUpperCase() || null,
+            // CORREÇÃO CRÍTICA: Envia string vazia '' em vez de null.
+            // Isso evita erro de Constraint NOT NULL se o banco ainda estiver exigindo valor.
+            renavam: formData.renavam?.trim() || '', 
+            chassi: formData.chassi?.trim().toUpperCase() || '',
             created_at: editId ? undefined : new Date().toISOString() 
         };
         
@@ -136,8 +137,7 @@ const Vehicles: React.FC = () => {
         if (err.message?.includes('violates unique constraint')) {
             addToast('error', 'Duplicidade', 'Esta placa já está cadastrada.');
         } else if (err.message?.includes('null value')) {
-            // Mensagem genérica caso o usuário tenha esquecido de rodar o SQL para o Chassi também
-            addToast('error', 'Erro de Banco de Dados', 'O sistema tentou salvar um campo opcional que ainda está marcado como obrigatório no banco. Contate o suporte.');
+            addToast('error', 'Erro de Banco de Dados', 'Campo obrigatório não preenchido. Verifique o Chassi/Renavam.');
         } else {
             addToast('error', 'Erro ao Salvar', err.message);
         }
