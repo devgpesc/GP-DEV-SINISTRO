@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../services/supabaseClient';
+import { Car } from 'lucide-react';
 
 interface AuthContextType {
   user: User | null;
@@ -167,11 +168,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <AuthContext.Provider value={value}>
       {!loading && children} 
       {loading && (
-        <div className="min-h-screen flex items-center justify-center bg-slate-50">
-          <div className="flex flex-col items-center gap-4 animate-in fade-in duration-500">
-             <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-             <p className="text-slate-500 font-bold text-sm tracking-widest uppercase">Conectando ao Supabase...</p>
+        <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
+          <div className="relative flex items-center justify-center mb-6 animate-in zoom-in duration-500">
+             {/* Outer spinning ring */}
+             <div className="w-16 h-16 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
+             {/* Inner Static/Pulsing Icon */}
+             <div className="absolute inset-0 flex items-center justify-center">
+                <Car className="text-blue-600" size={24} />
+             </div>
           </div>
+          <p className="text-slate-400 font-black text-[10px] uppercase tracking-[0.3em] animate-pulse">Conectando...</p>
         </div>
       )}
     </AuthContext.Provider>
