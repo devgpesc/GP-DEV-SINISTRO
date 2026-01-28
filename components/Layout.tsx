@@ -5,7 +5,7 @@ import {
   LayoutDashboard, FileText, ShoppingCart, Users, Truck, 
   BarChart3, Settings, Package, Car, Bell, Search, UserCircle, X, ShoppingBag, Clock, Trash2, CheckCheck,
   Globe, ShieldCheck, Wifi, WifiOff, AlertTriangle, CheckCircle2, UserCheck, Mail, Phone, MapPin, Key,
-  Camera, Save, Loader2, Edit3, AlertCircle, LogOut, ChevronDown
+  Camera, Save, Loader2, Edit3, AlertCircle, LogOut, ChevronDown, Zap
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { isSupabaseConfigured, supabase } from '../services/supabaseClient';
@@ -201,9 +201,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         
         <div className="mt-auto p-4 border-t border-slate-800">
           <div className={`mb-4 px-3 py-2 rounded-lg border flex items-center gap-2 ${isSupabaseConfigured ? 'bg-green-500/10 border-green-500/20 text-green-400' : 'bg-amber-500/10 border-amber-500/20 text-amber-400'}`}>
-             {isSupabaseConfigured ? <Wifi size={14} /> : <WifiOff size={14} />}
+             {isSupabaseConfigured ? <Wifi size={14} /> : <Zap size={14} />}
              <div>
-                <p className="text-[10px] font-black uppercase tracking-widest">{isSupabaseConfigured ? 'Produção Online' : 'Modo Offline'}</p>
+                <p className="text-[10px] font-black uppercase tracking-widest">{isSupabaseConfigured ? 'Produção Online' : 'Modo Demo'}</p>
                 <p className="text-[9px] opacity-70">{isSupabaseConfigured ? 'Conectado ao DB' : 'Dados Locais'}</p>
              </div>
           </div>

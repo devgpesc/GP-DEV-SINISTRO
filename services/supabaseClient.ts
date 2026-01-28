@@ -1,27 +1,43 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const envUrl = (import.meta as any).env?.VITE_SUPABASE_URL;
-const envKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY;
+// Helper seguro para ler variáveis de ambiente em diferentes ambientes
+const getEnv = (key: string) => {
+  try {
+    return (import.meta as any).env?.[key];
+  } catch {
+    return undefined;
+  }
+};
 
+const envUrl = getEnv('VITE_SUPABASE_URL');
+const envKey = getEnv('VITE_SUPABASE_ANON_KEY');
+
+// Log amigável para debug (não bloqueia execução nem assusta o usuário no console)
 if (!envUrl || !envKey) {
-  console.error('[CRITICAL] Variáveis de ambiente VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY são obrigatórias.');
+  console.warn('[AutoClaims] Variáveis de ambiente Supabase não detectadas. O sistema operará em MODO DEMONSTRAÇÃO com dados locais.');
 }
 
-// Exporta status da configuração real para a UI saber se deve bloquear ou mostrar erro
+// Exporta status da configuração real para a UI saber se deve bloquear funcionalidades ou usar mocks
 export const isSupabaseConfigured = !!(envUrl && envKey);
 
-// Usa valores placeholder se as variáveis não existirem para evitar crash do app (Uncaught Error: supabaseUrl is required)
-// Isso permite que a UI carregue e mostre a mensagem de erro apropriada em vez de uma tela branca.
-const supabaseUrl = envUrl || 'https://placeholder.supabase.co';
-const supabaseAnonKey = envKey || 'placeholder-key';
+// Define valores de fallback seguros para evitar que o createClient lance erro "supabaseUrl is required"
+// Se envUrl for undefined ou string vazia, usa o placeholder.
+const supabaseUrl = (envUrl && typeof envUrl === 'string' && envUrl.trim().length > 0) 
+  ? envUrl 
+  : 'https://demo.supabase.co'; // URL fictícia válida sintaticamente
 
+const supabaseAnonKey = (envKey && typeof envKey === 'string' && envKey.trim().length > 0) 
+  ? envKey 
+  : 'demo-key';
+
+// Inicializa o cliente com valores garantidos (nunca vazio)
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
-    storage: window.localStorage, // Usa localStorage APENAS para o token JWT do Supabase Auth
+    storage: window.localStorage,
   },
   global: {
     headers: { 'x-application-name': 'autoclaims-pro' },
@@ -29,39 +45,34 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 });
 
 export const checkSupabaseConnection = async () => {
-  // Se não estiver configurado (sem variáveis), retorna false imediatamente
+  // Se não estiver configurado (usando placeholder), retorna false imediatamente para ativar o fallback visual
   if (!isSupabaseConfigured) return false;
   
   try {
-    // Timeout de 5s para não prender a UI
     const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Timeout')), 5000)
     );
 
-    // Tenta uma query leve em uma tabela que certamente existe (events)
-    // Usamos 'head: true' para não baixar dados, apenas verificar existência/acesso
+    // Tenta query leve para verificar conexão
     const queryPromise = supabase.from('events').select('id', { count: 'exact', head: true });
 
     const { error } = await Promise.race([queryPromise, timeoutPromise]) as any;
 
     if (error) {
-        // Se tem 'code', é um erro do Postgres/Supabase (Ex: 42P01 tabela não existe, 401 permissão)
-        // Isso significa que CONECTAMOS ao servidor com sucesso.
-        if (error.code) {
-            console.warn('[Connection Check] Conectado com erro SQL:', error.code, error.message);
+        // Se conecta mas dá erro de tabela não encontrada (42P01) ou permissão (401), o banco está acessível
+        if (error.code || error.status === 401 || error.status === 403) {
             return true;
         }
 
         const msg = error.message?.toLowerCase() || '';
-        // Se for erro de rede (fetch failed, network error), aí sim é Offline
+        // Erros de rede indicam falha real de conexão
         if (msg.includes('fetch') || msg.includes('network') || msg.includes('connection') || msg.includes('failed')) {
-            console.error('[Connection Check] Falha de Rede:', error);
             return false;
         }
     }
     return true;
   } catch (e: any) {
-    console.error('[Connection Check] Exceção:', e);
+    console.warn('[Connection Check] Falha de conexão:', e);
     return false;
   }
 };
