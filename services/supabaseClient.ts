@@ -44,31 +44,38 @@ export const mockStorage = {
 export const checkSupabaseConnection = async () => {
   if (!isSupabaseConfigured) return false;
   try {
-    // Tenta um select simples para verificar conectividade na tabela de configurações
-    // Usamos timeout no fetch para não travar a UI se a rede estiver pendurada
+    // Timeout de 5s para não prender a UI
     const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Timeout')), 5000)
     );
 
-    const queryPromise = supabase.from('saas_settings').select('id').limit(1);
+    // Tenta uma query leve em uma tabela que certamente existe (events ou profiles)
+    // Usamos 'head: true' para não baixar dados, apenas verificar existência/acesso
+    const queryPromise = supabase.from('events').select('id', { count: 'exact', head: true });
 
     const { error } = await Promise.race([queryPromise, timeoutPromise]) as any;
 
-    // Lógica de Conexão:
-    // Se não houver erro, está conectado.
-    // Se o erro for de permissão (401), tabela não encontrada (42P01) ou linhas (PGRST116),
-    // SIGNIFICA QUE CONECTOU no servidor, apenas a query falhou. Retorna TRUE.
-    // Só retorna FALSE se for erro de rede (fetch failed).
     if (error) {
+        // Se tem 'code', é um erro do Postgres/Supabase (Ex: 42P01 tabela não existe, 401 permissão)
+        // Isso significa que CONECTAMOS ao servidor com sucesso.
+        if (error.code) {
+            console.warn('[Connection Check] Conectado com erro SQL:', error.code, error.message);
+            return true;
+        }
+
         const msg = error.message?.toLowerCase() || '';
-        if (msg.includes('fetch') || msg.includes('network') || msg.includes('connection')) {
-            console.error('Supabase Network Error:', error);
+        // Se for erro de rede (fetch failed, network error), aí sim é Offline
+        if (msg.includes('fetch') || msg.includes('network') || msg.includes('connection') || msg.includes('failed')) {
+            console.error('[Connection Check] Falha de Rede:', error);
             return false;
         }
     }
+    
+    // Sem erro ou erro de SQL = Online
     return true;
-  } catch (e) {
-    console.error('Supabase connection check failed:', e);
+  } catch (e: any) {
+    console.error('[Connection Check] Exceção:', e);
+    // Timeout assume offline para não travar, mas idealmente o Dashboard tenta buscar dados mesmo assim
     return false;
   }
 };
