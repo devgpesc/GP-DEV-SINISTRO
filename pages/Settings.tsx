@@ -23,6 +23,7 @@ interface AppUser {
   status: 'Ativo' | 'Inativo' | 'Pendente';
   color: string;
   permissions: string[];
+  password?: string; // Adicionado para persistir senha no mock
 }
 
 interface CommTemplate {
@@ -104,7 +105,7 @@ const Settings: React.FC = () => {
     groq: ''
   });
 
-  // Providers de Placa - ATUALIZADO: APENAS DETRAN GO E APIBRASIL
+  // Providers de Placa
   const [plateProviders, setPlateProviders] = useState([
     { id: 'apibrasil', name: 'APIBrasil (Padrão)', type: 'REST', priority: 1, active: true, key: '', testStatus: 'idle' as 'idle' | 'loading' | 'success' | 'error' },
     { id: 'detran-go', name: 'Detran-GO (Estadual)', type: 'SOAP/Gov', priority: 2, active: false, key: '', testStatus: 'idle' as 'idle' | 'loading' | 'success' | 'error' }
@@ -160,7 +161,6 @@ const Settings: React.FC = () => {
 
     const savedProviders = mockStorage.get('app_plate_providers');
     if (savedProviders) {
-        // Filtrar Detran SP se existir no storage antigo
         const validProviders = savedProviders
             .filter((p: any) => p.id !== 'detran')
             .map((p: any) => ({...p, testStatus: 'idle'}));
@@ -245,6 +245,10 @@ const Settings: React.FC = () => {
   const handleSaveUser = (e: React.FormEvent) => {
     e.preventDefault();
     if (!userFormData.name || !userFormData.email) return;
+    
+    // Gera senha aleatória se for novo usuário
+    const generatedPass = editingUser ? undefined : Math.random().toString(36).slice(-8).toUpperCase();
+
     const newUser: AppUser = {
       id: editingUser ? editingUser.id : Math.random().toString(36).substr(2, 9),
       name: userFormData.name!,
@@ -252,13 +256,18 @@ const Settings: React.FC = () => {
       role: userFormData.role || 'Colaborador',
       status: (userFormData.status as any) || 'Ativo',
       color: userFormData.color || 'blue',
-      permissions: userFormData.permissions || []
+      permissions: userFormData.permissions || [],
+      password: editingUser ? editingUser.password : generatedPass // Mantém ou define nova senha
     };
+
     const updated = editingUser ? users.map(u => u.id === editingUser.id ? newUser : u) : [...users, newUser];
     setUsers(updated);
+    
+    // PERSISTE IMEDIATAMENTE NO LOCALSTORAGE para garantir que o login funcione
     mockStorage.set('app_users', updated);
+    
     if (!editingUser) {
-        setCreatedUserCreds({ email: newUser.email, pass: Math.random().toString(36).slice(-8).toUpperCase() });
+        setCreatedUserCreds({ email: newUser.email, pass: generatedPass! });
     } else {
         setIsUserModalOpen(false);
     }
@@ -521,30 +530,357 @@ const Settings: React.FC = () => {
           )}
 
           {/* ... Outras abas (mantidas iguais, apenas renderização condicional) ... */}
-          {/* Por brevidade, mantendo placeholders para as outras abas já implementadas anteriormente */}
-          {activeTab === 'empresa' && (/* Código já existente */ <div className="p-4 text-center text-slate-400">Dados da Empresa (Carregado)</div>)}
-          {activeTab === 'usuarios' && (/* Código já existente */ <div className="p-4 text-center text-slate-400">Usuários (Carregado)</div>)}
-          {activeTab === 'templates' && (/* Código já existente */ <div className="p-4 text-center text-slate-400">Templates (Carregado)</div>)}
-          {activeTab === 'metas' && (/* Código já existente */ <div className="p-4 text-center text-slate-400">Metas (Carregado)</div>)}
-          {activeTab === 'sistema' && (/* Código já existente */ <div className="p-4 text-center text-slate-400">Sistema (Carregado)</div>)}
-          {activeTab === 'seguranca' && (/* Código já existente */ <div className="p-4 text-center text-slate-400">Segurança (Carregado)</div>)}
+          {activeTab === 'empresa' && (
+            <div className="space-y-8 animate-in fade-in duration-300">
+              <div className="flex items-center gap-2 mb-2 border-b border-slate-100 pb-4">
+                 <Building className="text-blue-500" size={20}/>
+                 <h3 className="text-lg font-black text-slate-800">Identidade Corporativa</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div className="md:col-span-2 space-y-6">
+                  <div>
+                    <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Razão Social</label>
+                    <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all" 
+                      value={companyInfo.name} onChange={e => setCompanyInfo({...companyInfo, name: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">CNPJ (Matriz)</label>
+                    <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all" 
+                      value={companyInfo.cnpj} onChange={e => setCompanyInfo({...companyInfo, cnpj: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Endereço Completo</label>
+                    <textarea className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all h-24 resize-none" 
+                      value={companyInfo.address} onChange={e => setCompanyInfo({...companyInfo, address: e.target.value})} />
+                  </div>
+                </div>
+                <div className="flex flex-col items-center justify-center p-6 bg-slate-50 rounded-3xl border border-slate-100 border-dashed border-2">
+                   {companyInfo.logo ? (
+                     <div className="relative group">
+                       <img src={companyInfo.logo} className="w-32 h-32 object-contain mb-4 rounded-xl" alt="Logo" />
+                       <button onClick={() => setCompanyInfo({...companyInfo, logo: ''})} className="absolute top-0 right-0 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"><X size={12}/></button>
+                     </div>
+                   ) : (
+                     <div className="w-32 h-32 bg-white rounded-full flex items-center justify-center text-slate-300 mb-4 shadow-sm">
+                       <Building size={48} />
+                     </div>
+                   )}
+                   <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleLogoUpload} />
+                   <button onClick={() => fileInputRef.current?.click()} className="text-blue-600 font-black text-xs uppercase tracking-widest hover:text-blue-700 flex items-center gap-2">
+                     <Upload size={14}/> Carregar Logo
+                   </button>
+                   <p className="text-[9px] text-slate-400 mt-2 text-center">PNG ou JPG (Max 2MB)<br/>Recomendado: 500x500px</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'usuarios' && (
+            <div className="space-y-8 animate-in fade-in duration-300">
+              <div className="flex justify-between items-center mb-2 border-b border-slate-100 pb-4">
+                 <div className="flex items-center gap-2">
+                    <Users className="text-indigo-500" size={20}/>
+                    <h3 className="text-lg font-black text-slate-800">Controle de Acesso</h3>
+                 </div>
+                 <button onClick={() => handleOpenUserModal()} className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-100 transition-all">
+                    <UserPlus size={16}/> Novo Usuário
+                 </button>
+              </div>
+              <div className="space-y-4">
+                 {users.map(u => (
+                   <div key={u.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 group hover:border-indigo-200 transition-all">
+                      <div className="flex items-center gap-4">
+                         <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-black bg-${u.color}-500 shadow-lg shadow-${u.color}-500/30`}>
+                            {u.name.charAt(0)}
+                         </div>
+                         <div>
+                            <p className="font-bold text-slate-800">{u.name} {u.status === 'Inativo' && <span className="text-[9px] text-red-500 bg-red-50 px-2 py-0.5 rounded ml-2 uppercase">Inativo</span>}</p>
+                            <p className="text-xs text-slate-500">{u.email} • <span className="text-indigo-600 font-bold">{u.role}</span></p>
+                         </div>
+                      </div>
+                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                         <button onClick={() => handleOpenUserModal(u)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-all"><Edit size={16}/></button>
+                         <button onClick={() => handleRequestDeleteUser(u)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-white rounded-lg transition-all"><Trash2 size={16}/></button>
+                      </div>
+                   </div>
+                 ))}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'templates' && (
+            <div className="space-y-8 animate-in fade-in duration-300">
+               <div className="flex justify-between items-center mb-2 border-b border-slate-100 pb-4">
+                 <div className="flex items-center gap-2">
+                    <MessageSquare className="text-green-500" size={20}/>
+                    <h3 className="text-lg font-black text-slate-800">Comunicação Automatizada</h3>
+                 </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                 {templates.map(t => {
+                    const Icon = ICON_MAP[t.icon] || MessageCircle;
+                    return (
+                       <div key={t.id} className="p-6 bg-white border border-slate-200 rounded-3xl hover:border-green-300 transition-all group relative cursor-pointer" onClick={() => setEditingTemplate(t)}>
+                          <div className="flex justify-between items-start mb-4">
+                             <div className={`p-3 rounded-xl ${t.channel === 'WhatsApp' ? 'bg-green-50 text-green-600' : 'bg-blue-50 text-blue-600'}`}>
+                                <Icon size={24} />
+                             </div>
+                             <span className="text-[10px] font-black uppercase bg-slate-100 text-slate-500 px-2 py-1 rounded">{t.channel}</span>
+                          </div>
+                          <h4 className="font-bold text-slate-800">{t.title}</h4>
+                          <p className="text-xs text-slate-400 mt-2 line-clamp-2">{t.body}</p>
+                          <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                             <Edit size={16} className="text-slate-300"/>
+                          </div>
+                       </div>
+                    );
+                 })}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'metas' && (
+            <div className="space-y-8 animate-in fade-in duration-300">
+               <div className="flex items-center gap-2 mb-2 border-b border-slate-100 pb-4">
+                 <Target className="text-red-500" size={20}/>
+                 <h3 className="text-lg font-black text-slate-800">Objetivos Financeiros</h3>
+               </div>
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="p-6 bg-slate-50 rounded-3xl border border-slate-200">
+                     <div className="flex items-center justify-between mb-6">
+                        <h4 className="font-black text-slate-700 text-sm uppercase tracking-widest flex items-center gap-2"><ArrowDown size={16}/> Meta de Saving</h4>
+                        <span className="text-2xl font-black text-green-600">{goals.savingsTarget}%</span>
+                     </div>
+                     <input type="range" min="0" max="50" className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-green-600" 
+                        value={goals.savingsTarget} onChange={e => setGoals({...goals, savingsTarget: Number(e.target.value)})} />
+                     <p className="text-xs text-slate-400 mt-2 text-center">Alvo de redução sobre preço médio de mercado.</p>
+                  </div>
+
+                  <div className="p-6 bg-slate-50 rounded-3xl border border-slate-200">
+                     <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-black text-slate-700 text-sm uppercase tracking-widest flex items-center gap-2"><CreditCard size={16}/> Budget Mensal</h4>
+                     </div>
+                     <div className="relative">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">R$</span>
+                        <input type="number" className="w-full pl-10 p-3 bg-white rounded-xl font-black text-slate-700 outline-none border border-slate-200 focus:border-red-400 transition-all"
+                           value={goals.monthlyBudget} onChange={e => setGoals({...goals, monthlyBudget: Number(e.target.value)})} />
+                     </div>
+                  </div>
+
+                  <div className="p-6 bg-slate-50 rounded-3xl border border-slate-200">
+                     <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-black text-slate-700 text-sm uppercase tracking-widest flex items-center gap-2"><Hourglass size={16}/> SLA Máximo (h)</h4>
+                     </div>
+                     <div className="flex items-center gap-4">
+                        <input type="number" className="w-24 p-3 bg-white rounded-xl font-black text-slate-700 outline-none border border-slate-200 text-center"
+                           value={goals.maxSlaHours} onChange={e => setGoals({...goals, maxSlaHours: Number(e.target.value)})} />
+                        <span className="text-xs font-bold text-slate-400">Horas para conclusão do processo</span>
+                     </div>
+                  </div>
+               </div>
+            </div>
+          )}
+
+          {activeTab === 'sistema' && (
+            <div className="space-y-8 animate-in fade-in duration-300">
+               <div className="flex items-center gap-2 mb-2 border-b border-slate-100 pb-4">
+                 <Gavel className="text-amber-500" size={20}/>
+                 <h3 className="text-lg font-black text-slate-800">Políticas de Compliance</h3>
+               </div>
+               
+               <div className="bg-amber-50/50 p-6 rounded-3xl border border-amber-100 mb-6">
+                  <h4 className="text-amber-800 font-black text-sm uppercase tracking-widest mb-4 flex items-center gap-2"><ShieldAlert size={16}/> Alçada de Aprovação</h4>
+                  <div className="flex items-center gap-4">
+                     <div className="flex-1 bg-white p-4 rounded-2xl border border-amber-100 shadow-sm">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Aprovação Automática até</p>
+                        <div className="flex items-baseline gap-1">
+                           <span className="text-sm font-bold text-slate-400">R$</span>
+                           <input type="number" className="font-black text-2xl text-slate-700 bg-transparent outline-none w-full"
+                              value={rules.approvalLimit} onChange={e => setRules({...rules, approvalLimit: Number(e.target.value)})} />
+                        </div>
+                     </div>
+                     <p className="text-xs text-amber-700 font-medium max-w-[200px]">Compras acima deste valor exigirão aprovação de um gestor nível 2.</p>
+                  </div>
+               </div>
+
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                     <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 px-2">Auditoria & Segurança</h4>
+                     <ToggleSwitch checked={rules.audit.logs} onChange={(v: boolean) => setRules({...rules, audit: {...rules.audit, logs: v}})} label="Logs Detalhados" subLabel="Registrar cada clique e alteração" icon={FileSearch} />
+                     <ToggleSwitch checked={rules.audit.priceView} onChange={(v: boolean) => setRules({...rules, audit: {...rules.audit, priceView: v}})} label="Ocultar Preços" subLabel="Esconder valores para analistas jr." icon={Eye} />
+                     <ToggleSwitch checked={rules.audit.justifyLow} onChange={(v: boolean) => setRules({...rules, audit: {...rules.audit, justifyLow: v}})} label="Justificativa de Preço" subLabel="Exigir motivo ao não escolher o menor preço" icon={MessageCircle} />
+                  </div>
+                  <div className="space-y-2">
+                     <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 px-2">Notificações</h4>
+                     <ToggleSwitch checked={rules.notifications.quotes} onChange={(v: boolean) => setRules({...rules, notifications: {...rules.notifications, quotes: v}})} label="Novas Cotações" subLabel="Alertar ao receber preços" icon={Bell} />
+                     <ToggleSwitch checked={rules.notifications.pendingOC} onChange={(v: boolean) => setRules({...rules, notifications: {...rules.notifications, pendingOC: v}})} label="OCs Pendentes" subLabel="Lembrete diário de aprovação" icon={Clock} />
+                  </div>
+               </div>
+            </div>
+          )}
+
+          {activeTab === 'seguranca' && (
+            <div className="space-y-8 animate-in fade-in duration-300">
+               <div className="flex items-center gap-2 mb-2 border-b border-slate-100 pb-4">
+                 <Shield className="text-slate-800" size={20}/>
+                 <h3 className="text-lg font-black text-slate-800">Segurança da Informação</h3>
+               </div>
+               
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                     <div className="flex items-center gap-4 mb-6">
+                        <div className="p-3 bg-slate-100 rounded-2xl"><Key size={24} className="text-slate-600"/></div>
+                        <div>
+                           <h4 className="font-bold text-slate-800">Autenticação</h4>
+                           <p className="text-xs text-slate-400">Políticas de senha e acesso.</p>
+                        </div>
+                     </div>
+                     <div className="space-y-4">
+                        <ToggleSwitch checked={security.enforce2FA} onChange={(v: boolean) => setSecurity({...security, enforce2FA: v})} label="Forçar 2FA" subLabel="Exigir segundo fator para todos" icon={Smartphone} />
+                        <div>
+                           <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2">Expiração de Senha (dias)</label>
+                           <input type="number" className="w-full p-3 bg-slate-50 rounded-xl font-bold text-slate-700 outline-none border border-slate-100"
+                              value={security.passwordExpiry} onChange={e => setSecurity({...security, passwordExpiry: Number(e.target.value)})} />
+                        </div>
+                     </div>
+                  </div>
+
+                  <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                     <div className="flex items-center gap-4 mb-6">
+                        <div className="p-3 bg-red-50 rounded-2xl"><Server size={24} className="text-red-600"/></div>
+                        <div>
+                           <h4 className="font-bold text-slate-800">Controle de Rede</h4>
+                           <p className="text-xs text-slate-400">Restrições de IP e sessão.</p>
+                        </div>
+                     </div>
+                     <div className="space-y-4">
+                        <div>
+                           <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2">Timeout de Sessão (min)</label>
+                           <input type="number" className="w-full p-3 bg-slate-50 rounded-xl font-bold text-slate-700 outline-none border border-slate-100"
+                              value={security.sessionTimeout} onChange={e => setSecurity({...security, sessionTimeout: Number(e.target.value)})} />
+                        </div>
+                        <div>
+                           <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2">Whitelist de IPs (Separar por vírgula)</label>
+                           <textarea className="w-full p-3 bg-slate-50 rounded-xl font-medium text-xs text-slate-600 outline-none border border-slate-100 h-24 resize-none font-mono"
+                              value={security.ipWhitelist} onChange={e => setSecurity({...security, ipWhitelist: e.target.value})} placeholder="192.168.1.1, 10.0.0.1..." />
+                        </div>
+                     </div>
+                  </div>
+               </div>
+               
+               <div className="pt-8 border-t border-slate-100">
+                  <button onClick={handleResetDatabase} className="w-full py-4 border-2 border-red-100 text-red-500 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-red-50 transition-all flex items-center justify-center gap-2">
+                     <AlertTriangle size={16}/> Resetar Base de Dados Local (Emergência)
+                  </button>
+               </div>
+            </div>
+          )}
 
         </div>
       </div>
 
-      {/* ActionModal para Exclusão de Usuário */}
-      <ActionModal 
-        isOpen={!!userToDelete}
-        onClose={() => setUserToDelete(null)}
-        onConfirm={handleConfirmDeleteUser}
-        title="Remover Usuário?"
-        description={`Confirma a exclusão de ${userToDelete?.name}? O acesso será revogado imediatamente.`}
-        type="danger"
-        confirmText="Confirmar Exclusão"
-      />
+      {/* --- MODAIS --- */}
 
-      {/* Outros Modais (Usuário, Template) - Mantidos conforme original */}
-      {/* ... */}
+      {/* Modal Usuário */}
+      {isUserModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsUserModalOpen(false)}></div>
+          <div className="relative bg-white w-full max-w-lg rounded-[40px] shadow-2xl p-8 animate-in zoom-in duration-300">
+             <div className="flex justify-between items-center mb-6">
+                <h3 className="text-2xl font-black text-slate-800">{editingUser ? 'Editar Usuário' : 'Novo Colaborador'}</h3>
+                <button onClick={() => setIsUserModalOpen(false)}><X size={24} className="text-slate-400 hover:text-slate-600"/></button>
+             </div>
+             
+             {!createdUserCreds ? (
+               <form onSubmit={handleSaveUser} className="space-y-4">
+                  <input required placeholder="Nome Completo" className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none" value={userFormData.name} onChange={e => setUserFormData({...userFormData, name: e.target.value})} />
+                  <input required type="email" placeholder="E-mail Corporativo" className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none" value={userFormData.email} onChange={e => setUserFormData({...userFormData, email: e.target.value})} />
+                  <div className="grid grid-cols-2 gap-4">
+                     <select className="p-4 bg-slate-50 rounded-2xl font-bold outline-none text-slate-600" value={userFormData.role} onChange={e => setUserFormData({...userFormData, role: e.target.value})}>
+                        <option value="">Selecione Cargo...</option>
+                        <option value="Administrador">Administrador</option>
+                        <option value="Gestor">Gestor</option>
+                        <option value="Analista">Analista</option>
+                     </select>
+                     <select className="p-4 bg-slate-50 rounded-2xl font-bold outline-none text-slate-600" value={userFormData.color} onChange={e => setUserFormData({...userFormData, color: e.target.value})}>
+                        <option value="blue">Azul</option>
+                        <option value="green">Verde</option>
+                        <option value="indigo">Roxo</option>
+                        <option value="amber">Laranja</option>
+                     </select>
+                  </div>
+                  
+                  <div className="pt-2">
+                     <p className="text-xs font-black uppercase text-slate-400 mb-2">Permissões de Acesso</p>
+                     <div className="flex flex-wrap gap-2">
+                        {['compras', 'cotacoes', 'sinistros', 'financeiro', 'config'].map(perm => (
+                           <button type="button" key={perm} onClick={() => togglePermission(perm)}
+                              className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all ${userFormData.permissions?.includes(perm) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-400 border-slate-200'}`}>
+                              {perm}
+                           </button>
+                        ))}
+                     </div>
+                  </div>
+
+                  <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-indigo-700 shadow-xl shadow-indigo-600/20 mt-4">
+                     Salvar Acesso
+                  </button>
+               </form>
+             ) : (
+               <div className="text-center space-y-6">
+                  <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto"><Check size={32}/></div>
+                  <div>
+                     <h4 className="font-bold text-slate-800">Usuário Criado!</h4>
+                     <p className="text-xs text-slate-500">Copie as credenciais abaixo e envie ao colaborador.</p>
+                  </div>
+                  <div className="bg-slate-900 p-4 rounded-2xl text-left space-y-2 relative group">
+                     <p className="text-slate-400 text-xs uppercase font-bold">Login: <span className="text-white normal-case">{createdUserCreds.email}</span></p>
+                     <p className="text-slate-400 text-xs uppercase font-bold">Senha: <span className="text-white normal-case">{createdUserCreds.pass}</span></p>
+                     <button onClick={handleCopyCreds} className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors">
+                        {copied ? <Check size={18} className="text-green-400"/> : <Copy size={18}/>}
+                     </button>
+                  </div>
+                  <button onClick={() => setIsUserModalOpen(false)} className="text-slate-400 font-bold text-xs uppercase hover:text-slate-600">Fechar</button>
+               </div>
+             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal Confirmação Exclusão */}
+      {userToDelete && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setUserToDelete(null)}></div>
+           <div className="relative bg-white w-full max-w-sm rounded-[32px] p-8 text-center shadow-2xl animate-in zoom-in">
+              <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4"><Trash2 size={32}/></div>
+              <h3 className="font-black text-slate-800 text-lg mb-2">Remover Usuário?</h3>
+              <p className="text-sm text-slate-500 mb-6">Confirma a exclusão de <b>{userToDelete.name}</b>? O acesso será revogado imediatamente.</p>
+              <div className="grid grid-cols-2 gap-3">
+                 <button onClick={() => setUserToDelete(null)} className="py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs uppercase">Cancelar</button>
+                 <button onClick={handleConfirmDeleteUser} className="py-3 bg-red-600 text-white rounded-xl font-bold text-xs uppercase shadow-lg shadow-red-600/20">Confirmar</button>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* Modal Editar Template */}
+      {editingTemplate && (
+         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setEditingTemplate(null)}></div>
+            <div className="relative bg-white w-full max-w-lg rounded-[40px] shadow-2xl p-8 animate-in zoom-in duration-300">
+               <h3 className="text-xl font-black text-slate-800 mb-6">Editar Template</h3>
+               <div className="space-y-4">
+                  <input className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none" value={editingTemplate.title} onChange={e => setEditingTemplate({...editingTemplate, title: e.target.value})} placeholder="Título" />
+                  <textarea className="w-full p-4 bg-slate-50 rounded-2xl font-medium text-slate-600 outline-none h-32 resize-none" value={editingTemplate.body} onChange={e => setEditingTemplate({...editingTemplate, body: e.target.value})} placeholder="Corpo da mensagem..." />
+                  <div className="flex justify-end gap-3 pt-4">
+                     <button onClick={() => setEditingTemplate(null)} className="px-6 py-3 text-slate-400 font-bold text-xs uppercase">Cancelar</button>
+                     <button onClick={handleSaveTemplate} className="px-8 py-3 bg-green-600 text-white rounded-xl font-black text-xs uppercase shadow-lg">Salvar</button>
+                  </div>
+               </div>
+            </div>
+         </div>
+      )}
+
     </div>
   );
 };
