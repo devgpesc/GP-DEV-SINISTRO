@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, Search, Car, Loader2, User, LayoutGrid, List, 
-  Trash2, Edit, Save, AlertCircle, X, CloudLightning, Keyboard, Calendar, Palette
+  Trash2, Edit, Save, AlertCircle, X, CloudLightning, Keyboard, Calendar, Palette, FileText
 } from 'lucide-react';
 import { lookupService } from '../services/lookupService';
 import { supabase } from '../services/supabaseClient';
@@ -29,16 +29,14 @@ const Vehicles: React.FC = () => {
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [inputMode, setInputMode] = useState<'auto' | 'manual'>('auto');
   
-  const [formData, setFormData] = useState<Partial<Vehicle>>({
-    plate: '',
-    associate_id: '',
-    km: 0,
-    status: 'Ativo',
-    notes: '',
+  // Inicialização completa para evitar 'null value' error no Supabase
+  const initialFormState = {
+    plate: '', associate_id: '', km: 0, status: 'Ativo' as any, notes: '', 
     brand: '', model: '', version: '', year_fab: '', year_model: '', 
     color: '', fuel: '', type: '', chassi: '', renavam: '', uf: '', city: ''
-  });
+  };
 
+  const [formData, setFormData] = useState<Partial<Vehicle>>(initialFormState);
   const [editId, setEditId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -70,7 +68,7 @@ const Vehicles: React.FC = () => {
       setInputMode('manual'); 
     } else {
       setEditId(null);
-      setFormData({ plate: '', associate_id: '', km: 0, status: 'Ativo', notes: '', brand: '', model: '', color: '', year_fab: '', year_model: '' });
+      setFormData(initialFormState); // Reset completo
       setInputMode('auto');
     }
     setIsModalOpen(true);
@@ -112,7 +110,9 @@ const Vehicles: React.FC = () => {
             ...formData, 
             plate: formData.plate.toUpperCase().trim(),
             km: Number(formData.km) || 0,
-            associate_id: formData.associate_id, // Garante que estamos enviando o campo correto
+            associate_id: formData.associate_id,
+            renavam: formData.renavam || '', // Garante string vazia se null
+            chassi: formData.chassi?.toUpperCase() || '', // Garante string vazia
             created_at: editId ? undefined : new Date().toISOString() 
         };
         
@@ -134,6 +134,8 @@ const Vehicles: React.FC = () => {
         console.error(err);
         if (err.message?.includes('violates unique constraint')) {
             addToast('error', 'Duplicidade', 'Esta placa já está cadastrada.');
+        } else if (err.message?.includes('null value')) {
+            addToast('error', 'Campos Obrigatórios', 'O banco de dados exige Renavam ou Chassi. Preencha ou contate o suporte.');
         } else {
             addToast('error', 'Erro ao Salvar', err.message);
         }
@@ -229,7 +231,7 @@ const Vehicles: React.FC = () => {
                     {/* SECTION 1: Identificação Básica */}
                     <section>
                         <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">1. Identificação Básica</h4>
-                        <div className="grid grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="relative">
                                 <label className="block text-xs font-bold text-slate-600 mb-1">Placa *</label>
                                 <input className="w-full p-4 bg-slate-50 border rounded-2xl font-black text-xl uppercase outline-none tracking-widest transition-all"
@@ -248,6 +250,21 @@ const Vehicles: React.FC = () => {
                                     {associates.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                                 </select>
                             </div>
+
+                            {/* Novos campos para satisfazer o banco */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-600 mb-1 flex items-center gap-1"><FileText size={12}/> Renavam</label>
+                                <input className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none"
+                                    value={formData.renavam} onChange={e => setFormData({...formData, renavam: e.target.value})} 
+                                    placeholder="Código Renavam" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-600 mb-1 flex items-center gap-1"><FileText size={12}/> Chassi</label>
+                                <input className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none uppercase"
+                                    value={formData.chassi} onChange={e => setFormData({...formData, chassi: e.target.value.toUpperCase()})} 
+                                    placeholder="Número do Chassi" />
+                            </div>
+
                             <div>
                                 <label className="block text-xs font-bold text-slate-600 mb-1">KM Atual</label>
                                 <input type="number" className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none" 
