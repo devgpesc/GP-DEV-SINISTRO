@@ -1,5 +1,4 @@
-
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -56,12 +55,14 @@ const Dashboard: React.FC = () => {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
 
+  // Timeout Ref
+  const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Helper seguro para buscar dados mesmo se a tabela não existir
   const safeFetch = async (table: string) => {
     try {
         const { data, error } = await supabase.from(table).select('*');
         if (error) {
-            // Código 42P01 significa "Tabela não existe". Tratamos como sucesso (array vazio).
             if (error.code === '42P01') {
                 return [];
             }
@@ -76,6 +77,18 @@ const Dashboard: React.FC = () => {
 
   const loadDashboardData = async () => {
     setLoading(true);
+    
+    // Timeout de segurança: 10 segundos
+    if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+    loadingTimeoutRef.current = setTimeout(() => {
+        setLoading((prev) => {
+            if (prev) {
+                console.warn('Dashboard timeout forced.');
+                return false;
+            }
+            return prev;
+        });
+    }, 10000);
 
     try {
         // Busca paralela otimizada sem verificações de conexão redundantes
@@ -90,12 +103,16 @@ const Dashboard: React.FC = () => {
     } catch (err: any) {
         console.error("Erro ao carregar dashboard:", err);
     } finally {
+        if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
         setLoading(false);
     }
   };
 
   useEffect(() => {
     loadDashboardData();
+    return () => {
+        if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+    };
   }, []);
 
   // --- KPI CALCULATIONS ---

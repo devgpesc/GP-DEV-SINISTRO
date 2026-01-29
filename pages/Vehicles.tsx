@@ -1,8 +1,7 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Plus, Search, Car, Loader2, User, LayoutGrid, List, 
-  Edit, Save, AlertCircle, X, CloudLightning, Keyboard, Calendar, Palette
+  Edit, Save, AlertCircle, X, CloudLightning, Keyboard, Calendar, Palette, RefreshCw
 } from 'lucide-react';
 import { lookupService } from '../services/lookupService';
 import { supabase } from '../services/supabaseClient';
@@ -29,6 +28,9 @@ const Vehicles: React.FC = () => {
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [inputMode, setInputMode] = useState<'auto' | 'manual'>('auto');
   
+  // Ref para timeout de segurança
+  const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Inicialização completa do formulário
   const initialFormState = {
     plate: '', associate_id: '', km: 0, status: 'Ativo' as any, notes: '', 
@@ -41,30 +43,70 @@ const Vehicles: React.FC = () => {
 
   useEffect(() => {
     loadData();
+    return () => {
+        if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+    };
   }, []);
 
   const loadData = async () => {
     setLoading(true);
+
+    // Timeout de segurança: Se travar por 8s, libera a tela
+    if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+    loadingTimeoutRef.current = setTimeout(() => {
+        setLoading((prev) => {
+            if (prev) {
+                console.warn('Timeout de carregamento forçado.');
+                return false;
+            }
+            return prev;
+        });
+    }, 8000);
+
     try {
-      const { data: vs, error: vError } = await supabase.from('vehicles').select('*').order('created_at', { ascending: false });
-      if (vError) throw vError;
-      
+      // 1. Carregar Associados (Independente)
       const { data: as, error: aError } = await supabase.from('associates').select('id, name, document');
-      if (aError) console.warn("Erro ao buscar associados:", aError);
+      if (aError) console.warn("Aviso ao buscar associados:", aError.message);
+      setAssociates(as || []);
+
+      // 2. Carregar Veículos (Tentativa com Ordem, Fallback sem Ordem)
+      let vsData = null;
+      let vsError = null;
+
+      // Tentativa 1: Com ordenação
+      const resOrdered = await supabase.from('vehicles').select('*').order('created_at', { ascending: false });
+      
+      if (resOrdered.error) {
+          console.warn("Falha na ordenação (coluna created_at pode não existir). Tentando sem ordem.");
+          // Tentativa 2: Sem ordenação
+          const resUnordered = await supabase.from('vehicles').select('*');
+          vsData = resUnordered.data;
+          vsError = resUnordered.error;
+      } else {
+          vsData = resOrdered.data;
+      }
+
+      if (vsError) throw vsError;
 
       // Normalização de dados (Resiliência para snake_case vs camelCase)
-      const mappedVehicles = vs?.map((v: any) => ({
+      const mappedVehicles = vsData?.map((v: any) => ({
         ...v,
         associate_id: v.associate_id || v.associateId, 
         year_fab: v.year_fab || v.yearFab,
-        year_model: v.year_model || v.yearModel
+        year_model: v.year_model || v.yearModel,
+        plate: v.plate || '---'
       })) || [];
 
       setVehicles(mappedVehicles);
-      setAssociates(as || []);
-    } catch (err) {
+      
+    } catch (err: any) {
       console.error("Erro ao carregar dados de veículos:", err);
+      // Se for erro de tabela inexistente, não mostra toast de erro grave, apenas vazio
+      if (!err.message?.includes('does not exist')) {
+          addToast('error', 'Erro de Carregamento', 'Não foi possível listar os veículos. Verifique sua conexão.');
+      }
     } finally {
+      if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
       setLoading(false);
     }
   };
@@ -136,8 +178,8 @@ const Vehicles: React.FC = () => {
             color: formData.color ? formData.color.toUpperCase() : '',
             
             // Campos Opcionais com Default Seguro
-            renavam: formData.renavam ? formData.renavam.trim() : 'ISENTO', 
-            chassi: formData.chassi ? formData.chassi.trim().toUpperCase() : 'ISENTO',
+            renavam: formData.renavam ? formData.renavam.trim() : null, 
+            chassi: formData.chassi ? formData.chassi.trim().toUpperCase() : null,
             type: formData.type || 'Automóvel', // Default seguro
             fuel: formData.fuel || 'Flex',      // Default seguro
             version: formData.version || '',
@@ -157,7 +199,6 @@ const Vehicles: React.FC = () => {
         let { error } = await performSave(payload);
 
         // Lógica de Retry Inteligente
-        // Se falhar porque a coluna nova não existe OU porque uma coluna antiga obrigatória recebeu NULL
         if (error) {
              const isColumnError = error.message.includes('column') && error.message.includes('does not exist');
              const isNullError = error.message.includes('null value') && error.message.includes('constraint');
@@ -174,13 +215,10 @@ const Vehicles: React.FC = () => {
 
                 // HOTFIX: Se o erro for especificamente na coluna "year", adicionamos ela ao payload
                 if (error.message.includes('column "year"')) {
-                    console.log('Detectado coluna legada "year". Injetando valor...');
-                    // Tenta injetar como inteiro e como string para garantir
                     const yearVal = payload.year_fab ? parseInt(payload.year_fab.replace(/\D/g, '')) : new Date().getFullYear();
                     legacyPayload['year'] = yearVal || 2024;
                 }
 
-                // Remove os novos para não dar erro de "coluna não existe" no legado se o banco for antigo
                 delete legacyPayload.associate_id;
                 delete legacyPayload.year_fab;
                 delete legacyPayload.year_model;
@@ -190,8 +228,6 @@ const Vehicles: React.FC = () => {
                 if (!retryResult.error) {
                     error = null; // Sucesso no retry
                 } else {
-                    console.error("Retry também falhou:", retryResult.error.message);
-                    // Se o retry falhar, usamos o erro do retry para mostrar ao usuário, pois é mais provável que seja o erro real de dados
                     error = retryResult.error;
                 }
              }
@@ -207,10 +243,7 @@ const Vehicles: React.FC = () => {
         if (err.message?.includes('violates unique constraint')) {
             addToast('error', 'Duplicidade', 'Esta placa já está cadastrada.');
         } else if (err.message?.includes('null value')) {
-            // Extrai nome da coluna do erro se possível
-            const colMatch = err.message.match(/column "(.+?)"/);
-            const colName = colMatch ? colMatch[1] : 'desconhecida';
-            addToast('error', 'Erro de Banco de Dados', `Campo obrigatório vazio no banco: ${colName}. Execute o script SQL "20240305_absolute_fix.sql".`);
+            addToast('error', 'Erro de Dados', 'Um campo obrigatório não foi preenchido corretamente.');
         } else {
             addToast('error', 'Erro ao Salvar', err.message);
         }
@@ -231,9 +264,14 @@ const Vehicles: React.FC = () => {
             <h2 className="text-3xl font-black text-slate-800">Gestão de Veículos</h2>
             <p className="text-sm text-slate-500">Cadastro simplificado com busca automática.</p>
         </div>
-        <button onClick={() => handleOpenModal()} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 shadow-xl transition-all">
-            <Plus size={18}/> Novo Veículo
-        </button>
+        <div className="flex gap-2">
+            <button onClick={loadData} className="bg-white text-slate-500 border border-slate-200 p-3 rounded-2xl hover:bg-slate-50 transition-all shadow-sm" title="Recarregar">
+                <RefreshCw size={18} className={loading ? 'animate-spin' : ''}/>
+            </button>
+            <button onClick={() => handleOpenModal()} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 shadow-xl transition-all">
+                <Plus size={18}/> Novo Veículo
+            </button>
+        </div>
       </div>
 
       <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
@@ -248,10 +286,16 @@ const Vehicles: React.FC = () => {
             </div>
          </div>
 
-         {loading ? <div className="text-center py-10"><Loader2 className="animate-spin mx-auto text-blue-600"/></div> : (
+         {loading ? <div className="text-center py-20 flex flex-col items-center justify-center text-slate-400">
+            <Loader2 className="animate-spin mb-4 text-blue-600" size={32}/>
+            <p className="text-xs font-bold uppercase tracking-widest">Carregando Veículos...</p>
+         </div> : (
             <div className={`grid gap-4 ${viewMode === 'grid' ? 'grid-cols-3' : 'grid-cols-1'}`}>
                 {filteredVehicles.length === 0 && (
-                    <div className="col-span-full py-10 text-center text-slate-400 font-medium">Nenhum veículo encontrado.</div>
+                    <div className="col-span-full py-10 text-center text-slate-400 font-medium bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                        <Car size={32} className="mx-auto mb-2 opacity-50"/>
+                        Nenhum veículo encontrado.
+                    </div>
                 )}
                 {filteredVehicles.map(v => (
                     <div key={v.id} className="p-5 border border-slate-100 rounded-3xl hover:border-blue-200 transition-all bg-slate-50/50 relative group">
