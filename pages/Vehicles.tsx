@@ -1,7 +1,9 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Plus, Search, Car, Loader2, User, LayoutGrid, List, 
-  Edit, Save, AlertCircle, X, CloudLightning, Keyboard, Calendar, Palette, RefreshCw
+  Edit, Save, AlertCircle, X, CloudLightning, Keyboard, Calendar, Palette, RefreshCw,
+  Trash2, CheckSquare, Square, Check
 } from 'lucide-react';
 import { lookupService } from '../services/lookupService';
 import { supabase } from '../services/supabaseClient';
@@ -22,6 +24,12 @@ const Vehicles: React.FC = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchTerm, setSearchTerm] = useState('');
   
+  // Selection & Bulk Actions
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [itemsToDelete, setItemsToDelete] = useState<string[]>([]); // IDs to delete
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSearchingPlate, setIsSearchingPlate] = useState(false);
@@ -50,6 +58,8 @@ const Vehicles: React.FC = () => {
 
   const loadData = async () => {
     setLoading(true);
+    // Limpa seleção ao recarregar
+    setSelectedIds([]);
 
     // Timeout de segurança: Se travar por 8s, libera a tela
     if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
@@ -110,6 +120,60 @@ const Vehicles: React.FC = () => {
       setLoading(false);
     }
   };
+
+  // --- DELETE LOGIC ---
+
+  const handleSelection = (id: string) => {
+    if (selectedIds.includes(id)) {
+        setSelectedIds(selectedIds.filter(i => i !== id));
+    } else {
+        setSelectedIds([...selectedIds, id]);
+    }
+  };
+
+  const handleSelectAll = () => {
+    if (selectedIds.length === filteredVehicles.length) {
+        setSelectedIds([]);
+    } else {
+        setSelectedIds(filteredVehicles.map(v => v.id));
+    }
+  };
+
+  const promptDelete = (ids: string[]) => {
+      setItemsToDelete(ids);
+      setShowDeleteModal(true);
+  };
+
+  const executeDelete = async () => {
+      setIsDeleting(true);
+      try {
+          // 1. Tenta deletar
+          const { error } = await supabase.from('vehicles').delete().in('id', itemsToDelete);
+          
+          if (error) {
+              // Verifica erro de Foreign Key (Restrição)
+              if (error.code === '23503') { // foreign_key_violation
+                  throw new Error('Não é possível excluir veículos que possuem sinistros ou ordens de serviço vinculadas.');
+              }
+              throw error;
+          }
+
+          // 2. Atualiza UI
+          setVehicles(prev => prev.filter(v => !itemsToDelete.includes(v.id)));
+          setSelectedIds([]);
+          addToast('success', 'Excluído', `${itemsToDelete.length} veículo(s) removido(s).`);
+          setShowDeleteModal(false);
+
+      } catch (err: any) {
+          console.error(err);
+          addToast('error', 'Erro ao Excluir', err.message);
+          setShowDeleteModal(false); // Fecha modal mesmo com erro para não travar, usuário lê o toast
+      } finally {
+          setIsDeleting(false);
+      }
+  };
+
+  // --- END DELETE LOGIC ---
 
   const handleOpenModal = (vehicleToEdit?: Vehicle) => {
     if (vehicleToEdit) {
@@ -276,11 +340,35 @@ const Vehicles: React.FC = () => {
 
       <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
          <div className="flex justify-between items-center mb-6">
-            <div className="relative w-96">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
-                <input className="w-full pl-12 p-3 bg-slate-50 rounded-xl outline-none font-bold text-slate-600" placeholder="Buscar placa..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-            </div>
-            <div className="flex bg-slate-100 p-1 rounded-xl">
+            
+            {/* SEARCH OR BULK ACTION BAR */}
+            {selectedIds.length > 0 ? (
+                <div className="flex-1 flex items-center gap-4 bg-slate-800 text-white p-2 pr-4 rounded-2xl animate-in fade-in slide-in-from-left-4 duration-300">
+                    <button 
+                        onClick={handleSelectAll}
+                        className="flex items-center gap-2 px-4 py-2 hover:bg-white/10 rounded-xl transition-colors"
+                    >
+                        {selectedIds.length === filteredVehicles.length ? <CheckSquare size={20}/> : <Square size={20} className="opacity-50"/>}
+                        <span className="text-sm font-bold">Selecionar Tudo</span>
+                    </button>
+                    <div className="h-6 w-px bg-white/20"></div>
+                    <span className="text-sm font-medium">{selectedIds.length} selecionado(s)</span>
+                    <div className="flex-1"></div>
+                    <button 
+                        onClick={() => promptDelete(selectedIds)}
+                        className="flex items-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-lg transition-all"
+                    >
+                        <Trash2 size={16}/> Excluir Seleção
+                    </button>
+                </div>
+            ) : (
+                <div className="relative w-96">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
+                    <input className="w-full pl-12 p-3 bg-slate-50 rounded-xl outline-none font-bold text-slate-600" placeholder="Buscar placa..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                </div>
+            )}
+
+            <div className="flex bg-slate-100 p-1 rounded-xl ml-4">
                 <button onClick={() => setViewMode('grid')} className={`p-2 rounded-lg ${viewMode === 'grid' ? 'bg-white shadow' : ''}`}><LayoutGrid size={18}/></button>
                 <button onClick={() => setViewMode('list')} className={`p-2 rounded-lg ${viewMode === 'list' ? 'bg-white shadow' : ''}`}><List size={18}/></button>
             </div>
@@ -298,13 +386,36 @@ const Vehicles: React.FC = () => {
                     </div>
                 )}
                 {filteredVehicles.map(v => (
-                    <div key={v.id} className="p-5 border border-slate-100 rounded-3xl hover:border-blue-200 transition-all bg-slate-50/50 relative group">
-                        <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => handleOpenModal(v)} className="p-2 bg-white text-blue-600 hover:text-blue-800 rounded-lg shadow-sm border border-slate-100">
+                    <div 
+                        key={v.id} 
+                        className={`p-5 border rounded-3xl transition-all relative group ${
+                            selectedIds.includes(v.id) 
+                            ? 'bg-blue-50 border-blue-200 shadow-md ring-1 ring-blue-200' 
+                            : 'bg-slate-50/50 border-slate-100 hover:border-blue-200'
+                        }`}
+                    >
+                        {/* Checkbox Selection */}
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); handleSelection(v.id); }}
+                            className={`absolute top-4 left-4 p-1 rounded-lg transition-all z-10 ${
+                                selectedIds.includes(v.id) 
+                                ? 'text-blue-600 opacity-100' 
+                                : 'text-slate-300 opacity-0 group-hover:opacity-100 hover:text-slate-500'
+                            }`}
+                        >
+                            {selectedIds.includes(v.id) ? <CheckSquare size={20} fill="currentColor" className="text-blue-100"/> : <Square size={20}/>}
+                        </button>
+
+                        <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                            <button onClick={() => handleOpenModal(v)} className="p-2 bg-white text-blue-600 hover:text-blue-800 rounded-lg shadow-sm border border-slate-100 hover:bg-blue-50 transition-colors">
                                 <Edit size={16}/>
                             </button>
+                            <button onClick={() => promptDelete([v.id])} className="p-2 bg-white text-slate-400 hover:text-red-600 rounded-lg shadow-sm border border-slate-100 hover:bg-red-50 transition-colors">
+                                <Trash2 size={16}/>
+                            </button>
                         </div>
-                        <div className="flex justify-between items-start mb-4">
+
+                        <div className="flex justify-between items-start mb-4 pl-8"> {/* pl-8 para dar espaço ao checkbox */}
                             <div className="bg-slate-800 text-white px-3 py-1 rounded-lg font-black tracking-widest text-sm">{v.plate}</div>
                             <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${v.status === 'Ativo' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{v.status}</span>
                         </div>
@@ -431,6 +542,39 @@ const Vehicles: React.FC = () => {
                         </button>
                     </div>
                 </form>
+            </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => !isDeleting && setShowDeleteModal(false)}></div>
+            <div className="relative bg-white w-full max-w-sm rounded-[32px] shadow-2xl p-8 text-center animate-in zoom-in duration-200">
+                <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Trash2 size={40} />
+                </div>
+                <h3 className="text-xl font-black text-slate-800 mb-2">Confirmar Exclusão?</h3>
+                <p className="text-sm text-slate-500 font-medium mb-8 leading-relaxed">
+                    Você está prestes a remover <span className="font-bold text-slate-800">{itemsToDelete.length}</span> veículo(s).
+                    <br/><span className="text-xs text-red-400">Esta ação não pode ser desfeita.</span>
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                    <button 
+                        onClick={() => setShowDeleteModal(false)} 
+                        disabled={isDeleting}
+                        className="py-3 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase text-[10px] hover:bg-slate-200 transition-all disabled:opacity-50"
+                    >
+                        Cancelar
+                    </button>
+                    <button 
+                        onClick={executeDelete} 
+                        disabled={isDeleting}
+                        className="py-3 bg-red-500 text-white rounded-2xl font-black uppercase text-[10px] hover:bg-red-600 transition-all shadow-lg shadow-red-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                        {isDeleting ? <Loader2 className="animate-spin" size={14}/> : 'Sim, Excluir'}
+                    </button>
+                </div>
             </div>
         </div>
       )}

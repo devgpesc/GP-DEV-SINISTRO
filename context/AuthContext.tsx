@@ -37,8 +37,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .maybeSingle();
 
       if (error) {
-          console.error('[Auth] Erro ao buscar perfil:', error.message);
-          return null;
+          console.error('[Auth] Erro ao buscar perfil (mas mantendo sessão):', error.message);
+          // Retorna fallback se não conseguir buscar o perfil, para não deslogar o usuário
+          return { id: userId, role: 'user', full_name: 'Usuário (Offline)' };
       }
       
       return data || { 
@@ -60,21 +61,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                             window.location.hash && 
                             window.location.hash.includes('access_token');
 
-    // Timeout de segurança AGRESSIVO para corrigir loops
+    // Timeout de segurança MENOS AGRESSIVO
     const safetyTimeout = setTimeout(() => {
         if (loading && mounted) {
-            console.warn('[Auth] Timeout crítico. Forçando liberação.');
-            
-            // Se não estamos em redirect OAuth e travou, provavelmente é cache sujo.
+            console.warn('[Auth] Timeout de carregamento (Conexão lenta).');
+            // NÃO forçamos logout aqui se for apenas lentidão. Apenas liberamos a UI.
             if (!isOAuthRedirect) {
-               console.warn('[Auth] Sessão corrompida detectada. Limpando...');
-               localStorage.removeItem('sb-' + (import.meta as any).env?.VITE_SUPABASE_URL?.split('//')[1]?.split('.')[0] + '-auth-token');
-               setLoadingError(true); // Mostra botão de reset manual se o auto falhar
+               setLoadingError(true);
             }
-            
             setLoading(false);
         }
-    }, isOAuthRedirect ? 8000 : 4000); // 4s máximo para login normal
+    }, 10000); // Aumentado para 10s
 
     const initAuth = async () => {
         // 1. Configurar Listener PRIMEIRO
@@ -82,22 +79,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.log(`[Auth Event] ${event}`);
             if (!mounted) return;
 
-            if (newSession?.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION')) {
-                setSession(newSession);
-                setUser(newSession.user);
-                
-                if (!profile || profile.id !== newSession.user.id) {
-                    const p = await fetchProfile(newSession.user.id);
-                    if (mounted) setProfile(p);
+            if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+                if (newSession?.user) {
+                    setSession(newSession);
+                    setUser(newSession.user);
+                    
+                    // Busca perfil apenas se necessário
+                    if (!profile || profile.id !== newSession.user.id) {
+                        const p = await fetchProfile(newSession.user.id);
+                        if (mounted) setProfile(p);
+                    }
                 }
                 
-                // Limpa hash da URL
+                // Limpa hash da URL pós-login social
                 if (window.location.hash && window.location.hash.includes('access_token')) {
                     window.history.replaceState(null, '', window.location.pathname);
                 }
                 setLoading(false);
             } else if (event === 'SIGNED_OUT') {
-                // Tratamento redundante para garantir limpeza caso venha do listener
                 setSession(null);
                 setUser(null);
                 setProfile(null);
@@ -105,10 +104,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
         });
 
-        // 2. Verificação Inicial
+        // 2. Verificação Inicial Robusta
         try {
-            const { data: { session: currentSession } } = await supabase.auth.getSession();
+            const { data: { session: currentSession }, error } = await supabase.auth.getSession();
             
+            if (error) {
+                console.error('[Auth] Erro getSession:', error);
+                // Se der erro de rede, não desloga imediatamente, deixa o estado anterior (se houver)
+            }
+
             if (mounted) {
                 if (currentSession?.user) {
                     setSession(currentSession);
@@ -116,12 +120,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     
                     const p = await fetchProfile(currentSession.user.id);
                     if (mounted) setProfile(p);
+                } else {
+                    // Se não tem sessão, garante que user é null para o PrivateRoute redirecionar
+                    setUser(null);
                 }
-                // Sempre finaliza o loading inicial, logado ou não
                 setLoading(false);
             }
         } catch (err) {
-            console.error('[Auth] Erro init:', err);
+            console.error('[Auth] Erro crítico init:', err);
             if (mounted) setLoading(false);
         }
 
@@ -155,41 +161,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signOut = async () => {
-    // LOGOUT NUCLEAR: Garante que nada sobrevive para causar re-login automático
     try {
-        // NÃO ativar setLoading(true) aqui.
-        // Isso evita que a tela de "Carregando Sistema" apareça, o que confundia o usuário achando que estava logando de novo.
-        
-        // 1. Limpeza de Estado React Imediata (Visual)
-        // Isso fará com que o PrivateRoute redirecione para /login instantaneamente se estiver dentro do app
         setUser(null);
         setSession(null);
         setProfile(null);
-
-        // 2. Limpeza de Storage (Persistência)
         localStorage.clear();
         sessionStorage.clear();
-
-        // 3. Limpeza de Cookies (Deep Clean)
-        const cookies = document.cookie.split(";");
-        for (let i = 0; i < cookies.length; i++) {
-            const cookie = cookies[i];
-            const eqPos = cookie.indexOf("=");
-            const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
-            document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
-        }
-
-        // 4. Logout no Supabase (Backend)
-        // Fazemos isso por último ou em paralelo para não bloquear a UI visualmente
         await supabase.auth.signOut();
-        
-        console.log('[Auth] Sessão encerrada completamente.');
-
     } catch (error) {
-        console.error("Erro ao sair (forçando limpeza local):", error);
-        localStorage.clear();
+        console.error("Erro ao sair:", error);
     } finally {
-        // 5. Hard Reload para Login (Limpa memória JS e previne loop de hooks)
         window.location.href = '/login';
     }
   };
@@ -248,7 +229,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             </p>
           </div>
           
-          {/* Botão de Auto-Recuperação sempre visível após delay */}
+          {/* Botão de Auto-Recuperação */}
           <div className="flex flex-col gap-3 items-center animate-in fade-in slide-in-from-bottom-4 duration-700 delay-1000 fill-mode-forwards opacity-0" style={{animationDelay: '1s'}}>
               <p className="text-xs text-slate-400 font-medium">O sistema está demorando?</p>
               <button 

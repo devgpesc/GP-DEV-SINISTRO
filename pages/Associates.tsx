@@ -2,9 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, Search, UserCheck, Edit3, Trash2, X, Save, 
-  Car, LayoutGrid, List, Phone, Mail, Shield, User, Loader2, AlertCircle
+  Car, LayoutGrid, List, Phone, Mail, Shield, User, Loader2, AlertCircle, Globe
 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
+import { lookupService } from '../services/lookupService';
 import ActionModal from '../components/ActionModal';
 import { useToast } from '../context/ToastContext';
 
@@ -27,6 +28,10 @@ const Associates: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  
+  // States para Lookup
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [lookupMessage, setLookupMessage] = useState<string | null>(null);
   
   const [associateToEdit, setAssociateToEdit] = useState<Associate | null>(null);
   
@@ -55,6 +60,7 @@ const Associates: React.FC = () => {
   };
 
   const handleOpenModal = (associate?: Associate) => {
+    setLookupMessage(null);
     if (associate) {
       setAssociateToEdit(associate);
       setFormData({
@@ -94,6 +100,39 @@ const Associates: React.FC = () => {
           addToast('error', 'Erro', 'Não foi possível excluir o associado.');
       }
     }
+  };
+
+  const handleDocumentLookup = async () => {
+      // Limpeza básica
+      const cleanDoc = formData.document.replace(/\D/g, '');
+      
+      // Lógica apenas para CNPJ (14 dígitos)
+      if (formData.type === 'PJ' && cleanDoc.length === 14) {
+          setIsLookingUp(true);
+          setLookupMessage('Buscando dados do CNPJ...');
+          
+          try {
+              const data = await lookupService.fetchCNPJ(cleanDoc);
+              if (data) {
+                  setFormData(prev => ({
+                      ...prev,
+                      name: data.name || data.fantasy || prev.name,
+                      email: data.email || prev.email,
+                      phone: data.phone || prev.phone,
+                      // Se vier cidade/endereço, poderíamos preencher se houvesse campo
+                  }));
+                  setLookupMessage('Dados encontrados!');
+                  addToast('success', 'Encontrado', 'Dados da empresa preenchidos.');
+              } else {
+                  setLookupMessage('CNPJ não encontrado nas bases públicas.');
+              }
+          } catch (e) {
+              setLookupMessage('Erro na consulta.');
+          } finally {
+              setIsLookingUp(false);
+              setTimeout(() => setLookupMessage(null), 3000);
+          }
+      }
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -136,46 +175,63 @@ const Associates: React.FC = () => {
             addToast('success', 'Criado', 'Novo associado cadastrado.');
         }
 
-        // Lógica de Vínculo de Veículo Rápido
-        // CORREÇÃO: Usar 'associate_id' (snake_case) em vez de 'associateId'
-        if (result && formData.linkedPlate && formData.linkedPlate.length >= 7) {
-            const cleanPlate = formData.linkedPlate.toUpperCase().replace(/[^A-Z0-9]/g, '');
-            
-            // Verifica se o veículo existe
-            const { data: existing } = await supabase.from('vehicles').select('id').eq('plate', cleanPlate).maybeSingle();
-            
-            if (existing) {
-                // Atualiza veículo existente
-                const { error: linkError } = await supabase
-                    .from('vehicles')
-                    .update({ associate_id: result.id }) // Fix: associate_id
-                    .eq('id', existing.id);
+        // --- LÓGICA DE VÍNCULO DE VEÍCULO SEGURO ---
+        if (result && result.id && formData.linkedPlate && formData.linkedPlate.length >= 7) {
+            try {
+                const cleanPlate = formData.linkedPlate.toUpperCase().replace(/[^A-Z0-9]/g, '');
                 
-                if (linkError) console.warn("Erro ao vincular veículo existente:", linkError);
-                else addToast('info', 'Veículo Vinculado', `Placa ${cleanPlate} associada.`);
+                // 1. Verifica se o veículo existe
+                const { data: existing } = await supabase.from('vehicles').select('id').eq('plate', cleanPlate).maybeSingle();
                 
-            } else {
-                // Cria novo veículo
-                const { error: vError } = await supabase.from('vehicles').insert([{
-                    plate: cleanPlate,
-                    associate_id: result.id, // Fix: associate_id
-                    status: 'Ativo',
-                    brand: 'A DEFINIR',
-                    model: 'CADASTRO RÁPIDO',
-                    created_at: new Date().toISOString()
-                }]);
-                
-                if (vError) console.warn("Erro ao criar veículo:", vError);
-                else addToast('info', 'Veículo Criado', `Placa ${cleanPlate} cadastrada automaticamente.`);
+                if (existing) {
+                    // Atualiza veículo existente
+                    const { error: linkError } = await supabase
+                        .from('vehicles')
+                        .update({ associate_id: result.id }) 
+                        .eq('id', existing.id);
+                    
+                    if (linkError) throw linkError;
+                    addToast('info', 'Veículo Vinculado', `Placa ${cleanPlate} associada ao novo cadastro.`);
+                    
+                } else {
+                    // Cria novo veículo com PAYLOAD ROBUSTO (Evita erro de constraints)
+                    const currentYear = new Date().getFullYear().toString();
+                    
+                    const newVehiclePayload = {
+                        plate: cleanPlate,
+                        associate_id: result.id,
+                        status: 'Ativo',
+                        brand: 'A DEFINIR',
+                        model: 'CADASTRO RÁPIDO',
+                        color: 'BRANCA', // Default seguro
+                        fuel: 'FLEX',    // Default seguro
+                        type: 'Automóvel', // Default seguro
+                        year_fab: currentYear,
+                        year_model: currentYear,
+                        created_at: new Date().toISOString()
+                    };
+
+                    const { error: vError } = await supabase.from('vehicles').insert([newVehiclePayload]);
+                    
+                    if (vError) {
+                        console.error('Erro detalhado ao criar veículo:', vError);
+                        throw vError;
+                    }
+                    addToast('info', 'Veículo Criado', `Placa ${cleanPlate} cadastrada automaticamente.`);
+                }
+            } catch (vehicleErr: any) {
+                console.error("Falha ao processar veículo:", vehicleErr);
+                addToast('warning', 'Atenção', 'Associado salvo, mas houve erro ao vincular o veículo: ' + vehicleErr.message);
+                // Não relança o erro para não impedir o fechamento do modal, pois o associado já foi salvo.
             }
         }
 
         setIsModalOpen(false);
     } catch (error: any) {
         console.error("Erro no cadastro:", error);
-        // Tratamento específico para erro de permissão RLS (42501)
+        // Tratamento específico para erro de permissão RLS
         if (error.code === '42501' || error.message?.includes('violates row-level security')) {
-             addToast('error', 'Permissão Negada', 'Verifique se você rodou o script SQL de permissões (RLS) para INSERT.');
+             addToast('error', 'Permissão Negada', 'Verifique suas permissões de acesso.');
         } else {
              addToast('error', 'Erro ao Salvar', error.message || 'Falha na operação.');
         }
@@ -277,9 +333,9 @@ const Associates: React.FC = () => {
       {/* Modal de Cadastro */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
-          <div className="relative bg-white w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in duration-200">
-             <div className="p-8 border-b border-slate-100 flex justify-between items-center">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => !isSubmitting && setIsModalOpen(false)}></div>
+          <div className="relative bg-white w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in duration-200 max-h-[95vh] overflow-y-auto">
+             <div className="p-8 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
                 <div className="flex items-center gap-4">
                    <div className="bg-blue-600 p-3 rounded-2xl text-white shadow-lg shadow-blue-500/30"><UserCheck size={24}/></div>
                    <div>
@@ -306,8 +362,25 @@ const Associates: React.FC = () => {
                    </div>
 
                    <div>
-                      <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Documento (CPF/CNPJ) *</label>
-                      <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all" value={formData.document} onChange={e => setFormData({...formData, document: e.target.value})} placeholder={formData.type === 'PF' ? '000.000.000-00' : '00.000.000/0001-00'} />
+                      <label className="flex justify-between items-center text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">
+                          <span>Documento (CPF/CNPJ) *</span>
+                          {lookupMessage && <span className={`text-[9px] flex items-center gap-1 ${lookupMessage.includes('Encontrado') ? 'text-green-600' : 'text-amber-500'}`}>{isLookingUp && <Loader2 className="animate-spin" size={8}/>} {lookupMessage}</span>}
+                      </label>
+                      <div className="relative">
+                          <input 
+                            required 
+                            className={`w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all ${isLookingUp ? 'opacity-70' : ''}`} 
+                            value={formData.document} 
+                            onChange={e => setFormData({...formData, document: e.target.value})}
+                            onBlur={handleDocumentLookup} 
+                            placeholder={formData.type === 'PF' ? '000.000.000-00' : '00.000.000/0001-00'} 
+                          />
+                          {formData.type === 'PJ' && (
+                              <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                                  {isLookingUp ? <Loader2 className="animate-spin text-blue-600" size={18}/> : <Globe size={18}/>}
+                              </div>
+                          )}
+                      </div>
                    </div>
 
                    <div className="col-span-2">
@@ -332,13 +405,14 @@ const Associates: React.FC = () => {
                           </label>
                           <div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100">
                              <input className="w-full p-4 bg-white border border-blue-100 rounded-2xl font-black text-lg text-slate-800 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all uppercase tracking-[0.2em] text-center" value={formData.linkedPlate} onChange={e => setFormData({...formData, linkedPlate: e.target.value.toUpperCase()})} placeholder="ABC1D23" maxLength={7} />
+                             <p className="text-[10px] text-center text-slate-400 mt-2 font-medium">O veículo será criado automaticamente com dados padrão se não existir.</p>
                           </div>
                        </div>
                    )}
                 </div>
 
                 <div className="pt-6 flex justify-end gap-3 border-t border-slate-50">
-                   <button type="button" onClick={() => setIsModalOpen(false)} className="px-8 py-4 text-slate-400 font-black uppercase text-[10px] hover:text-slate-600 tracking-widest">Cancelar</button>
+                   <button type="button" onClick={() => setIsModalOpen(false)} disabled={isSubmitting} className="px-8 py-4 text-slate-400 font-black uppercase text-[10px] hover:text-slate-600 tracking-widest">Cancelar</button>
                    <button type="submit" disabled={isSubmitting} className="px-10 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-blue-600/20 hover:bg-blue-700 transition-all flex items-center gap-2">
                       {isSubmitting ? <Loader2 className="animate-spin" size={16}/> : <><Save size={16}/> Salvar Associado</>}
                    </button>

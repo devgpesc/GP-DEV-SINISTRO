@@ -2,7 +2,8 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   Plus, Search, Eye, X, AlertCircle, 
-  FileText, Trash2, ShieldAlert, Edit3, User, Link as LinkIcon, Lock, CheckCircle2
+  FileText, Trash2, ShieldAlert, Edit3, User, Link as LinkIcon, Lock, CheckCircle2,
+  Filter, Calendar, Paperclip, Image as ImageIcon, Download, File
 } from 'lucide-react';
 import { EventStatus, EventType, Priority, Event, Vehicle, Associate } from '../types';
 import { supabase } from '../services/supabaseClient';
@@ -47,8 +48,20 @@ const Events: React.FC = () => {
   const [eventToEdit, setEventToEdit] = useState<Event | null>(null);
   const [eventToDelete, setEventToDelete] = useState<Event | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // States para Filtros Avançados
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState({
+    status: '',
+    priority: '',
+    category: '',
+    responsible: '',
+    startDate: '',
+    endDate: ''
+  });
 
   const PREDEFINED_CATEGORIES = ['Mecânica', 'Elétrica', 'Funilaria', 'Seguro', 'Outros'];
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
     protocolMode: 'auto' as 'auto' | 'manual',
@@ -124,6 +137,35 @@ const Events: React.FC = () => {
     setIsModalOpen(true);
   };
 
+  // --- Lógica de Anexos ---
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      const newAttachments = Array.from(files).map(file => ({
+        id: Math.random().toString(36).substr(2, 9),
+        name: file.name,
+        type: file.type,
+        size: (file.size / 1024).toFixed(2) + ' KB',
+        url: URL.createObjectURL(file), // Simula URL para preview
+        createdAt: new Date().toISOString()
+      }));
+      setFormData(prev => ({
+        ...prev,
+        attachments: [...prev.attachments, ...newAttachments]
+      }));
+    }
+    // Limpa o input
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeAttachment = (id: string) => {
+    setFormData(prev => ({
+      ...prev,
+      attachments: prev.attachments.filter(a => a.id !== id)
+    }));
+  };
+  // -----------------------
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isFormLocked) {
@@ -172,15 +214,50 @@ const Events: React.FC = () => {
       }
   };
 
+  const clearFilters = () => {
+    setFilters({
+      status: '',
+      priority: '',
+      category: '',
+      responsible: '',
+      startDate: '',
+      endDate: ''
+    });
+    setSearchTerm('');
+  };
+
   const filteredEvents = events.filter(e => {
     const associate = associates.find(a => a.id === e.associateId);
     const vehicle = vehicles.find(v => v.id === e.vehicleId);
+    
+    // Filtro de Texto Global
     const lowSearch = searchTerm.toLowerCase();
-    return (
+    const matchesSearch = 
       e.protocol.toLowerCase().includes(lowSearch) ||
       associate?.name.toLowerCase().includes(lowSearch) ||
-      vehicle?.plate.toLowerCase().includes(lowSearch)
-    );
+      vehicle?.plate.toLowerCase().includes(lowSearch);
+
+    if (!matchesSearch) return false;
+
+    // Filtros Específicos
+    if (filters.status && e.status !== filters.status) return false;
+    if (filters.priority && e.priority !== filters.priority) return false;
+    if (filters.category && e.category !== filters.category) return false;
+    
+    // Filtro de Datas
+    if (filters.startDate) {
+      const start = new Date(filters.startDate);
+      const eventDate = new Date(e.createdAt);
+      if (eventDate < start) return false;
+    }
+    if (filters.endDate) {
+      const end = new Date(filters.endDate);
+      end.setHours(23, 59, 59);
+      const eventDate = new Date(e.createdAt);
+      if (eventDate > end) return false;
+    }
+
+    return true;
   });
 
   const selectedAssociateObj = associates.find(a => a.id === formData.associateId);
@@ -188,16 +265,26 @@ const Events: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Search & Action Bar */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-        <div className="relative flex-1 w-full">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-          <input 
-            type="text" 
-            placeholder="Buscar por Protocolo, Nome do Cliente ou Placa..."
-            className="w-full pl-12 pr-4 py-3 bg-slate-50 rounded-2xl outline-none border border-slate-100 text-sm font-medium focus:ring-2 focus:ring-blue-500/20"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+        <div className="flex items-center gap-2 flex-1 w-full">
+          <div className="relative flex-1">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+            <input 
+              type="text" 
+              placeholder="Buscar por Protocolo, Nome do Cliente ou Placa..."
+              className="w-full pl-12 pr-4 py-3 bg-slate-50 rounded-2xl outline-none border border-slate-100 text-sm font-medium focus:ring-2 focus:ring-blue-500/20"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <button 
+            onClick={() => setShowFilters(!showFilters)}
+            className={`p-3 rounded-2xl border transition-all ${showFilters ? 'bg-slate-100 border-slate-300 text-blue-600' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+            title="Filtros Avançados"
+          >
+            <Filter size={20} />
+          </button>
         </div>
         <button 
           onClick={handleOpenNew}
@@ -207,6 +294,48 @@ const Events: React.FC = () => {
         </button>
       </div>
 
+      {/* Advanced Filters Panel */}
+      {showFilters && (
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm animate-in slide-in-from-top-2">
+          <div className="flex justify-between items-center mb-4">
+             <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Filter size={14}/> Filtros Avançados</h4>
+             <button onClick={clearFilters} className="text-[10px] font-bold text-red-500 hover:text-red-700 uppercase tracking-widest">Limpar Filtros</button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+             <div>
+               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Status</label>
+               <select className="w-full p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm outline-none" value={filters.status} onChange={e => setFilters({...filters, status: e.target.value})}>
+                 <option value="">Todos</option>
+                 {Object.values(EventStatus).map(s => <option key={s} value={s}>{s}</option>)}
+               </select>
+             </div>
+             <div>
+               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Prioridade</label>
+               <select className="w-full p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm outline-none" value={filters.priority} onChange={e => setFilters({...filters, priority: e.target.value})}>
+                 <option value="">Todas</option>
+                 {Object.values(Priority).map(p => <option key={p} value={p}>{p}</option>)}
+               </select>
+             </div>
+             <div>
+               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Categoria</label>
+               <select className="w-full p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm outline-none" value={filters.category} onChange={e => setFilters({...filters, category: e.target.value})}>
+                 <option value="">Todas</option>
+                 {PREDEFINED_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+               </select>
+             </div>
+             <div>
+               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">De (Data)</label>
+               <input type="date" className="w-full p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm outline-none" value={filters.startDate} onChange={e => setFilters({...filters, startDate: e.target.value})} />
+             </div>
+             <div>
+               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Até (Data)</label>
+               <input type="date" className="w-full p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm outline-none" value={filters.endDate} onChange={e => setFilters({...filters, endDate: e.target.value})} />
+             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Events Table */}
       <div className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm">
         <table className="w-full text-left">
           <thead className="bg-slate-50 border-b border-slate-100">
@@ -222,7 +351,7 @@ const Events: React.FC = () => {
             {filteredEvents.length === 0 ? (
                <tr>
                  <td colSpan={5} className="px-8 py-12 text-center text-slate-400">
-                    <p className="text-sm font-bold">Nenhum sinistro registrado.</p>
+                    <p className="text-sm font-bold">Nenhum sinistro encontrado com os filtros atuais.</p>
                  </td>
                </tr>
             ) : filteredEvents.map(evt => {
@@ -241,8 +370,7 @@ const Events: React.FC = () => {
                   <td className="px-8 py-5"><div className="flex justify-center"><PriorityBadge priority={evt.priority} /></div></td>
                   <td className="px-8 py-5 text-center"><StatusBadge status={evt.status} /></td>
                   <td className="px-8 py-5 text-right flex items-center justify-end gap-1">
-                     <button onClick={() => setSelectedEvent(evt)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Eye size={18}/></button>
-                     <button onClick={() => handleEdit(evt)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Edit3 size={18}/></button>
+                     <button onClick={() => handleEdit(evt)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Eye size={18}/></button>
                      <button onClick={() => setEventToDelete(evt)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18}/></button>
                   </td>
                 </tr>
@@ -252,6 +380,7 @@ const Events: React.FC = () => {
         </table>
       </div>
 
+      {/* Delete Modal */}
       {eventToDelete && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setEventToDelete(null)}></div>
@@ -267,6 +396,7 @@ const Events: React.FC = () => {
         </div>
       )}
 
+      {/* Create/Edit Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
@@ -285,6 +415,8 @@ const Events: React.FC = () => {
                       <CheckCircle2 size={24} className="text-blue-200"/>
                   </div>
               )}
+              
+              {/* SECTION 1: Vínculo */}
               <section className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm relative overflow-hidden">
                  <div className="absolute top-0 left-0 w-1.5 h-full bg-blue-600"></div>
                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-6 flex items-center gap-2"><User size={16} className="text-blue-600"/> 1. Definição de Vínculo (Obrigatório)</h4>
@@ -306,6 +438,8 @@ const Events: React.FC = () => {
                  </div>
                  {!formData.associateId && <div className="mt-4 p-3 bg-amber-50 text-amber-600 text-xs font-bold rounded-xl flex items-center gap-2"><AlertCircle size={16}/> Selecione um associado para habilitar a lista de veículos.</div>}
               </section>
+
+              {/* SECTION 2: Detalhes */}
               <section className={`bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm transition-all duration-300 ${isFormLocked ? 'opacity-50 grayscale pointer-events-none' : ''}`}>
                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-6 flex items-center gap-2"><FileText size={16} className="text-blue-600"/> 2. Detalhes do Evento {isFormLocked && <Lock size={14} className="text-slate-400"/>}</h4>
                  <div className="space-y-6">
@@ -328,6 +462,47 @@ const Events: React.FC = () => {
                     </div>
                     <div><label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Descrição do Ocorrido</label><textarea className="w-full p-5 bg-slate-50 rounded-3xl border border-slate-100 h-28 outline-none font-medium resize-none text-slate-700" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} /></div>
                  </div>
+              </section>
+
+              {/* SECTION 3: Anexos */}
+              <section className={`bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm transition-all duration-300 ${isFormLocked ? 'opacity-50 grayscale pointer-events-none' : ''}`}>
+                 <div className="flex justify-between items-center mb-6">
+                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2"><Paperclip size={16} className="text-blue-600"/> 3. Documentos e Evidências</h4>
+                    <button type="button" onClick={() => fileInputRef.current?.click()} className="text-[10px] font-black uppercase bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors flex items-center gap-1"><Plus size={14}/> Adicionar Arquivo</button>
+                    <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelect} multiple accept="image/*,application/pdf" />
+                 </div>
+                 
+                 {formData.attachments.length === 0 ? (
+                    <div className="p-8 border-2 border-dashed border-slate-100 rounded-3xl text-center">
+                        <Paperclip size={32} className="mx-auto text-slate-300 mb-2"/>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Nenhum anexo adicionado</p>
+                    </div>
+                 ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {formData.attachments.map((att: any) => (
+                            <div key={att.id} className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3 relative group">
+                                <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center border border-slate-200 shrink-0 overflow-hidden">
+                                    {att.type.startsWith('image/') ? (
+                                        <img src={att.url} className="w-full h-full object-cover" />
+                                    ) : (
+                                        <File size={20} className="text-slate-400"/>
+                                    )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-bold text-slate-700 truncate">{att.name}</p>
+                                    <p className="text-[10px] text-slate-400 font-medium">{new Date(att.createdAt).toLocaleDateString()} • {att.size}</p>
+                                </div>
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {att.type.startsWith('image/') && (
+                                        <a href={att.url} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-white text-blue-600 rounded-lg shadow-sm hover:bg-blue-50"><Eye size={14}/></a>
+                                    )}
+                                    <a href={att.url} download={att.name} className="p-1.5 bg-white text-green-600 rounded-lg shadow-sm hover:bg-green-50"><Download size={14}/></a>
+                                    <button type="button" onClick={() => removeAttachment(att.id)} className="p-1.5 bg-white text-red-500 rounded-lg shadow-sm hover:bg-red-50"><Trash2 size={14}/></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                 )}
               </section>
             </div>
             <div className="p-6 bg-white border-t border-slate-100 flex justify-end gap-3 sticky bottom-0 z-10">
