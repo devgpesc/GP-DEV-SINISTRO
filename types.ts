@@ -82,65 +82,30 @@ export interface SupplierPrice {
   quotation_item_id: string;
   supplier_id: string;
   price: number;
-  availability: boolean;
-  is_winner: boolean;
   obs?: string;
+  availability: boolean;
+  is_winner?: boolean;
 }
 
-// Matriz de Dados (Frontend Helper)
-export interface MatrixData {
-  item: QuotationItem;
-  prices: Record<string, SupplierPrice>; // Chave é supplier_id
-  bestPrice: number;
-  bestSupplierId: string;
-}
-
-export interface Event {
+export interface CatalogItem {
   id: string;
-  protocol: string;
-  type: EventType;
-  priority: Priority;
-  status: EventStatus;
+  code: string;
+  name: string;
   category: string;
-  vehicleId: string;
-  associateId: string;
-  createdAt: string;
-  createdBy: string;
-  description: string;
-  attachments: any[];
-  history: any[];
+  type: 'Peça' | 'Serviço';
+  unit: string;
+  description?: string;
 }
 
-export interface Vehicle {
-  id: string;
-  created_at?: string;
-  plate: string;
-  associate_id: string;
-  km: number;
-  status: 'Ativo' | 'Inativo' | 'Manutenção';
-  notes?: string;
-  brand: string;
-  model: string;
-  version?: string;
-  year_fab: string;
-  year_model: string;
-  color: string;
-  fuel: string;
-  type: string;
-  chassi?: string;
-  renavam?: string;
-  uf?: string;
-  city?: string;
-}
-
-export interface Associate {
+export interface SaasTenant {
   id: string;
   name: string;
   document: string;
-  type: 'PF' | 'PJ';
-  email?: string;
-  phone?: string;
-  createdAt: string;
+  plan_id: string;
+  status: 'active' | 'blocked' | 'suspended';
+  created_at: string;
+  owner_id?: string;
+  saas_plans?: SaasPlan;
 }
 
 export interface SaasPlan {
@@ -152,26 +117,47 @@ export interface SaasPlan {
   features: any;
 }
 
-export interface SaasTenant {
+export interface Associate {
   id: string;
   name: string;
   document: string;
-  plan_id: string;
-  owner_id?: string; // ID do usuário Admin da empresa
-  status: 'active' | 'suspended' | 'blocked';
-  created_at: string;
-  saas_plans?: SaasPlan;
+  type: 'PF' | 'PJ';
 }
 
-export interface CatalogItem {
+export interface Vehicle {
   id: string;
-  code: string;
-  name: string;
+  plate: string;
+  model: string;
+  brand: string;
+  associate_id?: string;
+  status: string;
+  year_fab?: string;
+  year_model?: string;
+  km?: number;
+  color?: string;
+  renavam?: string;
+  chassi?: string;
+  type?: string;
+  fuel?: string;
+  version?: string;
+  uf?: string;
+  city?: string;
+  notes?: string;
+}
+
+export interface Event {
+  id: string;
+  protocol: string;
+  type: EventType;
+  priority: Priority;
+  status: EventStatus;
   category: string;
-  type: 'Peça' | 'Serviço';
-  unit: string;
-  description?: string;
-  created_at?: string;
+  vehicleId: string;
+  associateId: string;
+  description: string;
+  createdAt: string;
+  attachments: any[];
+  history: any[];
 }
 
 export interface Delivery {
@@ -181,13 +167,32 @@ export interface Delivery {
   items: number;
   date: string;
   event: string;
-  status?: 'Pendente' | 'Conforme' | 'Divergente';
-  created_at?: string;
+  status?: string;
+}
+
+// --- NOVOS TIPOS AUDITORIA E CONVITES ---
+
+export interface AuditLog {
+  id: string;
+  action: string;
+  entity: string;
+  entity_id?: string;
+  details?: any;
+  user_id: string;
+  created_at: string;
+  user_email?: string;
+  profiles?: { full_name: string; email: string };
+}
+
+export interface Invitation {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  status: 'pending' | 'accepted';
+  created_by: string;
+  created_at: string;
 }
 
 export type LLMProvider = 'google' | 'openai' | 'anthropic' | 'groq';
-
-export type LLMModel = 
-  | 'gemini-3-flash-preview' 
-  | 'gemini-3-pro-preview'
-  | string;
+export type LLMModel = string;
