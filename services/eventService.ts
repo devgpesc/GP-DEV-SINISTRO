@@ -49,8 +49,10 @@ export const eventService = {
     // Fix: Cast auth to any to support v2 methods despite v1 types
     const { data: { user } } = await (supabase.auth as any).getUser();
     
-    // 3. Preparar payload (remove campos relacionais virtuais se existirem)
-    const { attachments, history, ...cleanEventData } = eventData;
+    // 3. Preparar payload (remove campos relacionais e o ID para inserção)
+    // CRITICAL FIX: Destruturamos 'id' para garantir que ele NÃO vá no payload de insert
+    // Isso força o banco a usar o gen_random_uuid() default
+    const { attachments, history, id, ...cleanEventData } = eventData;
 
     const payload = {
       ...cleanEventData,
