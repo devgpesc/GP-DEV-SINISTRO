@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, TrendingDown, ShoppingCart, Trophy, DollarSign, ArrowRight, Loader2, AlertTriangle, RefreshCw, XCircle } from 'lucide-react';
+import { CheckCircle2, TrendingDown, ShoppingCart, Trophy, DollarSign, ArrowRight, Loader2, AlertTriangle, RefreshCw, XCircle, Edit2, Save, X, MessageSquare } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { quotationService } from '../services/quotationService';
 import { QuotationItem, SupplierPrice, Supplier } from '../types';
@@ -26,8 +26,13 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
   const [prices, setPrices] = useState<SupplierPrice[]>([]);
 
   // Estado das seleções: { [itemId]: supplierId }
-  // Armazena quem venceu cada item (automaticamente ou manualmente)
   const [selections, setSelections] = useState<Record<string, string>>({});
+
+  // Estado de Edição Manual
+  const [editingCell, setEditingCell] = useState<{itemId: string, supplierId: string} | null>(null);
+  const [editPrice, setEditPrice] = useState('');
+  const [editObs, setEditObs] = useState('');
+  const [isSavingPrice, setIsSavingPrice] = useState(false);
 
   useEffect(() => {
     if (quotationId) {
@@ -78,9 +83,64 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
       }
   };
 
+  // --- LÓGICA DE EDIÇÃO MANUAL ---
+  const startEditing = (itemId: string, supplierId: string, currentPrice?: number, currentObs?: string) => {
+      setEditingCell({ itemId, supplierId });
+      setEditPrice(currentPrice ? currentPrice.toString() : '');
+      setEditObs(currentObs || '');
+  };
+
+  const cancelEditing = () => {
+      setEditingCell(null);
+      setEditPrice('');
+      setEditObs('');
+  };
+
+  const saveManualPrice = async () => {
+      if (!editingCell || !quotationId) return;
+      
+      const priceValue = parseFloat(editPrice.replace(',', '.'));
+      
+      if (isNaN(priceValue) || priceValue < 0) {
+          addToast('warning', 'Valor Inválido', 'Insira um preço válido.');
+          return;
+      }
+
+      setIsSavingPrice(true);
+      try {
+          // Upsert no Supabase (Atualiza ou Cria)
+          const payload = {
+              quotation_item_id: editingCell.itemId,
+              supplier_id: editingCell.supplierId,
+              price: priceValue,
+              obs: editObs,
+              availability: true,
+              is_winner: false,
+              created_at: new Date().toISOString() // Atualiza timestamp
+          };
+
+          const { error } = await supabase
+              .from('quotation_supplier_prices')
+              .upsert(payload, { onConflict: 'quotation_item_id, supplier_id' });
+
+          if (error) throw error;
+
+          // Recarrega dados para atualizar totais e melhores preços
+          await loadData(); 
+          cancelEditing();
+          addToast('success', 'Preço Lançado', 'Valor atualizado na matriz.');
+
+      } catch (error: any) {
+          console.error(error);
+          addToast('error', 'Erro ao Salvar', error.message);
+      } finally {
+          setIsSavingPrice(false);
+      }
+  };
+  // -----------------------------
+
   const toggleSelection = (itemId: string, supplierId: string) => {
-      // Se clicar no que já está selecionado, não faz nada (tem que ter um vencedor se houver preço)
-      // Se clicar em outro, troca o vencedor
+      if (editingCell) return; // Não seleciona se estiver editando
       setSelections(prev => ({ ...prev, [itemId]: supplierId }));
   };
 
@@ -92,14 +152,12 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
           const supplierId = selections[itemId];
           const priceObj = prices.find(p => p.quotation_item_id === itemId && p.supplier_id === supplierId);
           
-          // Calcula total selecionado
           if (priceObj) {
               const item = items.find(i => i.id === itemId);
               const qty = item?.quantity || 1;
               selectedTotal += (priceObj.price * qty);
           }
 
-          // Calcula economia baseada no maior preço disponível para aquele item
           const itemPrices = prices.filter(p => p.quotation_item_id === itemId).map(p => p.price);
           if (itemPrices.length > 0) {
               const maxPrice = Math.max(...itemPrices);
@@ -151,7 +209,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
       <div className="bg-slate-900 text-white p-8 rounded-[40px] shadow-2xl flex flex-col lg:flex-row justify-between items-center gap-8 relative overflow-hidden">
          <div className="relative z-10">
              <h3 className="text-2xl font-black mb-1 flex items-center gap-2"><ShoppingCart className="text-blue-400"/> Matriz de Decisão</h3>
-             <p className="text-slate-400 font-medium text-sm">Clique nas células de preço para escolher o fornecedor vencedor.</p>
+             <p className="text-slate-400 font-medium text-sm">Clique no ícone de lápis para inserir preços manualmente ou clique no valor para eleger o vencedor.</p>
          </div>
          
          <div className="flex gap-8 relative z-10">
@@ -176,7 +234,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
                   <AlertTriangle size={24}/>
                   <div>
                       <p className="font-bold text-sm">Aguardando Respostas</p>
-                      <p className="text-xs">Nenhum fornecedor enviou preços ainda.</p>
+                      <p className="text-xs">Nenhum preço lançado. Use o botão de edição nas células ou simule dados.</p>
                   </div>
               </div>
               <button 
@@ -198,7 +256,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
                           Item Solicitado
                       </th>
                       {suppliers.map(sup => (
-                          <th key={sup.id} className="p-6 text-center min-w-[180px]">
+                          <th key={sup.id} className="p-6 text-center min-w-[200px]">
                               <div className="flex flex-col items-center group cursor-help">
                                   <span className="font-bold text-slate-800 text-sm">{sup.name}</span>
                                   <div className="flex items-center gap-2 mt-1">
@@ -234,22 +292,70 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
                               const rowPrices = prices.filter(p => p.quotation_item_id === item.id).map(p => p.price);
                               const minPrice = rowPrices.length > 0 ? Math.min(...rowPrices) : 0;
                               const isBestPrice = priceObj && priceObj.price === minPrice;
-                              
-                              // Se este fornecedor é o selecionado para este item
                               const isSelected = selections[item.id] === sup.id;
+                              
+                              // Modo Edição
+                              const isEditing = editingCell?.itemId === item.id && editingCell?.supplierId === sup.id;
+
+                              if (isEditing) {
+                                  return (
+                                      <td key={sup.id} className="p-2 relative">
+                                          <div className="bg-white border-2 border-blue-500 rounded-2xl p-3 shadow-lg z-30 animate-in zoom-in duration-200">
+                                              <div className="flex items-center gap-2 mb-2">
+                                                  <span className="text-xs font-bold text-slate-500">R$</span>
+                                                  <input 
+                                                    autoFocus
+                                                    type="number" 
+                                                    className="w-full font-black text-slate-800 outline-none border-b border-slate-200 focus:border-blue-500" 
+                                                    value={editPrice}
+                                                    onChange={e => setEditPrice(e.target.value)}
+                                                    placeholder="0.00"
+                                                  />
+                                              </div>
+                                              <input 
+                                                className="w-full text-[10px] font-medium text-slate-500 outline-none bg-slate-50 p-1.5 rounded mb-2"
+                                                placeholder="Obs (Marca/Prazo)..."
+                                                value={editObs}
+                                                onChange={e => setEditObs(e.target.value)}
+                                              />
+                                              <div className="flex justify-end gap-1">
+                                                  <button onClick={cancelEditing} className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500"><X size={14}/></button>
+                                                  <button onClick={saveManualPrice} disabled={isSavingPrice} className="p-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1">
+                                                      {isSavingPrice ? <Loader2 size={14} className="animate-spin"/> : <Save size={14}/>}
+                                                  </button>
+                                              </div>
+                                          </div>
+                                      </td>
+                                  )
+                              }
 
                               if (!priceObj) {
                                   return (
-                                    <td key={sup.id} className="p-4 text-center">
-                                        <div className="w-full py-4 rounded-2xl bg-slate-50 border border-slate-100 text-xs text-slate-300 font-medium flex flex-col items-center justify-center gap-1">
-                                            <XCircle size={14} /> Sem Cotação
+                                    <td key={sup.id} className="p-4 text-center group/cell relative">
+                                        <div 
+                                            onClick={() => startEditing(item.id, sup.id)}
+                                            className="w-full py-4 rounded-2xl bg-slate-50 border border-slate-100 text-xs text-slate-300 font-medium flex flex-col items-center justify-center gap-1 cursor-pointer hover:bg-blue-50 hover:text-blue-500 hover:border-blue-200 transition-all"
+                                        >
+                                            <XCircle size={14} className="group-hover/cell:hidden" /> 
+                                            <Edit2 size={14} className="hidden group-hover/cell:block" />
+                                            <span className="group-hover/cell:hidden">Sem Cotação</span>
+                                            <span className="hidden group-hover/cell:inline font-bold">Lançar Preço</span>
                                         </div>
                                     </td>
                                   );
                               }
 
                               return (
-                                  <td key={sup.id} className="p-3 text-center">
+                                  <td key={sup.id} className="p-3 text-center relative group/cell">
+                                      {/* Edit Button Overlay */}
+                                      <button 
+                                        onClick={(e) => { e.stopPropagation(); startEditing(item.id, sup.id, priceObj.price, priceObj.obs); }}
+                                        className="absolute top-2 right-2 p-1.5 bg-white text-slate-400 hover:text-blue-600 rounded-full shadow-sm border border-slate-100 opacity-0 group-hover/cell:opacity-100 transition-opacity z-20"
+                                        title="Editar Valor"
+                                      >
+                                          <Edit2 size={12}/>
+                                      </button>
+
                                       <button 
                                         onClick={() => toggleSelection(item.id, sup.id)}
                                         className={`w-full py-4 rounded-2xl border-2 transition-all flex flex-col items-center justify-center relative group ${
@@ -274,6 +380,12 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
                                           <span className={`text-[9px] font-bold mt-1 uppercase tracking-wider ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>
                                               Total: R$ {(priceObj.price * item.quantity).toLocaleString('pt-BR', {maximumFractionDigits: 0})}
                                           </span>
+
+                                          {priceObj.obs && (
+                                              <div className="absolute bottom-1 left-1/2 -translate-x-1/2" title={priceObj.obs}>
+                                                  <MessageSquare size={10} className={isSelected ? 'text-blue-300' : 'text-slate-300'}/>
+                                              </div>
+                                          )}
                                       </button>
                                   </td>
                               );
