@@ -55,7 +55,11 @@ const SaasAdmin: React.FC = () => {
       price: 0,
       max_users: 5,
       max_events: 100,
-      features: {}
+      features: {
+          ai_analysis: false,
+          advanced_reports: false,
+          financial_module: true
+      } as any
   });
 
   useEffect(() => {
@@ -256,11 +260,17 @@ const SaasAdmin: React.FC = () => {
               price: plan.price,
               max_users: plan.max_users,
               max_events: plan.max_events,
-              features: plan.features || {}
+              features: plan.features || { ai_analysis: false, advanced_reports: false }
           });
       } else {
           setEditingPlan(null);
-          setPlanForm({ name: '', price: 0, max_users: 5, max_events: 100, features: {} });
+          setPlanForm({ 
+              name: '', 
+              price: 0, 
+              max_users: 5, 
+              max_events: 100, 
+              features: { ai_analysis: false, advanced_reports: false, financial_module: true } 
+          });
       }
       setIsPlanModalOpen(true);
   };
@@ -296,6 +306,16 @@ const SaasAdmin: React.FC = () => {
       }
   };
 
+  const toggleFeature = (key: string) => {
+      setPlanForm(prev => ({
+          ...prev,
+          features: {
+              ...prev.features,
+              [key]: !prev.features[key]
+          }
+      }));
+  };
+
   // --- ESTATÍSTICAS ---
   const stats = useMemo(() => {
       const activeTenantsCount = tenants.filter(t => t.status === 'active').length;
@@ -327,25 +347,16 @@ const SaasAdmin: React.FC = () => {
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-20">
       
-      {/* Header com Abas */}
+      {/* Header com Abas (Mantido igual) */}
       <div className="flex justify-between items-end border-b border-slate-200 pb-1">
           <div className="flex gap-8">
-              <button 
-                onClick={() => setActiveTab('overview')} 
-                className={`pb-4 text-sm font-black uppercase tracking-widest transition-all border-b-2 ${activeTab === 'overview' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
-              >
-                  Visão Geral
-              </button>
-              <button 
-                onClick={() => setActiveTab('plans')} 
-                className={`pb-4 text-sm font-black uppercase tracking-widest transition-all border-b-2 ${activeTab === 'plans' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
-              >
-                  Gestão de Planos
-              </button>
+              <button onClick={() => setActiveTab('overview')} className={`pb-4 text-sm font-black uppercase tracking-widest transition-all border-b-2 ${activeTab === 'overview' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>Visão Geral</button>
+              <button onClick={() => setActiveTab('plans')} className={`pb-4 text-sm font-black uppercase tracking-widest transition-all border-b-2 ${activeTab === 'plans' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>Gestão de Planos</button>
           </div>
       </div>
 
       {activeTab === 'overview' && (
+          // ... Conteúdo Overview Mantido (Sem alterações visuais drásticas, apenas lógica de fallback já aplicada anteriormente)
           <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
             {/* KPI Cards Expandidos */}
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -496,10 +507,12 @@ const SaasAdmin: React.FC = () => {
                                   <Activity size={16} className="text-green-500"/>
                                   Até {plan.max_events} Eventos/mês
                               </div>
-                              <div className="flex items-center gap-3 text-sm font-bold text-slate-600">
-                                  <Database size={16} className="text-amber-500"/>
-                                  Suporte Prioritário
-                              </div>
+                              {plan.features?.ai_analysis && (
+                                  <div className="flex items-center gap-3 text-sm font-bold text-indigo-600">
+                                      <CheckCircle size={16}/>
+                                      IA Visionária Inclusa
+                                  </div>
+                              )}
                           </div>
                       </div>
                   ))}
@@ -507,7 +520,7 @@ const SaasAdmin: React.FC = () => {
           </div>
       )}
 
-      {/* Modal Tenant (Criar/Editar) */}
+      {/* Modal Tenant (Mantido) */}
       {isTenantModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => !isProcessing && setIsTenantModalOpen(false)}></div>
@@ -559,7 +572,6 @@ const SaasAdmin: React.FC = () => {
                         {loadingAdminData && <Loader2 size={12} className="animate-spin ml-2"/>}
                     </h4>
                     
-                    {/* Admin Fields */}
                     <div className={`transition-opacity ${loadingAdminData ? 'opacity-50' : 'opacity-100'}`}>
                         <div>
                             <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Nome Completo</label>
@@ -593,7 +605,7 @@ const SaasAdmin: React.FC = () => {
         </div>
       )}
 
-      {/* Modal Plano, Success Modal... (Mantidos sem alteração) */}
+      {/* Modal Plano (Atualizado com Features) */}
       {isPlanModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
               <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => !isProcessing && setIsPlanModalOpen(false)}></div>
@@ -621,6 +633,25 @@ const SaasAdmin: React.FC = () => {
                           <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Limite Eventos/Mês</label>
                           <input required type="number" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" 
                               value={planForm.max_events} onChange={e => setPlanForm({...planForm, max_events: Number(e.target.value)})} />
+                      </div>
+
+                      {/* FEATURE SELECTOR */}
+                      <div className="pt-4 border-t border-slate-100">
+                          <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Funcionalidades Inclusas</label>
+                          <div className="space-y-2">
+                              <div onClick={() => toggleFeature('ai_analysis')} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${planForm.features.ai_analysis ? 'border-indigo-500 bg-indigo-50' : 'border-slate-100'}`}>
+                                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${planForm.features.ai_analysis ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'}`}>
+                                      {planForm.features.ai_analysis && <Check size={12} className="text-white"/>}
+                                  </div>
+                                  <span className="text-xs font-bold text-slate-700">Inteligência Artificial (IA)</span>
+                              </div>
+                              <div onClick={() => toggleFeature('advanced_reports')} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${planForm.features.advanced_reports ? 'border-indigo-500 bg-indigo-50' : 'border-slate-100'}`}>
+                                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${planForm.features.advanced_reports ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'}`}>
+                                      {planForm.features.advanced_reports && <Check size={12} className="text-white"/>}
+                                  </div>
+                                  <span className="text-xs font-bold text-slate-700">Relatórios Estratégicos</span>
+                              </div>
+                          </div>
                       </div>
 
                       <div className="flex justify-end gap-3 pt-4">

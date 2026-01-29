@@ -114,7 +114,14 @@ export interface SaasPlan {
   price: number;
   max_users: number;
   max_events: number;
-  features: any;
+  features: {
+    ai_analysis?: boolean;
+    advanced_reports?: boolean;
+    financial_module?: boolean;
+    multi_branch?: boolean;
+    api_access?: boolean;
+    [key: string]: boolean | undefined;
+  };
 }
 
 export interface Associate {

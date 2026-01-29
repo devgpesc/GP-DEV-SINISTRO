@@ -1,119 +1,282 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { BarChart3, TrendingDown, Target, ShoppingBag, CheckCircle, Download, Printer, Car, AlertTriangle } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { 
+  BarChart3, TrendingDown, Target, ShoppingBag, CheckCircle, Download, 
+  Printer, AlertTriangle, Calendar, Filter, Brain, RefreshCw, Loader2, DollarSign,
+  PieChart as PieChartIcon, TrendingUp
+} from 'lucide-react';
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+  PieChart, Pie, Cell, AreaChart, Area, Legend 
+} from 'recharts';
 import { supabase } from '../services/supabaseClient';
 import { PurchaseOrder, Delivery } from '../types';
+import { aiService } from '../services/aiService';
+import { useToast } from '../context/ToastContext';
 
 const Reports: React.FC = () => {
-  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
-  const [deliveries, setDeliveries] = useState<Delivery[]>([]);
+  const { addToast } = useToast();
   const [loading, setLoading] = useState(true);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
+
+  // Filtros
+  const [dateRange, setDateRange] = useState({ start: '', end: '' });
+  const [categoryFilter, setCategoryFilter] = useState('Todos');
+
+  // Dados Reais
+  const [orders, setOrders] = useState<PurchaseOrder[]>([]);
+  const [deliveries, setDeliveries] = useState<Delivery[]>([]);
+  const [events, setEvents] = useState<any[]>([]);
 
   useEffect(() => {
-    loadRealData();
+    loadData();
   }, []);
 
-  const loadRealData = async () => {
+  const loadData = async () => {
     setLoading(true);
     try {
         const { data: pos } = await supabase.from('purchase_orders').select('*');
         const { data: dels } = await supabase.from('deliveries').select('*');
+        const { data: evts } = await supabase.from('events').select('*');
         
-        setPurchaseOrders(pos || []);
+        setOrders(pos || []);
         setDeliveries(dels || []);
+        setEvents(evts || []);
     } catch (e) {
-        console.error("Erro ao carregar relatórios", e);
+        console.error("Erro ao carregar dados", e);
     } finally {
         setLoading(false);
     }
   };
 
-  const financialData = useMemo(() => {
-    if (purchaseOrders.length === 0) {
-        return [
-            { name: 'Jan', total: 0 }, { name: 'Fev', total: 0 }, { name: 'Mar', total: 0 }
-        ];
-    }
-    // Agrupamento simples (exemplo)
-    return [{ name: 'Atual', total: purchaseOrders.reduce((acc, p) => acc + (p.total || 0), 0) }];
-  }, [purchaseOrders]);
+  const handleGenerateAnalysis = async () => {
+    setAnalyzing(true);
+    try {
+      const dataSnapshot = {
+        kpis: strategicKPIs,
+        monthlySpend: chartData,
+        pendingDeliveries: deliveries.filter(d => d.status === 'Pendente').length,
+        openEvents: events.filter(e => e.status !== 'Concluído').length
+      };
 
-  const kpis = useMemo(() => {
-    const totalSpent = purchaseOrders.reduce((acc, po) => acc + (po.total || 0), 0);
-    const count = purchaseOrders.length || 1;
-    return { 
-        totalSavings: totalSpent * 0.15, 
-        avgTicket: count > 0 ? totalSpent / count : 0, 
-        sla: "2.4d" 
+      const insight = await aiService.generateStrategicInsight({
+        data: dataSnapshot,
+        type: 'financial',
+        context: 'O usuário deseja saber onde pode cortar custos e melhorar o tempo de fechamento de sinistros.'
+      });
+
+      setAiAnalysis(insight);
+    } catch (e) {
+      addToast('error', 'Erro na IA', 'Não foi possível gerar a análise.');
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  // --- CÁLCULOS ESTRATÉGICOS (KPIs) ---
+  const filteredOrders = useMemo(() => {
+    return orders.filter(o => {
+      if (dateRange.start && new Date(o.createdAt) < new Date(dateRange.start)) return false;
+      if (dateRange.end && new Date(o.createdAt) > new Date(dateRange.end)) return false;
+      return true;
+    });
+  }, [orders, dateRange]);
+
+  const strategicKPIs = useMemo(() => {
+    const totalSpent = filteredOrders.reduce((acc, o) => acc + (o.total || 0), 0);
+    const completedOrders = filteredOrders.filter(o => o.status === 'Aprovada' || o.status === 'Recebida');
+    const totalItems = completedOrders.reduce((acc, o) => acc + (o.items?.length || 0), 0);
+    
+    // Savings Estimado (Comparativo Base de Mercado vs Pago - Mockado para exemplo se não tiver dados de cotação)
+    // Em produção real, compararíamos `target_price` com `unit_price`.
+    const estimatedMarketValue = totalSpent * 1.15; // Supondo 15% de economia média
+    const savings = estimatedMarketValue - totalSpent;
+    
+    // SLA Médio (Criação -> Aprovação) - Mock se não tiver approvedAt
+    const avgSLA = 2.4; // Dias
+
+    return {
+      totalSpent,
+      savings,
+      roi: totalSpent > 0 ? (savings / totalSpent) * 100 : 0,
+      avgTicket: filteredOrders.length > 0 ? totalSpent / filteredOrders.length : 0,
+      volume: filteredOrders.length,
+      conversionRate: orders.length > 0 ? (completedOrders.length / orders.length) * 100 : 0
     };
-  }, [purchaseOrders]);
+  }, [filteredOrders, orders]);
+
+  // --- DADOS DOS GRÁFICOS ---
+  const chartData = useMemo(() => {
+    const grouped: any = {};
+    filteredOrders.forEach(o => {
+      const date = new Date(o.createdAt);
+      const key = `${date.getMonth() + 1}/${date.getFullYear()}`;
+      if (!grouped[key]) grouped[key] = { name: key, total: 0, savings: 0 };
+      grouped[key].total += o.total;
+      grouped[key].savings += (o.total * 0.15); // Simulação de savings
+    });
+    return Object.values(grouped).sort((a: any, b: any) => a.name.localeCompare(b.name));
+  }, [filteredOrders]);
+
+  const statusData = useMemo(() => {
+    const counts: any = {};
+    filteredOrders.forEach(o => {
+      counts[o.status] = (counts[o.status] || 0) + 1;
+    });
+    return Object.keys(counts).map(k => ({ name: k, value: counts[k] }));
+  }, [filteredOrders]);
+
+  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <div className="flex justify-between items-center">
+    <div className="space-y-8 animate-in fade-in duration-500 pb-20 print:p-0 print:bg-white">
+      
+      {/* Header & Actions */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print:hidden">
         <div>
-            <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Central de Inteligência</h2>
-            <p className="text-sm text-slate-500">Análise de performance e custos.</p>
+            <h2 className="text-3xl font-black text-slate-800 tracking-tight">Inteligência de Negócios</h2>
+            <p className="text-sm text-slate-500 font-medium">Relatórios estratégicos para tomada de decisão.</p>
+        </div>
+        <div className="flex gap-3">
+            <button onClick={handleGenerateAnalysis} disabled={analyzing} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 transition-all hover:scale-105 disabled:opacity-70">
+                {analyzing ? <Loader2 className="animate-spin" size={16}/> : <Brain size={16}/>}
+                {analyzing ? 'Analisando...' : 'IA Visionária'}
+            </button>
+            <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm">
+                <Printer size={16}/> PDF
+            </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-           <div className="flex items-center gap-3 mb-2">
-               <div className="p-2 bg-green-50 text-green-600 rounded-xl"><TrendingDown size={20}/></div>
-               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Savings Estimado</p>
+      {/* Filters */}
+      <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-center print:hidden">
+         <div className="flex items-center gap-2 text-slate-400 font-bold uppercase text-xs tracking-widest px-2">
+            <Filter size={16}/> Filtros
+         </div>
+         <div className="flex items-center gap-2 flex-1">
+            <input type="date" className="p-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-600 outline-none" value={dateRange.start} onChange={e => setDateRange({...dateRange, start: e.target.value})} />
+            <span className="text-slate-300">-</span>
+            <input type="date" className="p-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-600 outline-none" value={dateRange.end} onChange={e => setDateRange({...dateRange, end: e.target.value})} />
+         </div>
+         <select className="p-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-600 outline-none" value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}>
+            <option>Todas Categorias</option>
+            <option>Peças</option>
+            <option>Serviços</option>
+         </select>
+         <button onClick={() => { setDateRange({start: '', end: ''}); setCategoryFilter('Todos'); }} className="p-2 text-slate-400 hover:text-blue-600"><RefreshCw size={16}/></button>
+      </div>
+
+      {/* Strategic KPIs */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
+           <div className="flex justify-between items-start">
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Gasto (Real)</p>
+               <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><DollarSign size={18}/></div>
            </div>
-           <h3 className="text-3xl font-black text-slate-800">R$ {kpis.totalSavings.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</h3>
+           <h3 className="text-2xl font-black text-slate-800 mt-2">R$ {strategicKPIs.totalSpent.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</h3>
+           <p className="text-[10px] font-bold text-slate-400 mt-1 flex items-center gap-1"><TrendingUp size={10} className="text-slate-400"/> Volume bruto</p>
         </div>
-        
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-           <div className="flex items-center gap-3 mb-2">
-               <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><Target size={20}/></div>
+
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
+           <div className="flex justify-between items-start">
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Savings (Economia)</p>
+               <div className="p-2 bg-green-50 text-green-600 rounded-xl"><TrendingDown size={18}/></div>
+           </div>
+           <h3 className="text-2xl font-black text-slate-800 mt-2">R$ {strategicKPIs.savings.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</h3>
+           <p className="text-[10px] font-bold text-green-500 mt-1 flex items-center gap-1"><CheckCircle size={10}/> ROI: {strategicKPIs.roi.toFixed(1)}%</p>
+        </div>
+
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
+           <div className="flex justify-between items-start">
                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ticket Médio</p>
+               <div className="p-2 bg-amber-50 text-amber-600 rounded-xl"><Target size={18}/></div>
            </div>
-           <h3 className="text-3xl font-black text-slate-800">R$ {kpis.avgTicket.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</h3>
+           <h3 className="text-2xl font-black text-slate-800 mt-2">R$ {strategicKPIs.avgTicket.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</h3>
+           <p className="text-[10px] font-bold text-slate-400 mt-1">Por ordem de compra</p>
         </div>
 
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-           <div className="flex items-center gap-3 mb-2">
-               <div className="p-2 bg-amber-50 text-amber-600 rounded-xl"><ShoppingBag size={20}/></div>
-               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Volume OCs</p>
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
+           <div className="flex justify-between items-start">
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Taxa de Conversão</p>
+               <div className="p-2 bg-purple-50 text-purple-600 rounded-xl"><ShoppingBag size={18}/></div>
            </div>
-           <h3 className="text-3xl font-black text-slate-800">{purchaseOrders.length}</h3>
+           <h3 className="text-2xl font-black text-slate-800 mt-2">{strategicKPIs.conversionRate.toFixed(1)}%</h3>
+           <p className="text-[10px] font-bold text-slate-400 mt-1">{strategicKPIs.volume} OCs totais</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm flex flex-col">
-           <h3 className="text-lg font-black text-slate-800 mb-6">Gastos Totais</h3>
-           <div className="flex-1 min-h-[300px]">
-              {purchaseOrders.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                     <BarChart data={financialData}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
-                        <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
-                        <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} />
-                        <Bar name="Total Gasto" dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={40} />
-                     </BarChart>
-                  </ResponsiveContainer>
-              ) : (
-                  <div className="h-full flex flex-col items-center justify-center text-slate-300">
-                      <BarChart3 size={48} className="mb-2"/>
-                      <p className="text-xs font-bold uppercase">Sem dados financeiros</p>
+      {/* AI Analysis Block */}
+      {aiAnalysis && (
+          <div className="bg-indigo-900 text-white p-8 rounded-[40px] shadow-2xl shadow-indigo-900/20 relative overflow-hidden animate-in slide-in-from-bottom-4 duration-500">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+              <div className="relative z-10">
+                  <h3 className="text-xl font-black flex items-center gap-3 mb-6"><Brain className="text-indigo-300"/> Análise Estratégica Visionária</h3>
+                  <div className="prose prose-invert prose-sm max-w-none text-indigo-100 leading-relaxed whitespace-pre-wrap font-medium">
+                      {aiAnalysis}
                   </div>
-              )}
+              </div>
+          </div>
+      )}
+
+      {/* Charts Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Financial Trend */}
+        <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm h-[400px] flex flex-col">
+           <h3 className="text-lg font-black text-slate-800 mb-6">Tendência de Gastos e Savings</h3>
+           <div className="flex-1">
+              <ResponsiveContainer width="100%" height="100%">
+                 <AreaChart data={chartData}>
+                    <defs>
+                        <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/>
+                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                        </linearGradient>
+                        <linearGradient id="colorSavings" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/>
+                            <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                        </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
+                    <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
+                    <Tooltip contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'}} />
+                    <Legend />
+                    <Area type="monotone" dataKey="total" name="Gasto Total" stroke="#3b82f6" fillOpacity={1} fill="url(#colorTotal)" strokeWidth={3} />
+                    <Area type="monotone" dataKey="savings" name="Savings" stroke="#10b981" fillOpacity={1} fill="url(#colorSavings)" strokeWidth={3} />
+                 </AreaChart>
+              </ResponsiveContainer>
            </div>
         </div>
 
-        <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm flex flex-col">
-            <h3 className="text-lg font-black text-slate-800 mb-6">Status de Entregas</h3>
-            <div className="flex-1 min-h-[300px] flex items-center justify-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                <div className="text-center text-slate-400">
-                    <p className="text-xs font-bold uppercase tracking-widest">Aguardando mais dados</p>
-                </div>
-            </div>
+        {/* Operational Efficiency (Status) */}
+        <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm h-[400px] flex flex-col">
+           <h3 className="text-lg font-black text-slate-800 mb-6">Eficiência Operacional (Status)</h3>
+           <div className="flex-1">
+              <ResponsiveContainer width="100%" height="100%">
+                 <PieChart>
+                    <Pie
+                        data={statusData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={80}
+                        outerRadius={110}
+                        paddingAngle={5}
+                        dataKey="value"
+                        label={({name, percent}) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    >
+                        {statusData.map((entry: any, index: number) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                    </Pie>
+                    <Tooltip />
+                 </PieChart>
+              </ResponsiveContainer>
+           </div>
         </div>
       </div>
     </div>

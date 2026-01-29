@@ -35,6 +35,9 @@ const Settings: React.FC = () => {
     logo_url: '', 
     apibrasil_token: '',
     detran_key: '',
+    // AI Configs
+    ai_provider: 'google',
+    ai_model: 'gemini-3-pro-preview',
     openai_key: '',
     gemini_key: '',
     anthropic_key: '',
@@ -103,6 +106,8 @@ const Settings: React.FC = () => {
             logo_url: data.logo_url || '',
             apibrasil_token: data.apibrasil_token || '',
             detran_key: data.detran_key || '',
+            ai_provider: data.ai_provider || 'google',
+            ai_model: data.ai_model || 'gemini-3-pro-preview',
             openai_key: data.openai_key || '',
             gemini_key: data.gemini_key || '',
             anthropic_key: data.anthropic_key || '',
@@ -128,8 +133,6 @@ const Settings: React.FC = () => {
 
   const loadInvitations = async () => {
       const { data } = await supabase.from('invitations').select('*').order('created_at', { ascending: false });
-      
-      // Verifica status baseado se o email já existe na tabela profiles
       if (data) {
           const { data: profiles } = await supabase.from('profiles').select('email');
           const registeredEmails = profiles?.map(p => p.email) || [];
@@ -175,21 +178,15 @@ const Settings: React.FC = () => {
 
   const handleDeleteUser = async () => {
       if (!userToDelete) return;
-      
       try {
-          // Remove perfil (Trigger cascade no Auth não é possível via Client, 
-          // então apenas removemos o perfil para bloquear acesso na app via RLS)
           const { error } = await supabase.from('profiles').delete().eq('id', userToDelete.id);
-          
           if (error) throw error;
-
           await auditService.log('Delete User', 'User', userToDelete.id, { email: userToDelete.email });
-          
           setUsersList(prev => prev.filter(u => u.id !== userToDelete.id));
           setUserToDelete(null);
           addToast('success', 'Usuário Removido', 'O acesso foi revogado.');
       } catch (error: any) {
-          addToast('error', 'Erro', 'Não foi possível remover o usuário. Verifique permissões.');
+          addToast('error', 'Erro', 'Não foi possível remover o usuário.');
       }
   };
 
@@ -205,16 +202,13 @@ const Settings: React.FC = () => {
 
   const handleSaveUser = async () => {
       if (!editingUser) return;
-      
       const updates = {
           full_name: userForm.full_name,
           role: userForm.role,
           permissions: userForm.permissions,
           updated_at: new Date().toISOString()
       };
-
       const { error } = await supabase.from('profiles').update(updates).eq('id', userForm.id);
-
       if (!error) {
           await auditService.log('Update User', 'User', userForm.id, updates);
           loadUsers();
@@ -234,12 +228,11 @@ const Settings: React.FC = () => {
       const link = params.toString() ? `${baseUrl}?${params.toString()}` : baseUrl;
       setGeneratedLink(link);
 
-      // Registrar convite no banco
       if (inviteData.email) {
           const { error } = await supabase.from('invitations').insert([{
               email: inviteData.email,
               name: inviteData.name,
-              token: link, // Simplificação
+              token: link, 
               created_by: profile.id
           }]);
           
@@ -271,9 +264,8 @@ const Settings: React.FC = () => {
     { id: 'general', label: 'Geral', icon: Building },
     { id: 'users', label: 'Equipe e Permissões', icon: Users },
     ...(profile?.role === 'Admin' || profile?.role === 'super_admin' ? [{ id: 'audit', label: 'Auditoria', icon: ClipboardList }] : []),
-    { id: 'notifications', label: 'Notificações', icon: Bell },
-    { id: 'integrations', label: 'Integrações & IA', icon: Globe },
-    { id: 'security', label: 'Segurança', icon: Shield },
+    { id: 'ai_config', label: 'Inteligência Artificial', icon: Brain }, // Novo tab
+    { id: 'integrations', label: 'Outras Integrações', icon: Globe },
   ];
 
   return (
@@ -350,17 +342,98 @@ const Settings: React.FC = () => {
                             <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all" 
                               value={companyInfo.phone} onChange={e => setCompanyInfo({...companyInfo, phone: e.target.value})} placeholder="(00) 0000-0000" />
                           </div>
-                          <div className="col-span-2">
-                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Endereço Completo</label>
-                            <textarea className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none h-24 resize-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all" 
-                              value={companyInfo.address} onChange={e => setCompanyInfo({...companyInfo, address: e.target.value})} />
-                          </div>
                       </div>
+                  </div>
+              )}
+
+              {/* ABA DE INTELIGÊNCIA ARTIFICIAL (NOVA) */}
+              {activeTab === 'ai_config' && (
+                  <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
+                     <div className="flex items-center gap-3 pb-6 border-b border-slate-50">
+                        <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl"><Brain size={24}/></div>
+                        <div>
+                           <h3 className="text-lg font-black text-slate-800">Cérebro da Empresa (LLM)</h3>
+                           <p className="text-xs text-slate-400 font-medium">Configure as chaves de API para os modelos de inteligência.</p>
+                        </div>
+                     </div>
+
+                     <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                        <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">Provedor Padrão</label>
+                        <div className="flex gap-2 mb-6">
+                            {['google', 'openai', 'anthropic', 'groq'].map(p => (
+                                <button key={p} onClick={() => setCompanyInfo({...companyInfo, ai_provider: p})} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all ${companyInfo.ai_provider === p ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-500 shadow-sm'}`}>
+                                    {p}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-6">
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-500 mb-2 flex items-center gap-2"><Zap size={12} className="text-blue-500"/> Google Gemini API Key</label>
+                                <div className="relative">
+                                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
+                                    <input type="password" className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500/20" 
+                                    value={companyInfo.gemini_key} onChange={e => setCompanyInfo({...companyInfo, gemini_key: e.target.value})} placeholder="sk-..." />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-500 mb-2 flex items-center gap-2"><Zap size={12} className="text-green-500"/> OpenAI API Key (GPT-4)</label>
+                                <div className="relative">
+                                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
+                                    <input type="password" className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500/20" 
+                                    value={companyInfo.openai_key} onChange={e => setCompanyInfo({...companyInfo, openai_key: e.target.value})} placeholder="sk-..." />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-500 mb-2 flex items-center gap-2"><Zap size={12} className="text-amber-500"/> Anthropic API Key (Claude 3)</label>
+                                <div className="relative">
+                                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
+                                    <input type="password" className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500/20" 
+                                    value={companyInfo.anthropic_key} onChange={e => setCompanyInfo({...companyInfo, anthropic_key: e.target.value})} placeholder="sk-ant-..." />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-500 mb-2 flex items-center gap-2"><Zap size={12} className="text-red-500"/> Groq API Key (Llama 3 - Rápido)</label>
+                                <div className="relative">
+                                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
+                                    <input type="password" className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500/20" 
+                                    value={companyInfo.groq_key} onChange={e => setCompanyInfo({...companyInfo, groq_key: e.target.value})} placeholder="gsk_..." />
+                                </div>
+                            </div>
+                        </div>
+                     </div>
+                  </div>
+              )}
+
+              {/* ABA DE INTEGRAÇÕES (OUTRAS) */}
+              {activeTab === 'integrations' && (
+                  <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
+                     <div className="flex items-center gap-3 pb-6 border-b border-slate-50">
+                        <div className="p-3 bg-purple-50 text-purple-600 rounded-2xl"><Globe size={24}/></div>
+                        <div>
+                           <h3 className="text-lg font-black text-slate-800">Serviços Externos</h3>
+                           <p className="text-xs text-slate-400 font-medium">APIs de veículos e Detran.</p>
+                        </div>
+                     </div>
+
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-500 mb-2">APIBrasil Token</label>
+                            <input type="password" className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500/20" 
+                            value={companyInfo.apibrasil_token} onChange={e => setCompanyInfo({...companyInfo, apibrasil_token: e.target.value})} />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-500 mb-2">Detran API Key</label>
+                            <input type="password" className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500/20" 
+                            value={companyInfo.detran_key} onChange={e => setCompanyInfo({...companyInfo, detran_key: e.target.value})} />
+                        </div>
+                     </div>
                   </div>
               )}
 
               {activeTab === 'users' && (
                   <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                      {/* ... (Mantém o código existente da aba de usuários) ... */}
                       <div className="flex items-center justify-between pb-6 border-b border-slate-50">
                           <div className="flex items-center gap-3">
                               <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl"><Users size={24}/></div>
@@ -420,6 +493,7 @@ const Settings: React.FC = () => {
 
               {activeTab === 'audit' && (
                   <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                      {/* ... (Mantém o código existente da aba de auditoria) ... */}
                       <div className="flex items-center gap-3 pb-6 border-b border-slate-50">
                           <div className="p-3 bg-slate-50 text-slate-600 rounded-2xl"><ClipboardList size={24}/></div>
                           <div>
@@ -467,67 +541,10 @@ const Settings: React.FC = () => {
                       )}
                   </div>
               )}
-
-              {/* ABA DE INTEGRAÇÕES (IA) */}
-              {activeTab === 'integrations' && (
-                  <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
-                     <div className="flex items-center gap-3 pb-6 border-b border-slate-50">
-                        <div className="p-3 bg-purple-50 text-purple-600 rounded-2xl"><Brain size={24}/></div>
-                        <div>
-                           <h3 className="text-lg font-black text-slate-800">IA & Integrações</h3>
-                           <p className="text-xs text-slate-400 font-medium">Configure as chaves de API para os modelos de IA e serviços externos.</p>
-                        </div>
-                     </div>
-
-                     <div className="grid grid-cols-1 gap-6">
-                        <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
-                           <h4 className="text-xs font-black uppercase text-slate-400 tracking-widest mb-4 flex items-center gap-2">
-                              <Zap size={14} className="text-amber-500"/> Chaves de Inteligência (LLM)
-                           </h4>
-                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div>
-                                 <label className="block text-[10px] font-bold text-slate-500 mb-2">Google Gemini API Key</label>
-                                 <div className="relative">
-                                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
-                                    <input type="password" className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500/20" 
-                                    value={companyInfo.gemini_key} onChange={e => setCompanyInfo({...companyInfo, gemini_key: e.target.value})} placeholder="sk-..." />
-                                 </div>
-                              </div>
-                              <div>
-                                 <label className="block text-[10px] font-bold text-slate-500 mb-2">OpenAI API Key</label>
-                                 <div className="relative">
-                                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
-                                    <input type="password" className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500/20" 
-                                    value={companyInfo.openai_key} onChange={e => setCompanyInfo({...companyInfo, openai_key: e.target.value})} placeholder="sk-..." />
-                                 </div>
-                              </div>
-                           </div>
-                        </div>
-
-                        <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
-                           <h4 className="text-xs font-black uppercase text-slate-400 tracking-widest mb-4 flex items-center gap-2">
-                              <Globe size={14} className="text-blue-500"/> Serviços Externos
-                           </h4>
-                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div>
-                                 <label className="block text-[10px] font-bold text-slate-500 mb-2">APIBrasil Token (Veículos)</label>
-                                 <input type="password" className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500/20" 
-                                 value={companyInfo.apibrasil_token} onChange={e => setCompanyInfo({...companyInfo, apibrasil_token: e.target.value})} />
-                              </div>
-                              <div>
-                                 <label className="block text-[10px] font-bold text-slate-500 mb-2">Detran API Key (Opcional)</label>
-                                 <input type="password" className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500/20" 
-                                 value={companyInfo.detran_key} onChange={e => setCompanyInfo({...companyInfo, detran_key: e.target.value})} />
-                              </div>
-                           </div>
-                        </div>
-                     </div>
-                  </div>
-              )}
           </div>
       </div>
 
-      {/* Modal Editar Usuário */}
+      {/* Modals mantidos igual ... */}
       {userModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
               <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setUserModalOpen(false)}></div>
@@ -637,10 +654,7 @@ const Settings: React.FC = () => {
 
                           {/* Histórico de Convites */}
                           <div className="pt-6 border-t border-slate-100">
-                              <div className="flex justify-between items-center mb-4">
-                                  <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest">Convites Enviados</h4>
-                                  <button onClick={loadInvitations} className="text-slate-400 hover:text-blue-600"><RefreshCw size={14}/></button>
-                              </div>
+                              <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">Convites Enviados</h4>
                               <div className="space-y-2">
                                   {invitations.map(inv => (
                                       <div key={inv.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100 group">
