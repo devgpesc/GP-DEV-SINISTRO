@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Search, ChevronRight, ArrowLeft, BarChart3, Trash2, Rocket, List, Package, Users, Edit3, Box, Zap, Save, Loader2, Check, CheckSquare } from 'lucide-react';
+import { Plus, Search, ChevronRight, ArrowLeft, BarChart3, Trash2, Rocket, List, Package, Users, Edit3, Box, Zap, Save, Loader2, Check, CheckSquare, LayoutGrid } from 'lucide-react';
 import MatrixTable from '../components/MatrixTable';
 import { supabase } from '../services/supabaseClient';
 import { Event, Supplier, CatalogItem } from '../types';
@@ -292,6 +292,10 @@ const Quotations: React.FC = () => {
           />
         </div>
         <div className="flex items-center gap-3">
+          <div className="flex bg-slate-100 p-1 rounded-2xl">
+             <button onClick={() => setViewMode('grid')} className={`p-3 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}><LayoutGrid size={20}/></button>
+             <button onClick={() => setViewMode('list')} className={`p-3 rounded-xl transition-all ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}><List size={20}/></button>
+          </div>
           <button onClick={() => { setStep(2); setWizardStep(1); setEditingQuoteId(null); setNewQuote({eventId: '', eventProtocol: '', items: [], selectedSuppliers: []}); }} className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 shadow-xl shadow-blue-600/20 whitespace-nowrap">
             <Plus size={20} /> Nova Cotação
           </button>
@@ -331,7 +335,54 @@ const Quotations: React.FC = () => {
             </div>
           ))}
         </div>
-      ) : null}
+      ) : (
+        <div className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm animate-in fade-in duration-300">
+            <table className="w-full text-left">
+              <thead className="bg-slate-50 border-b border-slate-100">
+                <tr>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Código / Ref</th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Itens</th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Fornecedores</th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {filteredQuotes.map(quote => (
+                  <tr key={quote.id} className="hover:bg-slate-50/50 group cursor-pointer" onClick={() => openMatrix(quote)}>
+                    <td className="px-8 py-5">
+                      <p className="font-black text-slate-800 text-sm">{quote.code}</p>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase">{quote.eventRef}</p>
+                    </td>
+                    <td className="px-8 py-5 text-center">
+                       <span className="font-bold text-slate-600 text-xs bg-slate-100 px-2 py-1 rounded-lg">{quote.itemCount || 0}</span>
+                    </td>
+                    <td className="px-8 py-5 text-center">
+                       <div className="flex justify-center -space-x-2">
+                          {[...Array(Math.min(quote.suppliers || 0, 3))].map((_, j) => (
+                            <div key={j} className="w-6 h-6 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-[8px] font-black text-slate-500">S{j+1}</div>
+                          ))}
+                          {(quote.suppliers || 0) > 3 && <div className="w-6 h-6 rounded-full border-2 border-white bg-slate-100 flex items-center justify-center text-[8px] font-black text-slate-400">+{quote.suppliers - 3}</div>}
+                       </div>
+                    </td>
+                    <td className="px-8 py-5 text-center">
+                        <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${quote.status === 'Finalizada' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
+                        {quote.status}
+                        </span>
+                    </td>
+                    <td className="px-8 py-5 text-right">
+                       <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={(e) => { e.stopPropagation(); handleEditQuote(quote); }} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Edit3 size={16}/></button>
+                          <button onClick={(e) => { e.stopPropagation(); setQuoteToDelete(quote); }} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={16}/></button>
+                          <button onClick={(e) => { e.stopPropagation(); openMatrix(quote); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><ChevronRight size={16}/></button>
+                       </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+        </div>
+      )}
     </div>
   );
 
