@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -345,4 +346,146 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
               </thead>
               <tbody className="divide-y divide-slate-100">
                   {filteredItems.map(item => (
-                      <tr key={item.id} className="hover:bg-slate-5
+                      <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
+                          {/* Coluna Fixa do Item */}
+                          <td className="p-6 sticky left-0 bg-white border-r border-slate-100 z-10 font-bold text-slate-700 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.05)]">
+                              <div className="flex justify-between items-start">
+                                  <div>
+                                      <span className="block text-sm">{item.name}</span>
+                                      <span className="text-[10px] text-slate-400 font-black uppercase mt-1 bg-slate-50 px-2 py-0.5 rounded inline-block border border-slate-100">
+                                          {item.quantity} {item.unit}
+                                      </span>
+                                  </div>
+                                  {selections[item.id] && <CheckCircle2 size={18} className="text-green-500"/>}
+                              </div>
+                          </td>
+
+                          {/* Células de Preço */}
+                          {filteredSuppliers.map(sup => {
+                              const priceObj = prices.find(p => p.quotation_item_id === item.id && p.supplier_id === sup.id);
+                              
+                              // Lógica de Melhor Preço
+                              const rowPrices = prices.filter(p => p.quotation_item_id === item.id).map(p => p.price);
+                              const minPrice = rowPrices.length > 0 ? Math.min(...rowPrices) : 0;
+                              const isBestPrice = priceObj && priceObj.price === minPrice;
+                              const isSelected = selections[item.id] === sup.id;
+                              
+                              // Modo Edição
+                              const isEditing = editingCell?.itemId === item.id && editingCell?.supplierId === sup.id;
+
+                              if (isEditing) {
+                                  return (
+                                      <td key={sup.id} className="p-2 relative min-w-[180px]">
+                                          <div className="bg-white border-2 border-blue-500 rounded-2xl p-3 shadow-lg z-30 animate-in zoom-in duration-200">
+                                              <div className="flex items-center gap-2 mb-2">
+                                                  <span className="text-xs font-bold text-slate-500">R$</span>
+                                                  <input 
+                                                    autoFocus
+                                                    type="number" 
+                                                    className="w-full font-black text-slate-800 outline-none border-b border-slate-200 focus:border-blue-500" 
+                                                    value={editPrice}
+                                                    onChange={e => setEditPrice(e.target.value)}
+                                                    placeholder="0.00"
+                                                  />
+                                              </div>
+                                              <input 
+                                                className="w-full text-[10px] font-medium text-slate-500 outline-none bg-slate-50 p-1.5 rounded mb-2"
+                                                placeholder="Obs..."
+                                                value={editObs}
+                                                onChange={e => setEditObs(e.target.value)}
+                                              />
+                                              <div className="flex justify-end gap-1">
+                                                  <button onClick={cancelEditing} className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500"><X size={14}/></button>
+                                                  <button onClick={saveManualPrice} disabled={isSavingPrice} className="p-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1">
+                                                      {isSavingPrice ? <Loader2 size={14} className="animate-spin"/> : <Save size={14}/>}
+                                                  </button>
+                                              </div>
+                                          </div>
+                                      </td>
+                                  )
+                              }
+
+                              if (!priceObj) {
+                                  return (
+                                    <td key={sup.id} className="p-4 text-center group/cell relative">
+                                        <div 
+                                            onClick={() => startEditing(item.id, sup.id)}
+                                            className="w-full py-4 rounded-2xl bg-slate-50 border border-slate-100 text-xs text-slate-300 font-medium flex flex-col items-center justify-center gap-1 cursor-pointer hover:bg-blue-50 hover:text-blue-500 hover:border-blue-200 transition-all"
+                                        >
+                                            <div className="opacity-0 group-hover/cell:opacity-100 transition-opacity flex flex-col items-center">
+                                                <Edit2 size={14} />
+                                                <span className="text-[9px] font-bold mt-1">Lançar</span>
+                                            </div>
+                                            <div className="group-hover/cell:opacity-0 absolute">
+                                                <XCircle size={14} />
+                                            </div>
+                                        </div>
+                                    </td>
+                                  );
+                              }
+
+                              return (
+                                  <td key={sup.id} className="p-3 text-center relative group/cell">
+                                      <button 
+                                        onClick={(e) => { e.stopPropagation(); startEditing(item.id, sup.id, priceObj.price, priceObj.obs); }}
+                                        className="absolute top-2 right-2 p-1.5 bg-white text-slate-400 hover:text-blue-600 rounded-full shadow-sm border border-slate-100 opacity-0 group-hover/cell:opacity-100 transition-opacity z-20"
+                                        title="Editar Valor"
+                                      >
+                                          <Edit2 size={12}/>
+                                      </button>
+
+                                      <button 
+                                        onClick={() => toggleSelection(item.id, sup.id)}
+                                        className={`w-full py-4 rounded-2xl border-2 transition-all flex flex-col items-center justify-center relative group ${
+                                            isSelected 
+                                            ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105 z-10' 
+                                            : isBestPrice 
+                                                ? 'bg-green-50 border-green-300 text-slate-800 hover:border-green-500 shadow-sm'
+                                                : 'bg-white border-slate-200 text-slate-500 hover:border-blue-300 hover:shadow-md'
+                                        }`}
+                                      >
+                                          {isBestPrice && !isSelected && (
+                                              <div className="absolute -top-3 bg-green-500 text-white text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-wide shadow-sm border border-white">
+                                                  Melhor Preço
+                                              </div>
+                                          )}
+                                          
+                                          <span className="text-sm font-black flex items-center gap-1">
+                                              <span className="opacity-50 text-[10px]">R$</span> 
+                                              {priceObj.price.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+                                          </span>
+                                          
+                                          <span className={`text-[9px] font-bold mt-1 uppercase tracking-wider ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>
+                                              Total: R$ {(priceObj.price * item.quantity).toLocaleString('pt-BR', {maximumFractionDigits: 0})}
+                                          </span>
+
+                                          {priceObj.obs && (
+                                              <div className="absolute bottom-1 left-1/2 -translate-x-1/2" title={priceObj.obs}>
+                                                  <MessageSquare size={10} className={isSelected ? 'text-blue-300' : 'text-slate-300'}/>
+                                              </div>
+                                          )}
+                                      </button>
+                                  </td>
+                              );
+                          })}
+                      </tr>
+                  ))}
+              </tbody>
+          </table>
+      </div>
+
+      {/* Ações Finais */}
+      <div className="flex justify-end pt-6 pb-20 print:hidden">
+          <button 
+            onClick={handleProcessPurchase} 
+            disabled={isSubmitting || prices.length === 0}
+            className="px-12 py-5 bg-green-600 text-white rounded-[24px] font-black text-sm uppercase tracking-[0.2em] shadow-xl shadow-green-600/30 flex items-center gap-4 hover:scale-105 transition-all disabled:opacity-70 disabled:scale-100 disabled:shadow-none"
+          >
+              {isSubmitting ? <Loader2 className="animate-spin"/> : <><DollarSign size={20}/> Aprovar e Gerar OCs <ArrowRight size={20}/></>}
+          </button>
+      </div>
+    </div>
+  );
+};
+
+export default MatrixTable;
