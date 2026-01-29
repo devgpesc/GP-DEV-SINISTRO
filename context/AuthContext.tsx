@@ -1,7 +1,6 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 // Fix: Types User and Session not exported in v1, define as any locally
-// import { Session, User } from '@supabase/supabase-js';
 type Session = any;
 type User = any;
 import { supabase } from '../services/supabaseClient';
@@ -38,17 +37,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .maybeSingle();
 
       if (error) {
-          console.error('[Auth] Erro ao buscar perfil (mas mantendo sessão):', error.message);
-          // Retorna fallback se não conseguir buscar o perfil, para não deslogar o usuário
-          return { id: userId, role: 'user', full_name: 'Usuário (Offline)', permissions: {} };
+          console.error('[Auth] Erro ao buscar perfil:', error.message);
+          return null;
       }
       
-      return data || { 
-        id: userId, 
-        role: 'user', 
-        full_name: 'Usuário',
-        permissions: {} 
-      };
+      return data;
     } catch (err) {
       console.error('[Auth] Falha crítica no fetchProfile:', err);
       return null;
@@ -58,27 +51,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let mounted = true;
 
-    // Detecção Crítica: Estamos voltando de um login social?
-    const isOAuthRedirect = typeof window !== 'undefined' && 
-                            window.location.hash && 
-                            window.location.hash.includes('access_token');
-
-    // Timeout de segurança MENOS AGRESSIVO
+    // Timeout de segurança
     const safetyTimeout = setTimeout(() => {
         if (loading && mounted) {
-            console.warn('[Auth] Timeout de carregamento (Conexão lenta).');
-            // NÃO forçamos logout aqui se for apenas lentidão. Apenas liberamos a UI.
-            if (!isOAuthRedirect) {
-               setLoadingError(true);
-            }
+            console.warn('[Auth] Timeout de carregamento.');
+            setLoadingError(true);
             setLoading(false);
         }
-    }, 10000); // Aumentado para 10s
+    }, 10000);
 
     const initAuth = async () => {
-        // 1. Configurar Listener PRIMEIRO
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-            console.log(`[Auth Event] ${event}`);
             if (!mounted) return;
 
             if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
@@ -86,14 +69,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     setSession(newSession);
                     setUser(newSession.user);
                     
-                    // Busca perfil apenas se necessário
-                    if (!profile || profile.id !== newSession.user.id) {
-                        const p = await fetchProfile(newSession.user.id);
-                        if (mounted) setProfile(p);
+                    // Busca perfil
+                    let p = await fetchProfile(newSession.user.id);
+                    
+                    // AUTO-FIX: Se o perfil não existir no banco, cria um objeto temporário na memória
+                    if (!p) {
+                        console.warn('[Auth] Perfil não encontrado no banco. Usando fallback de memória.');
+                        p = { 
+                            id: newSession.user.id, 
+                            email: newSession.user.email,
+                            role: 'Usuário', // <== Fallback alinhado com Constraint
+                            full_name: newSession.user.user_metadata?.full_name || 'Usuário',
+                            permissions: {} 
+                        };
                     }
+                    
+                    if (mounted) setProfile(p);
                 }
                 
-                // Limpa hash da URL pós-login social
                 if (window.location.hash && window.location.hash.includes('access_token')) {
                     window.history.replaceState(null, '', window.location.pathname);
                 }
@@ -106,16 +99,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
         });
 
-        // 2. Verificação Inicial Robusta
+        // Verificação Inicial
         try {
             const { data: { session: currentSession }, error } = await supabase.auth.getSession();
             
             if (error) {
-                console.error('[Auth] Erro getSession:', error);
-                // Se der erro de rede, não desloga imediatamente
-                // Mas se for erro 400/401 (token invalido), limpamos tudo
                 if (error.status === 400 || error.message.includes('refresh_token')) {
-                    console.warn('[Auth] Sessão inválida detectada. Limpando armazenamento.');
                     localStorage.clear();
                     await supabase.auth.signOut();
                 }
@@ -125,11 +114,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 if (currentSession?.user) {
                     setSession(currentSession);
                     setUser(currentSession.user);
-                    
                     const p = await fetchProfile(currentSession.user.id);
-                    if (mounted) setProfile(p);
+                    // Fallback visual
+                    setProfile(p || { 
+                        id: currentSession.user.id, 
+                        role: 'Usuário', // <== Fallback alinhado
+                        full_name: currentSession.user.user_metadata?.full_name || 'Usuário',
+                        permissions: {} 
+                    });
                 } else {
-                    // Se não tem sessão, garante que user é null para o PrivateRoute redirecionar
                     setUser(null);
                 }
                 setLoading(false);
@@ -186,12 +179,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateProfile = async (data: { full_name?: string; avatar_url?: string; role?: string }) => {
     if (!user) return;
     try {
-        // CORREÇÃO: Mapeia full_name para name também, para satisfazer bancos antigos
         const updates = {
             id: user.id,
             ...data,
-            name: data.full_name || '', // Garante que a coluna 'name' receba valor
-            email: user.email, 
             updated_at: new Date().toISOString(),
         };
         const { error } = await supabase.from('profiles').upsert(updates);
@@ -211,10 +201,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
   };
 
-  // Helper para verificar permissões granulares
   const checkPermission = (feature: string) => {
       if (!profile) return false;
-      if (profile.role === 'admin' || profile.role === 'super_admin') return true;
+      // Verifica Admin/super_admin ou Gerente com permissões específicas
+      if (profile.role === 'Admin' || profile.role === 'super_admin') return true;
       return !!profile.permissions?.[feature];
   };
 
@@ -226,7 +216,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signOut,
     signInWithGoogle,
     updateProfile,
-    isSuperAdmin: profile?.role === 'super_admin' || profile?.role === 'admin',
+    // Verifica Maiúsculo 'Admin' conforme constraint do banco
+    isSuperAdmin: profile?.role === 'super_admin' || profile?.role === 'Admin',
     checkPermission
   };
 
@@ -247,7 +238,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             </p>
           </div>
           
-          {/* Botão de Auto-Recuperação */}
           <div className="flex flex-col gap-3 items-center animate-in fade-in slide-in-from-bottom-4 duration-700 delay-1000 fill-mode-forwards opacity-0" style={{animationDelay: '1s'}}>
               <p className="text-xs text-slate-400 font-medium">O sistema está demorando?</p>
               <button 
