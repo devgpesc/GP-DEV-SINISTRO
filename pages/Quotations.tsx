@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Search, ChevronRight, ArrowLeft, BarChart3, Trash2, Rocket, LayoutGrid, List, Eye, CheckSquare, Package, Users, Edit3, XCircle, Box, Zap, Save, Loader2 } from 'lucide-react';
+import { Plus, Search, ChevronRight, ArrowLeft, BarChart3, Trash2, Rocket, List, Package, Users, Edit3, Box, Zap, Save, Loader2, Check } from 'lucide-react';
 import MatrixTable from '../components/MatrixTable';
 import { supabase } from '../services/supabaseClient';
 import { Event, Supplier, CatalogItem } from '../types';
@@ -19,7 +19,6 @@ const Quotations: React.FC = () => {
   // State da Nova/Edit Cotação
   const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
   
-  // Interface Estendida para o State
   interface WizardItem {
       id?: string;
       name: string;
@@ -36,13 +35,14 @@ const Quotations: React.FC = () => {
     selectedSuppliers: [] as string[] 
   });
 
-  // States do Wizard Inteligente
+  // --- STATES DO CATÁLOGO INTELIGENTE ---
   const [itemSearch, setItemSearch] = useState('');
   const [manualQty, setManualQty] = useState(1);
   const [showCatalogDropdown, setShowCatalogDropdown] = useState(false);
   const [searchResults, setSearchResults] = useState<CatalogItem[]>([]);
   const [isSearchingCatalog, setIsSearchingCatalog] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  // --------------------------------------
 
   const [quotes, setQuotes] = useState<any[]>([]);
   const [quoteToDelete, setQuoteToDelete] = useState<any>(null);
@@ -151,7 +151,6 @@ const Quotations: React.FC = () => {
                 updated_at: new Date().toISOString()
             }).eq('id', editingQuoteId);
 
-            // Estratégia de reconstrução para simplificar lógica de atualização
             await supabase.from('quotation_suppliers').delete().eq('quotation_id', editingQuoteId);
             await supabase.from('quotation_items').delete().eq('quotation_id', editingQuoteId);
             
@@ -210,7 +209,7 @@ const Quotations: React.FC = () => {
     }
   };
 
-  // --- LÓGICA DO WIZARD INTELIGENTE ---
+  // --- LÓGICA DO WIZARD INTELIGENTE (CATÁLOGO) ---
 
   const addCatalogItem = (cItem: CatalogItem) => {
       setNewQuote(prev => ({
@@ -259,7 +258,6 @@ const Quotations: React.FC = () => {
           
           addCatalogItem(data);
           addToast('success', 'Item Criado', 'Adicionado ao catálogo e à cotação.');
-          
       } catch (e: any) {
           addToast('error', 'Erro', 'Falha ao criar item no catálogo.');
       }
@@ -282,7 +280,6 @@ const Quotations: React.FC = () => {
 
   const renderList = () => (
     <div className="space-y-6 animate-in fade-in duration-300">
-      {/* ... (Search Bar e Actions igual anterior) ... */}
       <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
         <div className="relative flex-1 w-full">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
@@ -368,13 +365,13 @@ const Quotations: React.FC = () => {
                <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2"><List size={20} className="text-blue-600"/> 2. Defina os Itens</h3>
                <div className="flex-1 space-y-4">
                   
-                  {/* Busca Inteligente */}
+                  {/* Busca Inteligente (Step 2 Melhorado) */}
                   <div className="relative z-20">
                       <div className="flex gap-2">
                           <div className="flex-1 relative">
                               <input 
                                 ref={searchInputRef}
-                                className="w-full p-4 pl-12 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-medium focus:ring-2 focus:ring-blue-500/20 transition-all" 
+                                className="w-full p-4 pl-12 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-medium focus:ring-2 focus:ring-blue-500/20 transition-all placeholder:text-slate-400" 
                                 placeholder="Busque no catálogo ou digite..." 
                                 value={itemSearch} 
                                 onChange={e => setItemSearch(e.target.value)} 
@@ -393,7 +390,7 @@ const Quotations: React.FC = () => {
                           <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-100 max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-2 z-50">
                               {searchResults.length > 0 ? (
                                   <>
-                                    <div className="p-2 bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Catálogo Oficial</div>
+                                    <div className="p-2 bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 sticky top-0">Catálogo Oficial</div>
                                     {searchResults.map(item => (
                                         <button key={item.id} onClick={() => addCatalogItem(item)} className="w-full text-left p-3 hover:bg-blue-50 flex justify-between items-center group transition-colors">
                                             <div>
