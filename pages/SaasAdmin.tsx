@@ -3,12 +3,14 @@ import React, { useState, useEffect } from 'react';
 import { 
   Globe, Building, Users, Database, 
   TrendingUp, Activity, Plus, MoreVertical, 
-  Search, ShieldAlert, LogIn, Loader2, CheckCircle, Mail, Lock, User
+  Search, ShieldAlert, LogIn, Loader2, CheckCircle, Mail, Lock, User, Copy, Check
 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { SaasTenant, SaasPlan } from '../types';
+import { useToast } from '../context/ToastContext';
 
 const SaasAdmin: React.FC = () => {
+  const { addToast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [tenants, setTenants] = useState<SaasTenant[]>([]);
   const [plans, setPlans] = useState<SaasPlan[]>([]);
@@ -16,6 +18,8 @@ const SaasAdmin: React.FC = () => {
   
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  
   const [newTenantData, setNewTenantData] = useState({ 
       name: '', 
       document: '', 
@@ -24,7 +28,9 @@ const SaasAdmin: React.FC = () => {
       adminEmail: '',
       adminPassword: ''
   });
+  const [createdCredentials, setCreatedCredentials] = useState<any>(null);
   const [creating, setCreating] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -52,39 +58,53 @@ const SaasAdmin: React.FC = () => {
 
   const handleCreateTenant = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTenantData.plan_id) return alert("Selecione um plano.");
+    if (!newTenantData.plan_id) return addToast('warning', 'Atenção', "Selecione um plano.");
+    if (newTenantData.adminPassword.length < 6) return addToast('warning', 'Senha Fraca', "A senha deve ter no mínimo 6 caracteres.");
     
     setCreating(true);
     try {
-        // Fix: Cast auth to any
-        const { data: { user } } = await (supabase.auth as any).getUser();
-        
-        // 1. Criar o Tenant
-        const { data: tenant, error } = await supabase.from('saas_tenants').insert([{
-            name: newTenantData.name,
-            document: newTenantData.document,
-            plan_id: newTenantData.plan_id,
-            owner_id: user?.id, // Criador do registro
-            status: 'active'
-        }]).select().single();
+        // Chamada à Edge Function (Backend Seguro)
+        const { data, error } = await supabase.functions.invoke('create-tenant', {
+            body: {
+                companyName: newTenantData.name,
+                document: newTenantData.document,
+                planId: newTenantData.plan_id,
+                adminName: newTenantData.adminName,
+                adminEmail: newTenantData.adminEmail,
+                adminPassword: newTenantData.adminPassword
+            }
+        });
 
-        if (error) throw error;
-        
-        // 2. Tentar criar usuário (Simulado/Instrução)
-        // Nota: Client-side não pode criar usuário auth sem deslogar.
-        // Solução: Mostramos as credenciais para envio manual ou criamos um registro de "pré-cadastro".
-        
-        alert(`Empresa criada com sucesso!\n\nATENÇÃO: Envie este link de cadastro para o administrador:\n\n${window.location.origin}/register?email=${newTenantData.adminEmail}\n\n(A criação automática de usuário requer Backend API para não deslogar o admin atual).`);
+        if (error) throw new Error(error.message || 'Erro ao conectar com servidor.');
+        if (data?.error) throw new Error(data.error);
+
+        // Sucesso
+        setCreatedCredentials({
+            company: newTenantData.name,
+            email: newTenantData.adminEmail,
+            password: newTenantData.adminPassword
+        });
         
         await loadData();
         setIsModalOpen(false);
+        setShowSuccessModal(true); // Mostra credenciais
+        
+        // Limpa form
         setNewTenantData({ name: '', document: '', plan_id: '', adminName: '', adminEmail: '', adminPassword: '' });
         
     } catch (err: any) {
-        alert("Erro ao criar empresa: " + err.message);
+        addToast('error', 'Erro ao Criar', err.message);
     } finally {
         setCreating(false);
     }
+  };
+
+  const copyToClipboard = () => {
+      const text = `Acesso AutoClaims Pro\nEmpresa: ${createdCredentials.company}\nLogin: ${createdCredentials.email}\nSenha: ${createdCredentials.password}\nLink: ${window.location.origin}/login`;
+      navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      addToast('success', 'Copiado', 'Credenciais copiadas para a área de transferência.');
   };
 
   const filtered = tenants.filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -104,7 +124,7 @@ const SaasAdmin: React.FC = () => {
            <p className="text-3xl font-black">R$ {totalRevenue.toLocaleString('pt-BR')}</p>
            <p className="text-xs text-green-400 font-bold mt-2 flex items-center gap-1"><TrendingUp size={12}/> Métricas Reais</p>
         </div>
-        {/* Outros cards mantidos... */}
+        
         <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
            <div className="flex items-center gap-3 mb-4">
               <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><Building size={20}/></div>
@@ -112,7 +132,6 @@ const SaasAdmin: React.FC = () => {
            </div>
            <p className="text-3xl font-black text-slate-800">{activeTenants}</p>
         </div>
-        {/* ... */}
       </div>
 
       {/* Lista de Empresas */}
@@ -164,7 +183,6 @@ const SaasAdmin: React.FC = () => {
                            </div>
                         </div>
                      </div>
-                     {/* ... Resto da lista ... */}
                   </div>
                 ))}
              </div>
@@ -175,7 +193,7 @@ const SaasAdmin: React.FC = () => {
       {/* Modal Criar Empresa */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => !creating && setIsModalOpen(false)}></div>
           <div className="relative bg-white w-full max-w-lg rounded-[40px] shadow-2xl p-8 animate-in zoom-in duration-300 max-h-[90vh] overflow-y-auto">
             <h3 className="text-2xl font-black text-slate-800 mb-6">Criar Nova Empresa</h3>
             <form onSubmit={handleCreateTenant} className="space-y-6">
@@ -210,6 +228,9 @@ const SaasAdmin: React.FC = () => {
 
                 <div className="space-y-4 pt-4 border-t border-slate-100">
                     <h4 className="text-[10px] font-black uppercase text-blue-600 tracking-widest mb-2 flex items-center gap-2"><User size={14}/> Administrador Inicial</h4>
+                    <div className="p-4 bg-blue-50 text-blue-700 text-xs font-bold rounded-2xl mb-2">
+                        O usuário administrador será criado automaticamente e vinculado a esta empresa.
+                    </div>
                     <div>
                         <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Nome Completo</label>
                         <div className="relative">
@@ -233,19 +254,54 @@ const SaasAdmin: React.FC = () => {
                             <input required type="text" className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" 
                                 value={newTenantData.adminPassword} onChange={e => setNewTenantData({...newTenantData, adminPassword: e.target.value})} placeholder="Defina uma senha" />
                         </div>
-                        <p className="text-[10px] text-slate-400 mt-2 font-medium">As credenciais serão usadas para criar o convite.</p>
                     </div>
                 </div>
 
                 <div className="flex justify-end gap-3 pt-4">
-                    <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-3 text-slate-400 font-black uppercase text-[10px]">Cancelar</button>
+                    <button type="button" onClick={() => setIsModalOpen(false)} disabled={creating} className="px-6 py-3 text-slate-400 font-black uppercase text-[10px]">Cancelar</button>
                     <button type="submit" disabled={creating} className="px-8 py-3 bg-blue-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-blue-600/20 flex items-center gap-2">
-                        {creating ? <Loader2 className="animate-spin" size={14}/> : 'Criar Empresa'}
+                        {creating ? <Loader2 className="animate-spin" size={14}/> : 'Criar Empresa & Admin'}
                     </button>
                 </div>
             </form>
           </div>
         </div>
+      )}
+
+      {/* Modal Sucesso com Credenciais */}
+      {showSuccessModal && createdCredentials && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-md"></div>
+              <div className="relative bg-white w-full max-w-md rounded-[40px] shadow-2xl p-8 animate-in zoom-in duration-300 text-center">
+                  <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-green-500/20">
+                      <CheckCircle size={40}/>
+                  </div>
+                  <h3 className="text-2xl font-black text-slate-800 mb-2">Empresa Criada!</h3>
+                  <p className="text-sm text-slate-500 mb-8 font-medium">
+                      O ambiente para <strong>{createdCredentials.company}</strong> foi configurado e o usuário admin criado.
+                  </p>
+
+                  <div className="bg-slate-50 rounded-2xl border border-slate-200 p-6 text-left mb-6 relative group">
+                      <button onClick={copyToClipboard} className="absolute top-4 right-4 text-slate-400 hover:text-blue-600 transition-colors">
+                          {copied ? <Check size={18}/> : <Copy size={18}/>}
+                      </button>
+                      <div className="space-y-3">
+                          <div>
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Login</p>
+                              <p className="font-bold text-slate-800">{createdCredentials.email}</p>
+                          </div>
+                          <div>
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Senha</p>
+                              <p className="font-bold text-slate-800 font-mono">{createdCredentials.password}</p>
+                          </div>
+                      </div>
+                  </div>
+
+                  <button onClick={() => setShowSuccessModal(false)} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-800 shadow-xl transition-all">
+                      Fechar
+                  </button>
+              </div>
+          </div>
       )}
     </div>
   );
