@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Settings as SettingsIcon, Save, CheckCircle, Database, Bell, Shield, Globe, Mail, User, Building, Users, MoreVertical, Edit2, Plus, Loader2, X, AlertTriangle, Copy, Check, Send, Info, Key, Server, Cpu, ToggleLeft, ToggleRight, Zap, Brain, MessageSquare, UserPlus, Link as LinkIcon } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
@@ -327,7 +326,61 @@ const Settings: React.FC = () => {
               )}
 
               {/* ABA DE INTEGRAÇÕES (IA) */}
-              {/* ... Resto das abas ... */}
+              {activeTab === 'integrations' && (
+                  <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
+                     <div className="flex items-center gap-3 pb-6 border-b border-slate-50">
+                        <div className="p-3 bg-purple-50 text-purple-600 rounded-2xl"><Brain size={24}/></div>
+                        <div>
+                           <h3 className="text-lg font-black text-slate-800">IA & Integrações</h3>
+                           <p className="text-xs text-slate-400 font-medium">Configure as chaves de API para os modelos de IA e serviços externos.</p>
+                        </div>
+                     </div>
+
+                     <div className="grid grid-cols-1 gap-6">
+                        <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                           <h4 className="text-xs font-black uppercase text-slate-400 tracking-widest mb-4 flex items-center gap-2">
+                              <Zap size={14} className="text-amber-500"/> Chaves de Inteligência (LLM)
+                           </h4>
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                 <label className="block text-[10px] font-bold text-slate-500 mb-2">Google Gemini API Key</label>
+                                 <div className="relative">
+                                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
+                                    <input type="password" className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500/20" 
+                                    value={companyInfo.gemini_key} onChange={e => setCompanyInfo({...companyInfo, gemini_key: e.target.value})} placeholder="sk-..." />
+                                 </div>
+                              </div>
+                              <div>
+                                 <label className="block text-[10px] font-bold text-slate-500 mb-2">OpenAI API Key</label>
+                                 <div className="relative">
+                                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
+                                    <input type="password" className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500/20" 
+                                    value={companyInfo.openai_key} onChange={e => setCompanyInfo({...companyInfo, openai_key: e.target.value})} placeholder="sk-..." />
+                                 </div>
+                              </div>
+                           </div>
+                        </div>
+
+                        <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                           <h4 className="text-xs font-black uppercase text-slate-400 tracking-widest mb-4 flex items-center gap-2">
+                              <Globe size={14} className="text-blue-500"/> Serviços Externos
+                           </h4>
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                 <label className="block text-[10px] font-bold text-slate-500 mb-2">APIBrasil Token (Veículos)</label>
+                                 <input type="password" className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500/20" 
+                                 value={companyInfo.apibrasil_token} onChange={e => setCompanyInfo({...companyInfo, apibrasil_token: e.target.value})} />
+                              </div>
+                              <div>
+                                 <label className="block text-[10px] font-bold text-slate-500 mb-2">Detran API Key (Opcional)</label>
+                                 <input type="password" className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500/20" 
+                                 value={companyInfo.detran_key} onChange={e => setCompanyInfo({...companyInfo, detran_key: e.target.value})} />
+                              </div>
+                           </div>
+                        </div>
+                     </div>
+                  </div>
+              )}
           </div>
       </div>
 
@@ -367,4 +420,82 @@ const Settings: React.FC = () => {
                                       </div>
                                       <button 
                                         onClick={() => togglePermission(feature.id)}
-                                        className={`p-1.5 rounded-lg transition-all ${userForm.permissions[feature.id] ? 'bg-green-100 text-green-600' : 'bg-slate-2
+                                        className={`p-1.5 rounded-lg transition-all ${userForm.permissions[feature.id] ? 'bg-green-100 text-green-600' : 'bg-slate-200 text-slate-400'}`}
+                                      >
+                                          {userForm.permissions[feature.id] ? <ToggleRight size={24}/> : <ToggleLeft size={24}/>}
+                                      </button>
+                                  </div>
+                              ))}
+                          </div>
+                      </div>
+
+                      <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                          <button onClick={() => setUserModalOpen(false)} className="px-6 py-3 text-slate-400 font-bold text-xs uppercase hover:text-slate-600">Cancelar</button>
+                          <button onClick={handleSaveUser} className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold text-xs uppercase shadow-lg shadow-blue-600/20 hover:bg-blue-700">Salvar</button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Modal Convidar Usuário */}
+      {inviteModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setInviteModalOpen(false)}></div>
+              <div className="relative bg-white w-full max-w-md rounded-[32px] shadow-2xl p-6 animate-in zoom-in duration-200">
+                  <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
+                      <div className="flex items-center gap-3">
+                          <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><UserPlus size={20}/></div>
+                          <h3 className="text-xl font-black text-slate-800">Convidar Membro</h3>
+                      </div>
+                      <button onClick={() => setInviteModalOpen(false)}><X className="text-slate-400 hover:text-slate-600"/></button>
+                  </div>
+                  
+                  <div className="space-y-6">
+                      <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 text-blue-700 text-xs font-medium leading-relaxed">
+                          <Info size={16} className="mb-2 inline-block mr-1 align-bottom"/>
+                          Preencha os dados abaixo para gerar um link de convite personalizado. O usuário poderá criar sua senha ao acessar.
+                      </div>
+
+                      <div className="space-y-4">
+                          <div>
+                              <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Nome do Colaborador</label>
+                              <input className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-slate-700 outline-none"
+                                  value={inviteData.name} onChange={e => setInviteData({...inviteData, name: e.target.value})} placeholder="Ex: Maria Souza" />
+                          </div>
+                          <div>
+                              <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">E-mail Corporativo</label>
+                              <input className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-slate-700 outline-none"
+                                  value={inviteData.email} onChange={e => setInviteData({...inviteData, email: e.target.value})} placeholder="maria@empresa.com" />
+                          </div>
+                      </div>
+
+                      <button onClick={generateInviteLink} className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold text-xs uppercase hover:bg-slate-900 transition-all flex items-center justify-center gap-2">
+                          <LinkIcon size={16}/> Gerar Link de Acesso
+                      </button>
+
+                      {generatedLink && (
+                          <div className="animate-in fade-in slide-in-from-top-2">
+                              <label className="block text-[10px] font-black uppercase text-green-600 mb-2">Link Gerado com Sucesso</label>
+                              <div className="flex items-center gap-2">
+                                  <input readOnly className="flex-1 p-3 bg-green-50 border border-green-200 text-green-800 rounded-xl text-xs font-mono outline-none" value={generatedLink} />
+                                  <button onClick={copyInviteLink} className="p-3 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-colors">
+                                      {copied ? <Check size={18}/> : <Copy size={18}/>}
+                                  </button>
+                              </div>
+                              <div className="flex justify-center mt-4">
+                                  <a href={`mailto:${inviteData.email}?subject=Convite para AutoClaims Pro&body=Olá ${inviteData.name}, acesse o link para criar sua conta: ${generatedLink}`} className="text-xs font-bold text-blue-600 flex items-center gap-1 hover:underline">
+                                      <Send size={12}/> Enviar por E-mail agora
+                                  </a>
+                              </div>
+                          </div>
+                      )}
+                  </div>
+              </div>
+          </div>
+      )}
+    </div>
+  );
+};
+
+export default Settings;

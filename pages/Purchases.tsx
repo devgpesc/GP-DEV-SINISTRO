@@ -13,7 +13,7 @@ const Purchases: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('Todos');
-  const [orders, setOrders] = useState<any[]>([]); // Usando any para facilitar o join
+  const [orders, setOrders] = useState<any[]>([]); 
   const [loading, setLoading] = useState(true);
   
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -34,7 +34,9 @@ const Purchases: React.FC = () => {
 
   const loadOrders = async () => {
     setLoading(true);
-    // QUERY CORRIGIDA: JOIN com fornecedores e ordenação por created_at
+    
+    // QUERY RELACIONAL COMPLETA
+    // Traz a OC, o Fornecedor e os Itens Relacionados
     const { data, error } = await supabase
         .from('purchase_orders')
         .select(`
@@ -43,6 +45,13 @@ const Purchases: React.FC = () => {
                 name,
                 whatsapp,
                 email
+            ),
+            purchase_order_items (
+                name,
+                quantity,
+                unit,
+                unit_price,
+                total_price
             )
         `)
         .order('created_at', { ascending: false });
@@ -51,14 +60,24 @@ const Purchases: React.FC = () => {
         console.error("Erro ao carregar compras:", error);
         setToast({ show: true, title: 'Erro', message: 'Falha ao buscar OCs.', type: 'info' });
     } else {
-        // Mapeamento explícito para garantir compatibilidade
+        // Mapeamento para estrutura da UI
+        // Converte purchase_order_items -> items
         const mappedOrders = data?.map((o: any) => ({
             id: o.id,
             code: o.code,
             eventId: o.event_id,
             supplierId: o.supplier_id,
             supplierName: o.suppliers?.name || 'Fornecedor Desconhecido',
-            items: o.items || [],
+            
+            // Mapeia os itens relacionais para o formato que a UI espera
+            items: o.purchase_order_items?.map((poi: any) => ({
+                name: poi.name,
+                quantity: poi.quantity,
+                unit: poi.unit,
+                price: poi.unit_price,
+                total: poi.total_price
+            })) || [],
+            
             total: o.total || 0,
             status: o.status,
             createdAt: o.created_at
@@ -147,9 +166,9 @@ const Purchases: React.FC = () => {
     const itemsHtml = order.items?.map((item: any) => `
       <tr>
         <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.name}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">${item.quantity}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">${item.quantity} ${item.unit || ''}</td>
         <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">R$ ${(item.price || 0).toFixed(2)}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">R$ ${((item.price || 0) * (item.quantity || 1)).toFixed(2)}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">R$ ${(item.total || (item.price * item.quantity)).toFixed(2)}</td>
       </tr>
     `).join('') || '';
 
@@ -259,7 +278,7 @@ const Purchases: React.FC = () => {
                                 }`}>{order.status}</span>
                             </div>
                             <p className="text-sm font-bold text-slate-500 flex items-center gap-1 mt-1"><Truck size={14}/> {order.supplierName}</p>
-                            <p className="text-[10px] font-black text-slate-300 uppercase mt-1">{new Date(order.createdAt).toLocaleDateString()}</p>
+                            <p className="text-[10px] font-black text-slate-300 uppercase mt-1">Itens: {order.items.length} • {new Date(order.createdAt).toLocaleDateString()}</p>
                         </div>
                     </div>
 
@@ -308,8 +327,8 @@ const Purchases: React.FC = () => {
                             {viewOrder.items?.map((item: any, idx: number) => (
                                 <tr key={idx}>
                                     <td className="py-3 text-sm font-bold text-slate-700">{item.name}</td>
-                                    <td className="py-3 text-center text-sm font-medium text-slate-500">{item.quantity} {item.unit}</td>
-                                    <td className="py-3 text-right text-sm font-bold text-slate-800">R$ {((item.price || 0) * (item.quantity || 1)).toFixed(2)}</td>
+                                    <td className="py-3 text-center text-sm font-medium text-slate-500">{item.quantity} {item.unit || ''}</td>
+                                    <td className="py-3 text-right text-sm font-bold text-slate-800">R$ {(item.total || (item.price * item.quantity)).toFixed(2)}</td>
                                 </tr>
                             ))}
                         </tbody>
