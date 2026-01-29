@@ -20,23 +20,6 @@ export enum Priority {
   URGENT = 'Urgente'
 }
 
-export interface Category {
-  id: string;
-  name: string;
-  color: string;
-  description?: string;
-}
-
-export interface CatalogItem {
-  id: string;
-  code: string;
-  name: string;
-  category: string;
-  type: 'Peça' | 'Serviço';
-  unit: string;
-  description?: string;
-}
-
 export interface Supplier {
   id: string;
   name: string;
@@ -50,7 +33,6 @@ export interface Supplier {
   email?: string;
   contactName?: string;
   createdAt: string;
-  ratingHistory?: Array<{ date: string; score: number; comment?: string }>;
 }
 
 export interface PurchaseOrder {
@@ -65,72 +47,45 @@ export interface PurchaseOrder {
   approvedAt?: string;
 }
 
-export interface Delivery {
+// --- NOVOS TIPOS PARA MATRIZ INTELIGENTE ---
+
+export interface Quotation {
   id: string;
-  poId: string;
-  status: 'Conforme' | 'Divergente';
-  divergenceType?: 'Falta' | 'Dano' | 'Erro';
-  notes: string;
-  receivedAt: string;
+  code: string;
+  eventId?: string;
+  eventRef?: string;
+  status: 'Em Aberto' | 'Análise' | 'Aprovada' | 'Finalizada' | 'Cancelada';
+  created_at: string;
+  deadline?: string;
 }
 
-// --- VEÍCULOS (NOVA ESTRUTURA) ---
-export interface Vehicle {
-  // Campos de Sistema
+export interface QuotationItem {
   id: string;
-  created_at?: string;
-  
-  // Campos Preenchidos pelo Usuário
-  plate: string;          // Placa (Chave de busca)
-  associate_id: string;    // Proprietário (Atualizado para snake_case)
-  km: number;             // KM Atual
-  status: 'Ativo' | 'Inativo' | 'Manutenção';
-  notes?: string;
-
-  // Campos Automáticos ou Manuais
-  brand: string;          // Marca
-  model: string;          // Modelo
-  version?: string;       // Versão
-  year_fab: string;        // Ano Fabricação (snake_case)
-  year_model: string;      // Ano Modelo (snake_case)
-  color: string;          // Cor
-  fuel: string;           // Combustível
-  type: string;           // Tipo (Automóvel, Moto, etc)
-  chassi?: string;        // Chassi
-  renavam?: string;       // Renavam
-  uf?: string;            // UF de registro
-  city?: string;          // Município de registro
-}
-
-// --- ASSOCIADO ---
-export interface Associate {
-  id: string;
+  quotation_id: string;
   name: string;
-  document: string; // CPF ou CNPJ
-  type: 'PF' | 'PJ';
-  email?: string;
-  phone?: string;
-  createdAt: string;
+  quantity: number;
+  unit: string;
+  category?: string;
+  target_price?: number;
+  status: 'Pendente' | 'Cotado' | 'Comprado';
 }
 
-// --- LLM & AI ---
-export type LLMProvider = 'google' | 'openai' | 'anthropic' | 'groq';
+export interface SupplierPrice {
+  id: string;
+  quotation_item_id: string;
+  supplier_id: string;
+  price: number;
+  availability: boolean;
+  is_winner: boolean;
+  obs?: string;
+}
 
-export type LLMModel = 
-  | 'gemini-3-flash-preview' 
-  | 'gemini-3-pro-preview' 
-  | 'gpt-4.1-mini' 
-  | 'gpt-4.1' 
-  | 'claude-3.5-sonnet' 
-  | 'claude-3.5-haiku' 
-  | 'llama-3.3-70b' 
-  | 'mixtral-8x7b';
-
-export interface AIConfig {
-  provider: LLMProvider;
-  model: LLMModel;
-  temperature: number;
-  maxTokens?: number;
+// Matriz de Dados (Frontend Helper)
+export interface MatrixData {
+  item: QuotationItem;
+  prices: Record<string, SupplierPrice>; // Chave é supplier_id
+  bestPrice: number;
+  bestSupplierId: string;
 }
 
 export interface Event {
@@ -140,11 +95,8 @@ export interface Event {
   priority: Priority;
   status: EventStatus;
   category: string;
-  
-  // Vínculos Obrigatórios (Banco de Dados e Regra de Negócio)
   vehicleId: string;
   associateId: string;
-  
   createdAt: string;
   createdBy: string;
   description: string;
@@ -152,14 +104,36 @@ export interface Event {
   history: any[];
 }
 
-export interface AppSettings {
-  companyName: string;
-  cnpj: string;
-  address: string;
-  email: string;
-  phone: string;
-  currency: string;
-  autoApprovalLimit: number;
+export interface Vehicle {
+  id: string;
+  created_at?: string;
+  plate: string;
+  associate_id: string;
+  km: number;
+  status: 'Ativo' | 'Inativo' | 'Manutenção';
+  notes?: string;
+  brand: string;
+  model: string;
+  version?: string;
+  year_fab: string;
+  year_model: string;
+  color: string;
+  fuel: string;
+  type: string;
+  chassi?: string;
+  renavam?: string;
+  uf?: string;
+  city?: string;
+}
+
+export interface Associate {
+  id: string;
+  name: string;
+  document: string;
+  type: 'PF' | 'PJ';
+  email?: string;
+  phone?: string;
+  createdAt: string;
 }
 
 export interface SaasPlan {
@@ -180,3 +154,32 @@ export interface SaasTenant {
   created_at: string;
   saas_plans?: SaasPlan;
 }
+
+export interface CatalogItem {
+  id: string;
+  code: string;
+  name: string;
+  category: string;
+  type: 'Peça' | 'Serviço';
+  unit: string;
+  description?: string;
+  created_at?: string;
+}
+
+export interface Delivery {
+  id: string;
+  po: string;
+  supplier: string;
+  items: number;
+  date: string;
+  event: string;
+  status?: 'Pendente' | 'Conforme' | 'Divergente';
+  created_at?: string;
+}
+
+export type LLMProvider = 'google' | 'openai' | 'anthropic' | 'groq';
+
+export type LLMModel = 
+  | 'gemini-3-flash-preview' 
+  | 'gemini-3-pro-preview'
+  | string;

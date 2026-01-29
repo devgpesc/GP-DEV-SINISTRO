@@ -1,151 +1,206 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, TrendingDown, Clock, ShoppingCart, Trophy, Truck, DollarSign, ArrowRight, Package, Check, AlertCircle } from 'lucide-react';
+import { CheckCircle2, TrendingDown, ShoppingCart, Trophy, DollarSign, ArrowRight, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
+import { quotationService } from '../services/quotationService';
+import { QuotationItem, SupplierPrice, Supplier } from '../types';
+import { useToast } from '../context/ToastContext';
 
 interface MatrixProps {
-  eventId?: string; // ID do evento (UUID válido)
+  quotationId?: string;
+  eventId?: string;
 }
 
-const MatrixTable: React.FC<MatrixProps> = ({ eventId }) => {
+const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
   const navigate = useNavigate();
+  const { addToast } = useToast();
   
-  // Mock Data (Simulando resposta dos fornecedores na Matrix)
-  // Em produção real, isso viria de uma tabela 'quotation_responses'
-  const [items] = useState([
-    { id: 'i1', name: 'Parachoque Dianteiro', quantity: 1 },
-    { id: 'i2', name: 'Farol LED Direito', quantity: 1 },
-    { id: 'i3', name: 'Grade Frontal', quantity: 1 },
-  ]);
+  const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [generatingSim, setGeneratingSim] = useState(false);
 
-  const [suppliers] = useState([
-    { id: 's1', name: 'TAURO Peças', rating: 4.8 },
-    { id: 's2', name: 'REA Distribuidora', rating: 4.2 },
-    { id: 's3', name: 'AutoZone Pro', rating: 4.5 }
-  ]);
-
-  // Preços Mockados (Simulação de respostas)
-  // Estrutura: { [itemId]: { [supplierId]: price } }
-  const [prices] = useState<any>({
-    'i1': { 's1': 450.00, 's2': 480.00, 's3': 440.00 }, // s3 vence
-    'i2': { 's1': 1200.00, 's2': 1150.00, 's3': 1250.00 }, // s2 vence
-    'i3': { 's1': 300.00, 's2': 320.00, 's3': 310.00 }, // s1 vence
-  });
+  // Dados Reais
+  const [items, setItems] = useState<QuotationItem[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [prices, setPrices] = useState<SupplierPrice[]>([]);
 
   // Estado das seleções: { [itemId]: supplierId }
   const [selections, setSelections] = useState<Record<string, string>>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Auto-selecionar menores preços ao carregar
   useEffect(() => {
-      const initialSelections: any = {};
-      items.forEach(item => {
-          let bestPrice = Infinity;
-          let bestSupplier = '';
-          suppliers.forEach(sup => {
-              const price = prices[item.id]?.[sup.id];
-              if (price && price < bestPrice) {
-                  bestPrice = price;
-                  bestSupplier = sup.id;
-              }
-          });
-          if (bestSupplier) initialSelections[item.id] = bestSupplier;
-      });
-      setSelections(initialSelections);
-  }, []);
+    if (quotationId) {
+        loadData();
+    }
+  }, [quotationId]);
 
-  const totalCost = Object.keys(selections).reduce((acc, itemId) => {
-      const supplierId = selections[itemId];
-      return acc + (prices[itemId]?.[supplierId] || 0);
-  }, 0);
+  const loadData = async () => {
+    if (!quotationId) return;
+    setLoading(true);
+    try {
+        const data = await quotationService.getMatrixData(quotationId);
+        setItems(data.items);
+        setSuppliers(data.suppliers);
+        setPrices(data.prices);
+        
+        // Auto-selecionar os melhores preços iniciais
+        const autoSelections: Record<string, string> = {};
+        data.items.forEach(item => {
+            const itemPrices = data.prices.filter(p => p.quotation_item_id === item.id);
+            if (itemPrices.length > 0) {
+                // Encontra menor preço
+                const bestPrice = itemPrices.reduce((prev, curr) => prev.price < curr.price ? prev : curr);
+                autoSelections[item.id] = bestPrice.supplier_id;
+            }
+        });
+        setSelections(autoSelections);
+
+    } catch (error) {
+        console.error("Erro Matrix:", error);
+        addToast('error', 'Erro ao carregar matriz', 'Não foi possível buscar os dados.');
+    } finally {
+        setLoading(false);
+    }
+  };
+
+  const handleSimulate = async () => {
+      if (!quotationId) return;
+      setGeneratingSim(true);
+      try {
+          await quotationService.simulateSupplierResponses(quotationId);
+          await loadData();
+          addToast('success', 'Simulação Concluída', 'Preços fictícios gerados para teste.');
+      } catch (e) {
+          addToast('error', 'Erro', 'Falha na simulação.');
+      } finally {
+          setGeneratingSim(false);
+      }
+  };
 
   const handleSelection = (itemId: string, supplierId: string) => {
       setSelections(prev => ({ ...prev, [itemId]: supplierId }));
   };
 
-  const handleEmitOCs = async () => {
-    setIsSubmitting(true);
-    
-    // Agrupa itens por fornecedor vencedor
-    const ordersBySupplier: Record<string, any> = {};
+  const calculateTotals = () => {
+      let selectedTotal = 0;
+      let potentialTotal = 0; // Se escolhesse os mais caros (para calcular savings)
 
-    Object.keys(selections).forEach(itemId => {
-        const supplierId = selections[itemId];
-        const itemData = items.find(i => i.id === itemId);
-        const price = prices[itemId][supplierId];
+      Object.keys(selections).forEach(itemId => {
+          const supplierId = selections[itemId];
+          const priceObj = prices.find(p => p.quotation_item_id === itemId && p.supplier_id === supplierId);
+          
+          if (priceObj) {
+              const item = items.find(i => i.id === itemId);
+              const qty = item?.quantity || 1;
+              selectedTotal += (priceObj.price * qty);
+          }
 
-        if (!ordersBySupplier[supplierId]) {
-            ordersBySupplier[supplierId] = {
-                supplierId,
-                total: 0,
-                items: []
-            };
-        }
-        
-        ordersBySupplier[supplierId].items.push({
-            catalogId: itemId, // Mock ID
-            name: itemData?.name,
-            quantity: itemData?.quantity,
-            price: price
-        });
-        ordersBySupplier[supplierId].total += price;
-    });
+          // Savings Logic
+          const itemPrices = prices.filter(p => p.quotation_item_id === itemId).map(p => p.price);
+          if (itemPrices.length > 0) {
+              const maxPrice = Math.max(...itemPrices);
+              const item = items.find(i => i.id === itemId);
+              const qty = item?.quantity || 1;
+              potentialTotal += (maxPrice * qty);
+          }
+      });
 
-    try {
-        const promises = Object.values(ordersBySupplier).map(async (orderData: any) => {
-            // CORREÇÃO CRÍTICA: Se eventId não for fornecido ou inválido, usa NULL ou busca um evento genérico válido no banco.
-            // Para evitar erro 500, garantimos que o eventId seja um UUID válido se fornecido.
-            
-            const payload = {
-                code: `OC-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-                eventId: eventId && eventId.length > 10 ? eventId : null, // Só envia se parecer UUID
-                supplierId: null, // Em produção, vincularia ao UUID do fornecedor real
-                total: orderData.total,
-                items: orderData.items, // JSONB
-                status: 'Gerada',
-                createdAt: new Date().toISOString()
-            };
-
-            return supabase.from('purchase_orders').insert([payload]);
-        });
-
-        await Promise.all(promises);
-        navigate('/compras');
-        
-    } catch (error: any) {
-        alert('Erro ao processar OCs: ' + error.message);
-    } finally {
-        setIsSubmitting(false);
-    }
+      return { 
+          selected: selectedTotal, 
+          savings: potentialTotal - selectedTotal,
+          percent: potentialTotal > 0 ? ((potentialTotal - selectedTotal) / potentialTotal) * 100 : 0
+      };
   };
+
+  const handleProcessPurchase = async () => {
+      if (!quotationId || Object.keys(selections).length === 0) {
+          addToast('warning', 'Seleção Vazia', 'Selecione pelo menos um item para comprar.');
+          return;
+      }
+
+      setIsSubmitting(true);
+      try {
+          await quotationService.processPurchase(quotationId, selections, eventId);
+          addToast('success', 'Ordens Geradas!', 'As OCs foram criadas e a cotação finalizada.');
+          navigate('/compras');
+      } catch (error: any) {
+          addToast('error', 'Erro no Processamento', error.message);
+      } finally {
+          setIsSubmitting(false);
+      }
+  };
+
+  const totals = calculateTotals();
+
+  if (loading) {
+      return <div className="py-20 text-center flex flex-col items-center"><Loader2 className="animate-spin mb-4 text-blue-600" size={32}/><p className="text-xs font-bold uppercase tracking-widest text-slate-400">Montando Matriz de Decisão...</p></div>;
+  }
+
+  if (items.length === 0) {
+      return <div className="p-10 text-center text-slate-400 border-2 border-dashed border-slate-200 rounded-3xl">Nenhum item nesta cotação.</div>;
+  }
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-20">
       
-      {/* Resumo do Pedido */}
-      <div className="bg-slate-900 text-white p-8 rounded-[40px] shadow-2xl flex flex-col md:flex-row justify-between items-center gap-6">
-         <div>
-             <h3 className="text-2xl font-black mb-1">Matriz de Decisão</h3>
-             <p className="text-slate-400 font-medium text-sm">Selecione os vencedores clicando nas células de preço.</p>
+      {/* Resumo Inteligente (Header) */}
+      <div className="bg-slate-900 text-white p-8 rounded-[40px] shadow-2xl flex flex-col lg:flex-row justify-between items-center gap-8 relative overflow-hidden">
+         <div className="relative z-10">
+             <h3 className="text-2xl font-black mb-1 flex items-center gap-2"><ShoppingCart className="text-blue-400"/> Matriz de Decisão</h3>
+             <p className="text-slate-400 font-medium text-sm">Selecione os vencedores clicando nas células.</p>
          </div>
-         <div className="text-right bg-white/10 p-4 rounded-2xl backdrop-blur-sm border border-white/10 min-w-[200px]">
-             <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-1">Total Selecionado</p>
-             <p className="text-3xl font-black text-green-400">R$ {totalCost.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+         
+         <div className="flex gap-6 relative z-10">
+             <div className="text-right">
+                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Total Selecionado</p>
+                 <p className="text-3xl font-black text-white">R$ {totals.selected.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+             </div>
+             <div className="text-right pl-6 border-l border-slate-700">
+                 <p className="text-[10px] font-black uppercase tracking-widest text-green-500 mb-1 flex items-center justify-end gap-1"><TrendingDown size={14}/> Economia (Savings)</p>
+                 <p className="text-3xl font-black text-green-400">R$ {totals.savings.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                 <p className="text-xs font-bold text-green-600">{totals.percent.toFixed(1)}% abaixo do teto</p>
+             </div>
          </div>
+
+         {/* Background Decor */}
+         <div className="absolute right-0 top-0 w-64 h-full bg-gradient-to-l from-blue-600/20 to-transparent pointer-events-none"></div>
       </div>
+
+      {prices.length === 0 && (
+          <div className="bg-amber-50 border border-amber-100 p-6 rounded-2xl flex justify-between items-center">
+              <div className="flex items-center gap-3 text-amber-800">
+                  <AlertTriangle size={24}/>
+                  <div>
+                      <p className="font-bold text-sm">Aguardando Respostas</p>
+                      <p className="text-xs">Nenhum fornecedor enviou preços ainda.</p>
+                  </div>
+              </div>
+              <button 
+                onClick={handleSimulate} 
+                disabled={generatingSim}
+                className="bg-amber-100 text-amber-800 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-amber-200 transition-all flex items-center gap-2"
+              >
+                  {generatingSim ? <Loader2 className="animate-spin" size={14}/> : <><RefreshCw size={14}/> Simular Respostas (Demo)</>}
+              </button>
+          </div>
+      )}
 
       {/* Tabela Cruzada (Matrix) */}
       <div className="overflow-x-auto rounded-[32px] border border-slate-200 shadow-sm bg-white">
           <table className="w-full text-left border-collapse">
               <thead>
                   <tr className="bg-slate-50 border-b border-slate-200">
-                      <th className="p-6 text-xs font-black text-slate-500 uppercase tracking-widest min-w-[200px] sticky left-0 bg-slate-50 z-10 border-r border-slate-200">Item Solicitado</th>
+                      <th className="p-6 text-xs font-black text-slate-500 uppercase tracking-widest min-w-[250px] sticky left-0 bg-slate-50 z-20 border-r border-slate-200 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.1)]">
+                          Item Solicitado
+                      </th>
                       {suppliers.map(sup => (
-                          <th key={sup.id} className="p-6 text-center min-w-[150px]">
-                              <div className="flex flex-col items-center">
-                                  <span className="font-bold text-slate-800">{sup.name}</span>
-                                  <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1 mt-1"><Trophy size={10} className="text-amber-500"/> {sup.rating}</span>
+                          <th key={sup.id} className="p-6 text-center min-w-[180px]">
+                              <div className="flex flex-col items-center group cursor-help">
+                                  <span className="font-bold text-slate-800 text-sm">{sup.name}</span>
+                                  <div className="flex items-center gap-2 mt-1">
+                                      <span className="text-[9px] bg-slate-200 px-1.5 py-0.5 rounded text-slate-600 font-bold uppercase">{sup.city || 'Local'}</span>
+                                      <span className="text-[10px] font-bold text-amber-500 flex items-center gap-0.5"><Trophy size={10} fill="currentColor"/> {sup.rating}</span>
+                                  </div>
                               </div>
                           </th>
                       ))}
@@ -154,32 +209,60 @@ const MatrixTable: React.FC<MatrixProps> = ({ eventId }) => {
               <tbody className="divide-y divide-slate-100">
                   {items.map(item => (
                       <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="p-6 sticky left-0 bg-white border-r border-slate-100 z-10 font-bold text-slate-700">
-                              {item.name}
-                              <span className="block text-[10px] text-slate-400 font-black uppercase mt-1">Qtd: {item.quantity}</span>
+                          {/* Coluna Fixa do Item */}
+                          <td className="p-6 sticky left-0 bg-white border-r border-slate-100 z-10 font-bold text-slate-700 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.05)]">
+                              <div className="flex justify-between items-start">
+                                  <div>
+                                      <span className="block text-sm">{item.name}</span>
+                                      <span className="text-[10px] text-slate-400 font-black uppercase mt-1 bg-slate-50 px-2 py-0.5 rounded inline-block border border-slate-100">
+                                          {item.quantity} {item.unit}
+                                      </span>
+                                  </div>
+                                  {selections[item.id] && <CheckCircle2 size={18} className="text-green-500"/>}
+                              </div>
                           </td>
+
+                          {/* Células de Preço (Interativas) */}
                           {suppliers.map(sup => {
-                              const price = prices[item.id]?.[sup.id];
+                              const priceObj = prices.find(p => p.quotation_item_id === item.id && p.supplier_id === sup.id);
+                              
+                              // Lógica de Melhor Preço da Linha
+                              const rowPrices = prices.filter(p => p.quotation_item_id === item.id).map(p => p.price);
+                              const minPrice = rowPrices.length > 0 ? Math.min(...rowPrices) : 0;
+                              const isBestPrice = priceObj && priceObj.price === minPrice;
+                              
                               const isSelected = selections[item.id] === sup.id;
-                              const isBestPrice = Math.min(...suppliers.map(s => prices[item.id]?.[s.id] || Infinity)) === price;
+
+                              if (!priceObj) {
+                                  return <td key={sup.id} className="p-4 text-center text-xs text-slate-300 font-medium bg-slate-50/30">Indisponível</td>;
+                              }
 
                               return (
-                                  <td key={sup.id} className="p-4 text-center">
+                                  <td key={sup.id} className="p-3 text-center">
                                       <button 
                                         onClick={() => handleSelection(item.id, sup.id)}
-                                        className={`w-full py-3 rounded-2xl border-2 transition-all flex flex-col items-center justify-center relative ${
+                                        className={`w-full py-4 rounded-2xl border-2 transition-all flex flex-col items-center justify-center relative group ${
                                             isSelected 
-                                            ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105' 
-                                            : 'bg-white border-slate-100 text-slate-500 hover:border-blue-200'
+                                            ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105 z-10' 
+                                            : isBestPrice 
+                                                ? 'bg-green-50 border-green-200 text-slate-700 hover:border-green-400'
+                                                : 'bg-white border-slate-100 text-slate-500 hover:border-blue-200 hover:shadow-md'
                                         }`}
                                       >
                                           {isBestPrice && !isSelected && (
-                                              <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-100 text-green-700 text-[9px] font-black px-2 py-0.5 rounded-full uppercase border border-green-200 whitespace-nowrap shadow-sm">
-                                                  Melhor Preço
+                                              <div className="absolute -top-2.5 bg-green-500 text-white text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-wide shadow-sm">
+                                                  Melhor Oferta
                                               </div>
                                           )}
-                                          <span className="text-sm font-black">R$ {price.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
-                                          {isSelected && <CheckCircle2 size={16} className="absolute top-2 right-2 text-blue-300"/>}
+                                          
+                                          <span className="text-sm font-black flex items-center gap-1">
+                                              <span className="opacity-50 text-[10px]">R$</span> 
+                                              {priceObj.price.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+                                          </span>
+                                          
+                                          <span className={`text-[9px] font-bold mt-1 uppercase tracking-wider ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>
+                                              Total: R$ {(priceObj.price * item.quantity).toLocaleString('pt-BR', {maximumFractionDigits: 0})}
+                                          </span>
                                       </button>
                                   </td>
                               );
@@ -191,13 +274,13 @@ const MatrixTable: React.FC<MatrixProps> = ({ eventId }) => {
       </div>
 
       {/* Ações Finais */}
-      <div className="flex justify-end pt-6">
+      <div className="flex justify-end pt-6 pb-20">
           <button 
-            onClick={handleEmitOCs} 
-            disabled={isSubmitting}
-            className="px-12 py-5 bg-green-600 text-white rounded-[24px] font-black text-sm uppercase tracking-[0.2em] shadow-xl shadow-green-600/30 flex items-center gap-3 hover:scale-105 transition-all disabled:opacity-70"
+            onClick={handleProcessPurchase} 
+            disabled={isSubmitting || prices.length === 0}
+            className="px-12 py-5 bg-green-600 text-white rounded-[24px] font-black text-sm uppercase tracking-[0.2em] shadow-xl shadow-green-600/30 flex items-center gap-4 hover:scale-105 transition-all disabled:opacity-70 disabled:scale-100 disabled:shadow-none"
           >
-              {isSubmitting ? 'Processando...' : 'Aprovar e Emitir OCs'} <ArrowRight size={20}/>
+              {isSubmitting ? <Loader2 className="animate-spin"/> : <><DollarSign size={20}/> Aprovar e Gerar OCs <ArrowRight size={20}/></>}
           </button>
       </div>
     </div>

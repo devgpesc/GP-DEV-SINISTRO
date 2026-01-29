@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 // Fix: Types User and Session not exported in v1, define as any locally
 type Session = any;
@@ -78,7 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         p = { 
                             id: newSession.user.id, 
                             email: newSession.user.email,
-                            role: 'Usuário', // <== Fallback alinhado com Constraint
+                            role: 'Usuário', 
                             full_name: newSession.user.user_metadata?.full_name || 'Usuário',
                             permissions: {} 
                         };
@@ -118,7 +117,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     // Fallback visual
                     setProfile(p || { 
                         id: currentSession.user.id, 
-                        role: 'Usuário', // <== Fallback alinhado
+                        role: 'Usuário',
                         full_name: currentSession.user.user_metadata?.full_name || 'Usuário',
                         permissions: {} 
                     });
@@ -179,14 +178,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateProfile = async (data: { full_name?: string; avatar_url?: string; role?: string }) => {
     if (!user) return;
     try {
-        const updates = {
+        // CORREÇÃO: Garante que 'email' seja enviado para evitar erro de constraint NOT NULL
+        // em caso de 'upsert' (inserção se não existir).
+        const updates: any = {
             id: user.id,
-            ...data,
+            email: user.email, // <--- CAMPO OBRIGATÓRIO NA TABELA
+            full_name: data.full_name,
+            avatar_url: data.avatar_url,
             updated_at: new Date().toISOString(),
         };
+
+        // Adiciona role apenas se fornecida
+        if (data.role) {
+            updates.role = data.role;
+        }
+
+        // Limpeza de campos undefined para não enviar lixo
+        Object.keys(updates).forEach(key => updates[key] === undefined && delete updates[key]);
+
         const { error } = await supabase.from('profiles').upsert(updates);
         if (error) throw error;
-        setProfile((prev: any) => ({ ...prev, ...data }));
+        
+        // Atualiza estado local
+        setProfile((prev: any) => ({ ...prev, ...updates }));
     } catch (error) {
         console.error("Erro perfil:", error);
         throw error;

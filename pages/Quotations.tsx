@@ -4,8 +4,10 @@ import { Plus, Search, ChevronRight, ArrowLeft, BarChart3, Trash2, Rocket, Layou
 import MatrixTable from '../components/MatrixTable';
 import { supabase } from '../services/supabaseClient';
 import { Event, Supplier } from '../types';
+import { useToast } from '../context/ToastContext';
 
 const Quotations: React.FC = () => {
+  const { addToast } = useToast();
   const [step, setStep] = useState(1); // 1: List, 2: Wizard, 3: Matrix
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [wizardStep, setWizardStep] = useState(1);
@@ -17,15 +19,15 @@ const Quotations: React.FC = () => {
   const [newQuote, setNewQuote] = useState({
     eventId: '',
     eventProtocol: '',
-    items: [] as string[], // Lista de nomes de itens
-    selectedSuppliers: [] as string[] // IDs dos fornecedores
+    items: [] as { name: string, quantity: number }[], 
+    selectedSuppliers: [] as string[] 
   });
 
   // Input temporário para adicionar itens manuais no Wizard
   const [manualItem, setManualItem] = useState('');
+  const [manualQty, setManualQty] = useState(1);
 
   const [quotes, setQuotes] = useState<any[]>([]);
-  const [quoteToDelete, setQuoteToDelete] = useState<any>(null);
   
   // Estado para passar para a Matriz
   const [activeQuoteId, setActiveQuoteId] = useState<string | null>(null);
@@ -36,13 +38,13 @@ const Quotations: React.FC = () => {
   }, []);
 
   const loadData = async () => {
-    // 1. Carregar eventos reais (Aguardando ou Em Cotação)
+    // 1. Carregar eventos
     const { data: eventsData } = await supabase.from('events')
         .select('*')
         .order('created_at', { ascending: false });
     setRealEvents(eventsData || []);
 
-    // 2. Carregar fornecedores reais
+    // 2. Carregar fornecedores
     const { data: suppliersData } = await supabase.from('suppliers')
         .select('*')
         .eq('status', 'Ativo');
@@ -62,47 +64,74 @@ const Quotations: React.FC = () => {
 
   const handleCreateQuote = async () => {
     if (!newQuote.eventId || newQuote.selectedSuppliers.length === 0) {
-        alert("Selecione um evento e pelo menos um fornecedor.");
+        addToast('warning', 'Dados Incompletos', "Selecione um evento e pelo menos um fornecedor.");
         return;
     }
 
-    const selectedEvent = realEvents.find(e => e.id === newQuote.eventId);
-    const code = `COT-${new Date().getFullYear()}-${String(quotes.length + 1).padStart(4, '0')}`;
-    
-    const payload = {
-        code: code,
-        eventRef: selectedEvent ? selectedEvent.protocol : 'N/A',
-        status: 'Em Aberto',
-        date: new Date().toLocaleDateString('pt-BR'),
-        suppliers: newQuote.selectedSuppliers.length,
-        itemCount: newQuote.items.length,
-        eventId: newQuote.eventId,
-        created_at: new Date().toISOString()
-    };
+    try {
+        const selectedEvent = realEvents.find(e => e.id === newQuote.eventId);
+        const code = `COT-${new Date().getFullYear()}-${String(quotes.length + 1).padStart(4, '0')}`;
+        
+        // 1. Criar Cotação Header
+        const { data: quoteData, error: quoteError } = await supabase.from('quotations').insert([{
+            code: code,
+            eventRef: selectedEvent ? selectedEvent.protocol : 'N/A',
+            status: 'Em Aberto',
+            date: new Date().toLocaleDateString('pt-BR'),
+            suppliers: newQuote.selectedSuppliers.length,
+            itemCount: newQuote.items.length,
+            eventId: newQuote.eventId,
+            created_at: new Date().toISOString()
+        }]).select().single();
 
-    // Salva a cotação no banco
-    const { data, error } = await supabase.from('quotations').insert([payload]).select().single();
-    
-    if (!error && data) {
-        // Atualiza status do evento
+        if (quoteError) throw quoteError;
+
+        // 2. Salvar Itens (quotation_items)
+        if (newQuote.items.length > 0) {
+            const itemsPayload = newQuote.items.map(item => ({
+                quotation_id: quoteData.id,
+                name: item.name,
+                quantity: item.quantity,
+                status: 'Pendente'
+            }));
+            const { error: itemsError } = await supabase.from('quotation_items').insert(itemsPayload);
+            if (itemsError) throw itemsError;
+        }
+
+        // 3. Salvar Vínculo Fornecedores (quotation_suppliers)
+        if (newQuote.selectedSuppliers.length > 0) {
+            const suppliersPayload = newQuote.selectedSuppliers.map(supId => ({
+                quotation_id: quoteData.id,
+                supplier_id: supId,
+                status: 'Aguardando'
+            }));
+            const { error: supError } = await supabase.from('quotation_suppliers').insert(suppliersPayload);
+            if (supError) throw supError;
+        }
+        
+        // 4. Atualizar Status do Evento
         await supabase.from('events').update({ status: 'Em Cotação' }).eq('id', newQuote.eventId);
         
-        setQuotes([data, ...quotes]);
-        setActiveQuoteId(data.id);
+        addToast('success', 'Cotação Criada', 'RFQ gerada com sucesso. Acesse a matriz para simular respostas.');
+        setQuotes([quoteData, ...quotes]);
+        setActiveQuoteId(quoteData.id);
         setActiveEventId(newQuote.eventId);
         setStep(3); // Vai para a Matriz
-    } else {
-        console.error('Erro ao criar cotação:', error);
-        // Fallback visual
-        setStep(3);
-        setActiveEventId(newQuote.eventId);
+
+    } catch (error: any) {
+        console.error('Erro:', error);
+        addToast('error', 'Erro Crítico', error.message);
     }
   };
 
   const addItem = () => {
       if (manualItem.trim()) {
-          setNewQuote(prev => ({...prev, items: [...prev.items, manualItem]}));
+          setNewQuote(prev => ({
+              ...prev, 
+              items: [...prev.items, { name: manualItem, quantity: manualQty }]
+          }));
           setManualItem('');
+          setManualQty(1);
       }
   };
 
@@ -117,7 +146,7 @@ const Quotations: React.FC = () => {
 
   const openMatrix = (quote: any) => {
       setActiveQuoteId(quote.id);
-      setActiveEventId(quote.eventId); // Garante que o ID do evento seja passado
+      setActiveEventId(quote.eventId);
       setStep(3);
   };
 
@@ -165,7 +194,7 @@ const Quotations: React.FC = () => {
               
               <div className="flex justify-between items-center pt-6 border-t border-slate-50">
                  <div className="flex -space-x-3">
-                    {[...Array(quote.suppliers || 1)].map((_, j) => (
+                    {[...Array(Math.min(quote.suppliers || 0, 5))].map((_, j) => (
                       <div key={j} className="w-9 h-9 rounded-full border-4 border-white bg-slate-200 flex items-center justify-center text-[9px] font-black text-slate-500 shadow-sm">S{j+1}</div>
                     ))}
                  </div>
@@ -235,13 +264,14 @@ const Quotations: React.FC = () => {
                <div className="flex-1 space-y-4">
                   <div className="flex gap-2">
                       <input className="flex-1 p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-medium" placeholder="Nome da peça ou serviço..." value={manualItem} onChange={e => setManualItem(e.target.value)} onKeyDown={e => e.key === 'Enter' && addItem()} />
+                      <input type="number" className="w-20 p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-medium text-center" value={manualQty} onChange={e => setManualQty(Number(e.target.value))} min={1} />
                       <button onClick={addItem} className="bg-slate-900 text-white p-4 rounded-2xl"><Plus size={20}/></button>
                   </div>
                   <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
                       {newQuote.items.length === 0 && <p className="text-center text-slate-400 py-10 text-xs uppercase tracking-widest font-bold">Nenhum item adicionado</p>}
                       {newQuote.items.map((item, idx) => (
                           <div key={idx} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
-                              <span className="font-bold text-slate-700 text-sm">{item}</span>
+                              <span className="font-bold text-slate-700 text-sm">{item.name} <span className="text-slate-400 text-xs ml-1">x{item.quantity}</span></span>
                               <button onClick={() => setNewQuote(prev => ({...prev, items: prev.items.filter((_, i) => i !== idx)}))} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button>
                           </div>
                       ))}
@@ -299,8 +329,8 @@ const Quotations: React.FC = () => {
                   <p className="text-sm text-slate-500">Compare preços e aprove as melhores ofertas.</p>
               </div>
            </div>
-           {/* IMPORTANTE: Passar o activeEventId corretamente para evitar erro UUID */}
-           <MatrixTable eventId={activeEventId || undefined} />
+           {/* Componente Matriz conectado aos dados reais */}
+           <MatrixTable quotationId={activeQuoteId || undefined} eventId={activeEventId || undefined} />
         </div>
       )}
     </div>
