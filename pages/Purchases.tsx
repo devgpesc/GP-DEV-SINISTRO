@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   ShoppingCart, Search, Filter, CheckCircle2, XCircle, Printer, MoreVertical, 
-  DollarSign, UserCheck, X, Eye, EyeOff, Loader2, Info, Trash2, Package, ShieldCheck, AlertTriangle
+  DollarSign, UserCheck, X, Eye, EyeOff, Loader2, Info, Trash2, Package, ShieldCheck, AlertTriangle, Truck
 } from 'lucide-react';
 import { PurchaseOrder } from '../types';
 import { supabase } from '../services/supabaseClient';
@@ -13,11 +13,11 @@ const Purchases: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('Todos');
-  const [orders, setOrders] = useState<PurchaseOrder[]>([]);
+  const [orders, setOrders] = useState<any[]>([]); // Usando any para acomodar o join de suppliers
   const [loading, setLoading] = useState(true);
   
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const [viewOrder, setViewOrder] = useState<PurchaseOrder | null>(null);
+  const [viewOrder, setViewOrder] = useState<any | null>(null);
   const [toast, setToast] = useState<{ show: boolean; title: string; message: string; type: 'success' | 'info' | 'loading' } | null>(null);
 
   const [confirmModal, setConfirmModal] = useState<{
@@ -34,23 +34,28 @@ const Purchases: React.FC = () => {
 
   const loadOrders = async () => {
     setLoading(true);
-    // QUERY CORRIGIDA: Ordenação por created_at (snake_case)
+    // QUERY OTIMIZADA: Faz JOIN com a tabela de fornecedores para pegar o nome
     const { data, error } = await supabase
         .from('purchase_orders')
-        .select('*')
+        .select(`
+            *,
+            suppliers (
+                name,
+                whatsapp
+            )
+        `)
         .order('created_at', { ascending: false });
     
     if (error) {
         console.error("Erro ao carregar compras:", error);
         setToast({ show: true, title: 'Erro de Carregamento', message: 'Não foi possível buscar as OCs.', type: 'info' });
     } else {
-        // Mapeamento para garantir compatibilidade com a interface PurchaseOrder (que usa camelCase)
         const mappedOrders = data?.map((o: any) => ({
             ...o,
             eventId: o.event_id || o.eventId,
             supplierId: o.supplier_id || o.supplierId,
             createdAt: o.created_at || o.createdAt,
-            // items já vem como JSONB array
+            supplierName: o.suppliers?.name || 'Fornecedor Desconhecido'
         })) || [];
         setOrders(mappedOrders);
     }
@@ -142,7 +147,7 @@ const Purchases: React.FC = () => {
     }
   };
 
-  const handlePrint = (order: PurchaseOrder) => {
+  const handlePrint = (order: any) => {
     setToast({ 
         show: true, 
         title: 'Gerando PDF', 
@@ -153,7 +158,7 @@ const Purchases: React.FC = () => {
     const itemsHtml = order.items?.map((item: any) => `
       <tr>
         <td style="padding: 12px; border-bottom: 1px solid #eee;">${item.name || 'Item Diverso'}</td>
-        <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: center;">${item.quantity || 1}</td>
+        <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: center;">${item.quantity || 1} ${item.unit || 'UN'}</td>
         <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: right;">R$ ${(item.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
         <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: right;">R$ ${((item.price || 0) * (item.quantity || 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
       </tr>
@@ -178,6 +183,9 @@ const Purchases: React.FC = () => {
             .totals-box { width: 250px; }
             .row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
             .row.final { border-top: 2px solid #333; border-bottom: none; margin-top: 10px; padding-top: 15px; font-size: 18px; font-weight: bold; color: #2563eb; }
+            .supplier-box { background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 20px; }
+            .supplier-title { font-size: 12px; font-weight: bold; color: #64748b; text-transform: uppercase; margin-bottom: 5px; }
+            .supplier-name { font-size: 16px; font-weight: bold; color: #1e293b; }
           </style>
         </head>
         <body>
@@ -185,6 +193,12 @@ const Purchases: React.FC = () => {
             <div class="logo"><h1>AutoClaims Pro</h1><p>Sistema de Gestão</p></div>
             <div class="meta"><h2>${order.code}</h2><p>EMISSÃO: ${new Date(order.createdAt).toLocaleDateString()}</p><span class="status-badge">${order.status}</span></div>
           </div>
+          
+          <div class="supplier-box">
+             <div class="supplier-title">Fornecedor</div>
+             <div class="supplier-name">${order.supplierName}</div>
+          </div>
+
           <table><thead><tr><th width="50%">Descrição</th><th width="10%">Qtd</th><th width="20%">Unit.</th><th width="20%">Total</th></tr></thead><tbody>${itemsHtml}</tbody></table>
           <div class="totals"><div class="totals-box"><div class="row final"><span>TOTAL</span><span>R$ ${order.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div></div></div>
         </body>
@@ -217,7 +231,7 @@ const Purchases: React.FC = () => {
 
   const filteredOrders = useMemo(() => {
     return orders.filter(o => {
-      const matchSearch = o.code.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchSearch = o.code.toLowerCase().includes(searchTerm.toLowerCase()) || o.supplierName.toLowerCase().includes(searchTerm.toLowerCase());
       const matchStatus = filterStatus === 'Todos' || o.status === filterStatus;
       return matchSearch && matchStatus;
     });
@@ -307,7 +321,8 @@ const Purchases: React.FC = () => {
                   <h3 className={`font-black text-xl tracking-tight ${order.status === 'Cancelada' ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{order.code}</h3>
                   <span className={`px-4 py-1 rounded-full text-[9px] font-black uppercase border ${getStatusStyle(order.status)}`}>{order.status}</span>
                 </div>
-                <p className="text-[11px] text-slate-500 font-bold uppercase">Emissão: {new Date(order.createdAt).toLocaleDateString()}</p>
+                <p className="text-sm text-slate-600 font-bold flex items-center gap-1"><Truck size={14} className="text-slate-400"/> {order.supplierName}</p>
+                <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Emissão: {new Date(order.createdAt).toLocaleDateString()}</p>
               </div>
             </div>
 
@@ -371,7 +386,7 @@ const Purchases: React.FC = () => {
                 <div className="flex-1 overflow-y-auto p-6">
                     <table className="w-full text-left">
                         <thead><tr><th>Item</th><th className="text-center">Qtd</th><th className="text-right">Total</th></tr></thead>
-                        <tbody>{viewOrder.items?.map((item, idx) => (
+                        <tbody>{viewOrder.items?.map((item: any, idx: number) => (
                             <tr key={idx}><td className="py-2">{item.name}</td><td className="text-center">{item.quantity}</td><td className="text-right">R$ {(item.price * item.quantity).toFixed(2)}</td></tr>
                         ))}</tbody>
                     </table>

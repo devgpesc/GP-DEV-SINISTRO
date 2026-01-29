@@ -101,8 +101,6 @@ export const quotationService = {
    * Processa a compra: Gera OCs baseadas nos vencedores selecionados na Matriz
    */
   async processPurchase(quotationId: string, selections: Record<string, string>, eventId?: string) {
-      // selections: { [itemId]: supplierId }
-      
       // 0. Obter Usuário Atual (Necessário para RLS e Auditoria)
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado.");
@@ -111,9 +109,10 @@ export const quotationService = {
       const { items, prices } = await this.getMatrixData(quotationId);
       const ordersBySupplier: Record<string, any[]> = {};
 
-      // 2. Marcar vencedores no banco (Auditoria)
-      // Resetar anteriores primeiro
+      // 2. Marcar vencedores no banco (Auditoria) e Preparar Itens
       const itemIds = items.map(i => i.id);
+      
+      // Resetar vencedores anteriores para evitar duplicidade
       await supabase.from('quotation_supplier_prices')
           .update({ is_winner: false })
           .in('quotation_item_id', itemIds);
@@ -125,7 +124,7 @@ export const quotationService = {
           const priceObj = prices.find(p => p.quotation_item_id === itemId && p.supplier_id === supplierId);
           
           if (item && priceObj) {
-              // Preparar atualização de vencedor
+              // Preparar atualização de vencedor no banco
               winnersToUpdate.push(
                   supabase.from('quotation_supplier_prices')
                       .update({ is_winner: true })
@@ -136,41 +135,55 @@ export const quotationService = {
               if (!ordersBySupplier[supplierId]) {
                   ordersBySupplier[supplierId] = [];
               }
+              
+              // ESTRUTURA DO ITEM NA OC (JSONB)
+              // Enriquece com dados do catálogo e cotação para rastreabilidade
               ordersBySupplier[supplierId].push({
                   name: item.name,
                   quantity: item.quantity,
+                  unit: item.unit,
                   price: priceObj.price,
-                  catalogId: item.catalog_item_id || null,
-                  unit: item.unit
+                  total: priceObj.price * item.quantity,
+                  catalog_item_id: item.catalog_item_id || null, // Link com catálogo
+                  catalogId: item.catalog_item_id || null, // Retrocompatibilidade frontend
+                  quotation_item_id: item.id
               });
           }
       });
 
+      if (winnersToUpdate.length === 0) {
+          throw new Error("Nenhum item válido selecionado.");
+      }
+
       await Promise.all(winnersToUpdate);
 
-      // 3. Criar OCs no banco (PAYLOAD CORRIGIDO SNAKE_CASE)
+      // 3. Criar OCs no banco
       const promises = Object.keys(ordersBySupplier).map(async (supplierId) => {
           const cartItems = ordersBySupplier[supplierId];
           const total = cartItems.reduce((acc, i) => acc + (i.price * i.quantity), 0);
           
-          // Gera código aleatório OC-ANO-XXXX
           const code = `OC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
           
+          // PAYLOAD BLINDADO: Apenas campos que garantimos existir na migration
           const payload = {
               code: code,
-              event_id: eventId || null,      // snake_case
-              supplier_id: supplierId,        // snake_case
-              quotation_id: quotationId,      // snake_case (novo vínculo)
-              items: cartItems,               // JSONB
+              event_id: eventId || null,
+              supplier_id: supplierId,
+              quotation_id: quotationId,
+              items: cartItems, // JSONB com estrutura rica
               total: total,
               status: 'Gerada',
-              created_at: new Date().toISOString(), // snake_case
-              created_by: user.id             // snake_case (CRÍTICO)
+              created_at: new Date().toISOString(),
+              created_by: user.id
           };
 
           const { error } = await supabase.from('purchase_orders').insert([payload]);
           if (error) {
-              console.error("Erro ao criar OC para fornecedor " + supplierId, error);
+              console.error("Erro ao criar OC:", error);
+              // Lança erro específico se for coluna ausente (para debug rápido)
+              if (error.message.includes('column') && error.message.includes('does not exist')) {
+                  throw new Error(`Erro de Schema: Coluna inexistente. Rode a migration 20240317.`);
+              }
               throw new Error(`Falha ao gerar OC: ${error.message}`);
           }
       });
@@ -178,8 +191,7 @@ export const quotationService = {
       await Promise.all(promises);
 
       // 4. Atualizar status da cotação
-      const { error: quoteError } = await supabase.from('quotations').update({ status: 'Finalizada' }).eq('id', quotationId);
-      if (quoteError) console.warn("Erro ao finalizar cotação:", quoteError);
+      await supabase.from('quotations').update({ status: 'Finalizada' }).eq('id', quotationId);
       
       // 5. Atualizar status do Evento (se houver)
       if (eventId) {
