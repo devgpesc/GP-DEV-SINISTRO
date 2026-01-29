@@ -184,9 +184,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateProfile = async (data: { full_name?: string; avatar_url?: string; role?: string }) => {
     if (!user) return;
     try {
+        // CORREÇÃO: Mapeia full_name para name também, para satisfazer bancos antigos
         const updates = {
             id: user.id,
             ...data,
+            name: data.full_name || '', // Garante que a coluna 'name' receba valor
             email: user.email, 
             updated_at: new Date().toISOString(),
         };
