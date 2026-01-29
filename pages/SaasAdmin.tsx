@@ -179,28 +179,61 @@ const SaasAdmin: React.FC = () => {
             loadData();
 
         } else {
-            // CRIAR (Via Edge Function para criar User + Tenant)
+            // CRIAR
             if (tenantForm.adminPassword.length < 6) throw new Error("A senha deve ter no mínimo 6 caracteres.");
 
-            const { data, error } = await supabase.functions.invoke('create-tenant', {
-                body: {
-                    companyName: tenantForm.name,
-                    document: tenantForm.document,
-                    planId: tenantForm.plan_id,
-                    adminName: tenantForm.adminName,
-                    adminEmail: tenantForm.adminEmail,
-                    adminPassword: tenantForm.adminPassword
+            try {
+                // Tentativa 1: Via Edge Function (Ideal para criar User Auth)
+                const { data, error } = await supabase.functions.invoke('create-tenant', {
+                    body: {
+                        companyName: tenantForm.name,
+                        document: tenantForm.document,
+                        planId: tenantForm.plan_id,
+                        adminName: tenantForm.adminName,
+                        adminEmail: tenantForm.adminEmail,
+                        adminPassword: tenantForm.adminPassword
+                    }
+                });
+
+                if (error) throw error;
+                if (data?.error) throw new Error(data.error);
+
+                setCreatedCredentials({
+                    company: tenantForm.name,
+                    email: tenantForm.adminEmail,
+                    password: tenantForm.adminPassword
+                });
+                
+            } catch (functionError: any) {
+                console.error("Function Error:", functionError);
+                
+                // FALLBACK: Cria apenas o Tenant sem o usuário se a Function falhar
+                // Isso permite testes de UI mesmo sem backend de functions
+                if (functionError.message?.includes('Failed to send a request') || functionError.message?.includes('Function not found')) {
+                    const { data: userData } = await supabase.auth.getUser();
+                    if (!userData?.user) throw new Error('Não foi possível usar fallback (sem usuário logado).');
+
+                    const { error: dbError } = await supabase.from('saas_tenants').insert({
+                        name: tenantForm.name,
+                        document: tenantForm.document,
+                        plan_id: tenantForm.plan_id,
+                        owner_id: userData.user.id, // Fallback para o admin atual
+                        status: 'active'
+                    });
+
+                    if (dbError) throw dbError;
+
+                    setCreatedCredentials({
+                        company: tenantForm.name,
+                        email: "Admin Atual (Fallback)",
+                        password: "N/A (Function Offline)"
+                    });
+                    
+                    addToast('warning', 'Modo Fallback', 'Edge Function indisponível. Empresa criada vinculada ao seu usuário.');
+                } else {
+                    throw functionError;
                 }
-            });
-
-            if (error) throw new Error(error.message || 'Erro ao conectar com servidor.');
-            if (data?.error) throw new Error(data.error);
-
-            setCreatedCredentials({
-                company: tenantForm.name,
-                email: tenantForm.adminEmail,
-                password: tenantForm.adminPassword
-            });
+            }
             
             setIsTenantModalOpen(false);
             setShowSuccessModal(true);

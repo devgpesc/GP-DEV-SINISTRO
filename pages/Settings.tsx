@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Save, CheckCircle, Database, Bell, Shield, Globe, Mail, User, Building, Users, MoreVertical, Edit2, Plus, Loader2, X, AlertTriangle, Copy, Check, Send, Info, Key, Server, Cpu, ToggleLeft, ToggleRight, Zap, Brain, MessageSquare, UserPlus, Link as LinkIcon, Trash2, ClipboardList, Clock } from 'lucide-react';
+import { Settings as SettingsIcon, Save, CheckCircle, Database, Bell, Shield, Globe, Mail, User, Building, Users, MoreVertical, Edit2, Plus, Loader2, X, AlertTriangle, Copy, Check, Send, Info, Key, Server, Cpu, ToggleLeft, ToggleRight, Zap, Brain, MessageSquare, UserPlus, Link as LinkIcon, Trash2, ClipboardList, Clock, RefreshCw } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { useToast } from '../context/ToastContext';
 import { auditService } from '../services/auditService';
@@ -247,6 +247,16 @@ const Settings: React.FC = () => {
               await auditService.log('Create Invite', 'Invitation', inviteData.email, { link });
               loadInvitations();
           }
+      }
+  };
+
+  const handleDeleteInvite = async (id: string) => {
+      const { error } = await supabase.from('invitations').delete().eq('id', id);
+      if (!error) {
+          setInvitations(prev => prev.filter(i => i.id !== id));
+          addToast('success', 'Revogado', 'Convite cancelado com sucesso.');
+      } else {
+          addToast('error', 'Erro', 'Não foi possível remover o convite.');
       }
   };
 
@@ -627,17 +637,25 @@ const Settings: React.FC = () => {
 
                           {/* Histórico de Convites */}
                           <div className="pt-6 border-t border-slate-100">
-                              <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">Convites Enviados</h4>
+                              <div className="flex justify-between items-center mb-4">
+                                  <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest">Convites Enviados</h4>
+                                  <button onClick={loadInvitations} className="text-slate-400 hover:text-blue-600"><RefreshCw size={14}/></button>
+                              </div>
                               <div className="space-y-2">
                                   {invitations.map(inv => (
-                                      <div key={inv.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                      <div key={inv.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100 group">
                                           <div>
                                               <p className="text-xs font-bold text-slate-700">{inv.name || 'Sem nome'}</p>
                                               <p className="text-[10px] text-slate-400">{inv.email}</p>
                                           </div>
-                                          <span className={`text-[9px] font-black uppercase px-2 py-1 rounded border ${inv.status === 'accepted' ? 'bg-green-100 text-green-700 border-green-200' : 'bg-amber-100 text-amber-700 border-amber-200'}`}>
-                                              {inv.status === 'accepted' ? 'Aceito' : 'Pendente'}
-                                          </span>
+                                          <div className="flex items-center gap-2">
+                                              <span className={`text-[9px] font-black uppercase px-2 py-1 rounded border ${inv.status === 'accepted' ? 'bg-green-100 text-green-700 border-green-200' : 'bg-amber-100 text-amber-700 border-amber-200'}`}>
+                                                  {inv.status === 'accepted' ? 'Aceito' : 'Pendente'}
+                                              </span>
+                                              <button onClick={() => handleDeleteInvite(inv.id)} className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-white rounded-lg transition-all opacity-0 group-hover:opacity-100">
+                                                  <Trash2 size={14}/>
+                                              </button>
+                                          </div>
                                       </div>
                                   ))}
                                   {invitations.length === 0 && <p className="text-xs text-slate-400 text-center italic">Nenhum convite recente.</p>}
