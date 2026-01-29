@@ -7,7 +7,6 @@ export const quotationService = {
    * Busca dados completos para montar a Matriz de Decisão
    */
   async getMatrixData(quotationId: string): Promise<{ items: QuotationItem[], prices: SupplierPrice[], suppliers: any[] }> {
-    // 1. Buscar Itens
     const { data: items, error: itemsError } = await supabase
       .from('quotation_items')
       .select('*')
@@ -16,7 +15,6 @@ export const quotationService = {
 
     if (itemsError) throw itemsError;
 
-    // 2. Buscar Preços
     const itemIds = items.map(i => i.id);
     let prices: SupplierPrice[] = [];
     
@@ -30,7 +28,6 @@ export const quotationService = {
         prices = pricesData || [];
     }
 
-    // 3. Buscar Fornecedores Participantes
     const { data: qSuppliers, error: qsError } = await supabase
         .from('quotation_suppliers')
         .select('supplier_id, suppliers(id, name, rating, city)')
@@ -44,7 +41,7 @@ export const quotationService = {
   },
 
   /**
-   * Salva ou atualiza um preço individual na matriz (Célula editável)
+   * Salva ou atualiza um preço individual na matriz
    */
   async savePrice(payload: { quotation_item_id: string, supplier_id: string, price: number, obs?: string }) {
       const { error } = await supabase
@@ -52,7 +49,7 @@ export const quotationService = {
           .upsert({
               ...payload,
               availability: true,
-              is_winner: false, // Reset winner status on edit
+              is_winner: false, 
               created_at: new Date().toISOString()
           }, { onConflict: 'quotation_item_id, supplier_id' });
       
@@ -60,15 +57,13 @@ export const quotationService = {
   },
 
   /**
-   * Simula a resposta de fornecedores (Mock inteligente para demonstração)
+   * Simula a resposta de fornecedores
    */
   async simulateSupplierResponses(quotationId: string) {
       const { items, suppliers } = await this.getMatrixData(quotationId);
-      
       if (items.length === 0 || suppliers.length === 0) return;
 
       const newPrices = [];
-
       for (const item of items) {
           for (const supplier of suppliers) {
               const { data: existing } = await supabase.from('quotation_supplier_prices')
@@ -80,7 +75,6 @@ export const quotationService = {
               if (!existing) {
                   const basePrice = Math.random() * 500 + 100; 
                   const variation = (Math.random() - 0.5) * 50; 
-                  
                   newPrices.push({
                       quotation_item_id: item.id,
                       supplier_id: supplier.id,
@@ -91,111 +85,122 @@ export const quotationService = {
               }
           }
       }
-
       if (newPrices.length > 0) {
           await supabase.from('quotation_supplier_prices').insert(newPrices);
       }
   },
 
   /**
-   * Processa a compra: Gera OCs baseadas nos vencedores selecionados na Matriz
+   * PROCESSA A COMPRA: GERA OCS NO BANCO
+   * Versão Blindada: Logs, Validação de Auth e Tratamento de Erro SQL
    */
   async processPurchase(quotationId: string, selections: Record<string, string>, eventId?: string) {
-      // 0. Obter Usuário Atual (Necessário para RLS e Auditoria)
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Usuário não autenticado.");
+      console.log('>>> Iniciando processPurchase', { quotationId, selectionsCount: Object.keys(selections).length });
 
-      // 1. Validar e Buscar Dados
+      // 1. Validar Usuário (Obrigatório para created_by)
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+          console.error("Erro Auth:", authError);
+          throw new Error("Sessão expirada. Faça login novamente para aprovar.");
+      }
+
+      // 2. Buscar dados da matriz
       const { items, prices } = await this.getMatrixData(quotationId);
-      const ordersBySupplier: Record<string, any[]> = {};
-
-      // 2. Marcar vencedores no banco (Auditoria) e Preparar Itens
-      const itemIds = items.map(i => i.id);
       
-      // Resetar vencedores anteriores para evitar duplicidade
+      // Agrupamento de itens por fornecedor
+      const ordersBySupplier: Record<string, any[]> = {};
+      const itemIds = items.map(i => i.id);
+
+      // 3. Resetar vencedores anteriores (para evitar duplicidade visual na matriz)
       await supabase.from('quotation_supplier_prices')
           .update({ is_winner: false })
           .in('quotation_item_id', itemIds);
 
       const winnersToUpdate: any[] = [];
 
+      // 4. Processar Seleções
       Object.entries(selections).forEach(([itemId, supplierId]) => {
           const item = items.find(i => i.id === itemId);
           const priceObj = prices.find(p => p.quotation_item_id === itemId && p.supplier_id === supplierId);
           
           if (item && priceObj) {
-              // Preparar atualização de vencedor no banco
+              // Marca vencedor no banco
               winnersToUpdate.push(
                   supabase.from('quotation_supplier_prices')
                       .update({ is_winner: true })
                       .match({ quotation_item_id: itemId, supplier_id: supplierId })
               );
 
-              // Agrupar para OC
+              // Adiciona ao carrinho do fornecedor
               if (!ordersBySupplier[supplierId]) {
                   ordersBySupplier[supplierId] = [];
               }
               
-              // ESTRUTURA DO ITEM NA OC (JSONB)
-              // Enriquece com dados do catálogo e cotação para rastreabilidade
               ordersBySupplier[supplierId].push({
                   name: item.name,
                   quantity: item.quantity,
-                  unit: item.unit,
+                  unit: item.unit || 'UN',
                   price: priceObj.price,
                   total: priceObj.price * item.quantity,
-                  catalog_item_id: item.catalog_item_id || null, // Link com catálogo
-                  catalogId: item.catalog_item_id || null, // Retrocompatibilidade frontend
+                  catalog_item_id: item.catalog_item_id || null, // Importante para rastreabilidade
                   quotation_item_id: item.id
               });
           }
       });
 
-      if (winnersToUpdate.length === 0) {
-          throw new Error("Nenhum item válido selecionado.");
+      if (Object.keys(ordersBySupplier).length === 0) {
+          throw new Error("Nenhum item selecionado ou preços não encontrados.");
       }
 
+      // Executa updates de "winner" em paralelo
       await Promise.all(winnersToUpdate);
 
-      // 3. Criar OCs no banco
-      const promises = Object.keys(ordersBySupplier).map(async (supplierId) => {
+      // 5. CRIAR AS OCs (INSERT REAL)
+      const creationPromises = Object.keys(ordersBySupplier).map(async (supplierId) => {
           const cartItems = ordersBySupplier[supplierId];
           const total = cartItems.reduce((acc, i) => acc + (i.price * i.quantity), 0);
           
-          const code = `OC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+          // Gera código OC único
+          const code = `OC-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
           
-          // PAYLOAD BLINDADO: Apenas campos que garantimos existir na migration
           const payload = {
               code: code,
               event_id: eventId || null,
               supplier_id: supplierId,
               quotation_id: quotationId,
-              items: cartItems, // JSONB com estrutura rica
+              items: cartItems, // Salva itens como JSONB para simplicidade inicial
               total: total,
               status: 'Gerada',
               created_at: new Date().toISOString(),
               created_by: user.id
           };
 
-          const { error } = await supabase.from('purchase_orders').insert([payload]);
+          console.log(`Tentando criar OC para Fornecedor ${supplierId}:`, payload);
+
+          const { data, error } = await supabase
+              .from('purchase_orders')
+              .insert([payload])
+              .select()
+              .single();
+
           if (error) {
-              console.error("Erro ao criar OC:", error);
-              // Lança erro específico se for coluna ausente (para debug rápido)
-              if (error.message.includes('column') && error.message.includes('does not exist')) {
-                  throw new Error(`Erro de Schema: Coluna inexistente. Rode a migration 20240317.`);
-              }
-              throw new Error(`Falha ao gerar OC: ${error.message}`);
+              console.error(`ERRO CRÍTICO ao criar OC ${code}:`, error);
+              throw new Error(`Falha no banco ao criar OC: ${error.message}`);
           }
+          
+          return data;
       });
 
-      await Promise.all(promises);
+      const createdOrders = await Promise.all(creationPromises);
+      console.log(">>> OCs Criadas com Sucesso:", createdOrders);
 
-      // 4. Atualizar status da cotação
+      // 6. Atualizar status da cotação e evento
       await supabase.from('quotations').update({ status: 'Finalizada' }).eq('id', quotationId);
       
-      // 5. Atualizar status do Evento (se houver)
       if (eventId) {
           await supabase.from('events').update({ status: 'Aprovado' }).eq('id', eventId);
       }
+
+      return createdOrders;
   }
 };

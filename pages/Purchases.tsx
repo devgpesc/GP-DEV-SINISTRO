@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   ShoppingCart, Search, Filter, CheckCircle2, XCircle, Printer, MoreVertical, 
-  DollarSign, UserCheck, X, Eye, EyeOff, Loader2, Info, Trash2, Package, ShieldCheck, AlertTriangle, Truck
+  DollarSign, UserCheck, X, Eye, EyeOff, Loader2, Info, Trash2, ShieldCheck, AlertTriangle, Truck
 } from 'lucide-react';
 import { PurchaseOrder } from '../types';
 import { supabase } from '../services/supabaseClient';
@@ -13,7 +13,7 @@ const Purchases: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('Todos');
-  const [orders, setOrders] = useState<any[]>([]); // Usando any para acomodar o join de suppliers
+  const [orders, setOrders] = useState<any[]>([]); // Usando any para facilitar o join
   const [loading, setLoading] = useState(true);
   
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -34,28 +34,34 @@ const Purchases: React.FC = () => {
 
   const loadOrders = async () => {
     setLoading(true);
-    // QUERY OTIMIZADA: Faz JOIN com a tabela de fornecedores para pegar o nome
+    // QUERY CORRIGIDA: JOIN com fornecedores e ordenação por created_at
     const { data, error } = await supabase
         .from('purchase_orders')
         .select(`
             *,
             suppliers (
                 name,
-                whatsapp
+                whatsapp,
+                email
             )
         `)
         .order('created_at', { ascending: false });
     
     if (error) {
         console.error("Erro ao carregar compras:", error);
-        setToast({ show: true, title: 'Erro de Carregamento', message: 'Não foi possível buscar as OCs.', type: 'info' });
+        setToast({ show: true, title: 'Erro', message: 'Falha ao buscar OCs.', type: 'info' });
     } else {
+        // Mapeamento explícito para garantir compatibilidade
         const mappedOrders = data?.map((o: any) => ({
-            ...o,
-            eventId: o.event_id || o.eventId,
-            supplierId: o.supplier_id || o.supplierId,
-            createdAt: o.created_at || o.createdAt,
-            supplierName: o.suppliers?.name || 'Fornecedor Desconhecido'
+            id: o.id,
+            code: o.code,
+            eventId: o.event_id,
+            supplierId: o.supplier_id,
+            supplierName: o.suppliers?.name || 'Fornecedor Desconhecido',
+            items: o.items || [],
+            total: o.total || 0,
+            status: o.status,
+            createdAt: o.created_at
         })) || [];
         setOrders(mappedOrders);
     }
@@ -63,18 +69,8 @@ const Purchases: React.FC = () => {
   };
 
   useEffect(() => {
-    const handleClickOutside = () => setOpenMenuId(null);
-    if (openMenuId) {
-      document.addEventListener('click', handleClickOutside);
-    }
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, [openMenuId]);
-
-  useEffect(() => {
     if (toast?.show && toast.type !== 'loading') {
-      const timer = setTimeout(() => {
-        setToast(null);
-      }, 4000);
+      const timer = setTimeout(() => setToast(null), 4000);
       return () => clearTimeout(timer);
     }
   }, [toast]);
@@ -91,11 +87,7 @@ const Purchases: React.FC = () => {
     }
   };
 
-  const handleRequestApprove = (order: PurchaseOrder) => {
-    if (!canApprove) {
-      setToast({ show: true, title: 'Acesso Negado', message: 'Apenas gestores podem aprovar OCs.', type: 'info' });
-      return;
-    }
+  const handleRequestApprove = (order: any) => {
     setConfirmModal({
       isOpen: true,
       type: 'approve',
@@ -106,7 +98,7 @@ const Purchases: React.FC = () => {
     setOpenMenuId(null);
   };
 
-  const handleRequestCancel = (order: PurchaseOrder) => {
+  const handleRequestCancel = (order: any) => {
     setConfirmModal({
       isOpen: true,
       type: 'cancel',
@@ -117,7 +109,7 @@ const Purchases: React.FC = () => {
     setOpenMenuId(null);
   };
 
-  const handleRequestDelete = (order: PurchaseOrder) => {
+  const handleRequestDelete = (order: any) => {
     setConfirmModal({
       isOpen: true,
       type: 'delete',
@@ -140,7 +132,9 @@ const Purchases: React.FC = () => {
         const { error } = await supabase.from('purchase_orders').delete().eq('id', confirmModal.orderId);
         if (!error) {
             setOrders(prev => prev.filter(o => o.id !== confirmModal.orderId));
-            setToast({ show: true, title: 'Excluído', message: `Ordem ${confirmModal.orderCode} removida permanentemente.`, type: 'success' });
+            setToast({ show: true, title: 'Excluído', message: `Ordem ${confirmModal.orderCode} removida.`, type: 'success' });
+        } else {
+            setToast({ show: true, title: 'Erro', message: 'Não foi possível excluir.', type: 'info' });
         }
       }
       setConfirmModal({ isOpen: false, type: null, orderId: null, orderCode: null });
@@ -148,231 +142,155 @@ const Purchases: React.FC = () => {
   };
 
   const handlePrint = (order: any) => {
-    setToast({ 
-        show: true, 
-        title: 'Gerando PDF', 
-        message: `Preparando documento ${order.code} para impressão...`, 
-        type: 'loading' 
-    });
-
+    setToast({ show: true, title: 'Imprimindo', message: 'Gerando visualização...', type: 'loading' });
+    
     const itemsHtml = order.items?.map((item: any) => `
       <tr>
-        <td style="padding: 12px; border-bottom: 1px solid #eee;">${item.name || 'Item Diverso'}</td>
-        <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: center;">${item.quantity || 1} ${item.unit || 'UN'}</td>
-        <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: right;">R$ ${(item.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-        <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: right;">R$ ${((item.price || 0) * (item.quantity || 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.name}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">${item.quantity}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">R$ ${(item.price || 0).toFixed(2)}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">R$ ${((item.price || 0) * (item.quantity || 1)).toFixed(2)}</td>
       </tr>
-    `).join('') || '<tr><td colspan="4" style="padding: 20px; text-align: center; color: #999;">Sem itens registrados</td></tr>';
+    `).join('') || '';
 
     const printContent = `
       <html>
-        <head>
-          <title>Ordem de Compra - ${order.code}</title>
-          <style>
-            body { font-family: 'Helvetica', 'Arial', sans-serif; color: #333; line-height: 1.6; padding: 40px; max-width: 900px; margin: 0 auto; }
-            .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; border-bottom: 2px solid #2563eb; padding-bottom: 20px; }
-            .logo h1 { color: #2563eb; margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 2px; }
-            .logo p { margin: 5px 0 0; font-size: 12px; color: #666; }
-            .meta { text-align: right; }
-            .meta h2 { margin: 0; font-size: 32px; color: #1e293b; }
-            .meta p { margin: 5px 0 0; font-weight: bold; color: #64748b; font-size: 14px; }
-            .status-badge { display: inline-block; background: #eee; padding: 4px 12px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase; margin-top: 10px; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 13px; }
-            th { background: #1e293b; color: white; text-align: left; padding: 12px; text-transform: uppercase; font-size: 11px; letter-spacing: 1px; }
-            .totals { display: flex; justify-content: flex-end; }
-            .totals-box { width: 250px; }
-            .row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
-            .row.final { border-top: 2px solid #333; border-bottom: none; margin-top: 10px; padding-top: 15px; font-size: 18px; font-weight: bold; color: #2563eb; }
-            .supplier-box { background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 20px; }
-            .supplier-title { font-size: 12px; font-weight: bold; color: #64748b; text-transform: uppercase; margin-bottom: 5px; }
-            .supplier-name { font-size: 16px; font-weight: bold; color: #1e293b; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div class="logo"><h1>AutoClaims Pro</h1><p>Sistema de Gestão</p></div>
-            <div class="meta"><h2>${order.code}</h2><p>EMISSÃO: ${new Date(order.createdAt).toLocaleDateString()}</p><span class="status-badge">${order.status}</span></div>
-          </div>
-          
-          <div class="supplier-box">
-             <div class="supplier-title">Fornecedor</div>
-             <div class="supplier-name">${order.supplierName}</div>
-          </div>
-
-          <table><thead><tr><th width="50%">Descrição</th><th width="10%">Qtd</th><th width="20%">Unit.</th><th width="20%">Total</th></tr></thead><tbody>${itemsHtml}</tbody></table>
-          <div class="totals"><div class="totals-box"><div class="row final"><span>TOTAL</span><span>R$ ${order.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div></div></div>
+        <head><title>Ordem de Compra ${order.code}</title></head>
+        <body style="font-family: Arial, sans-serif; padding: 40px;">
+          <h1 style="color: #2563eb;">Ordem de Compra: ${order.code}</h1>
+          <p><strong>Fornecedor:</strong> ${order.supplierName}</p>
+          <p><strong>Data:</strong> ${new Date(order.createdAt).toLocaleDateString()}</p>
+          <hr/>
+          <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+            <thead>
+              <tr style="background: #f3f4f6;">
+                <th style="padding: 10px; text-align: left;">Item</th>
+                <th style="padding: 10px; text-align: center;">Qtd</th>
+                <th style="padding: 10px; text-align: right;">Unitário</th>
+                <th style="padding: 10px; text-align: right;">Total</th>
+              </tr>
+            </thead>
+            <tbody>${itemsHtml}</tbody>
+          </table>
+          <h3 style="text-align: right; margin-top: 30px;">TOTAL: R$ ${order.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</h3>
         </body>
       </html>
     `;
 
-    setTimeout(() => {
-        setToast({ show: true, title: 'Pronto', message: 'Janela de impressão aberta.', type: 'success' });
-        const printWindow = window.open('', '_blank', 'width=900,height=800');
-        if (printWindow) {
-            printWindow.document.write(printContent);
-            printWindow.document.close();
-            printWindow.focus();
-            setTimeout(() => { printWindow.print(); printWindow.close(); }, 500);
-        } else {
-            alert('Permita pop-ups para imprimir.');
-        }
-    }, 1500);
-  };
-
-  const getStatusStyle = (status: string) => {
-    switch (status) {
-      case 'Aprovada': return 'bg-green-100 text-green-700 border-green-200';
-      case 'Gerada': return 'bg-blue-100 text-blue-700 border-blue-200';
-      case 'Enviada': return 'bg-amber-100 text-amber-700 border-amber-200';
-      case 'Cancelada': return 'bg-red-100 text-red-700 border-red-200';
-      default: return 'bg-slate-100 text-slate-700 border-slate-200';
+    const win = window.open('', '', 'width=800,height=600');
+    if (win) {
+        win.document.write(printContent);
+        win.document.close();
+        win.print();
+        setToast(null);
     }
   };
 
   const filteredOrders = useMemo(() => {
     return orders.filter(o => {
-      const matchSearch = o.code.toLowerCase().includes(searchTerm.toLowerCase()) || o.supplierName.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchSearch = o.code.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          o.supplierName.toLowerCase().includes(searchTerm.toLowerCase());
       const matchStatus = filterStatus === 'Todos' || o.status === filterStatus;
       return matchSearch && matchStatus;
     });
   }, [orders, searchTerm, filterStatus]);
 
-  const totalMonth = useMemo(() => {
-    return orders.filter(o => o.status !== 'Cancelada').reduce((acc, curr) => acc + curr.total, 0);
-  }, [orders]);
-
-  if (loading) return <div className="text-center py-20"><Loader2 className="animate-spin text-blue-600 mx-auto" size={40}/></div>;
+  if (loading) return <div className="text-center py-20"><Loader2 className="animate-spin mx-auto text-blue-600" size={32}/></div>;
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       
-      {/* Toast */}
+      {/* Toast Overlay */}
       {toast && toast.show && (
-        <div className="fixed top-6 right-6 z-[110] animate-in slide-in-from-right-10 duration-300">
-            <div className="bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 min-w-[320px] border border-slate-700/50">
-                <div className="p-2 bg-white/10 rounded-xl">
-                    {toast.type === 'loading' ? <Loader2 className="animate-spin" size={20}/> : 
-                     toast.type === 'success' ? <CheckCircle2 size={20} className="text-green-400"/> : 
-                     <Info size={20} className="text-blue-400"/>}
-                </div>
-                <div className="flex-1">
-                    <p className="font-bold text-sm">{toast.title}</p>
-                    <p className="text-xs text-slate-300 mt-0.5">{toast.message}</p>
-                </div>
-                {toast.type !== 'loading' && <button onClick={() => setToast(null)}><X size={18}/></button>}
+        <div className="fixed top-6 right-6 z-[120] animate-in slide-in-from-right-10 duration-300">
+            <div className="bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-xl flex items-center gap-4 min-w-[300px]">
+                {toast.type === 'loading' ? <Loader2 className="animate-spin"/> : <Info/>}
+                <div><p className="font-bold">{toast.title}</p><p className="text-xs">{toast.message}</p></div>
             </div>
         </div>
       )}
 
       {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-        <div className="space-y-1">
-          <h2 className="text-3xl font-black text-slate-800 tracking-tight">Ordens de Compra</h2>
-          <p className="text-sm text-slate-500 font-medium">Controle e aprovação de pedidos para fornecedores.</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-3xl font-black text-slate-800">Ordens de Compra</h2>
+          <p className="text-sm text-slate-500">Pedidos gerados via matriz de cotação.</p>
         </div>
-
-        {canSeeValues && (
-          <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm flex items-center gap-6 min-w-[280px]">
-            <div className="bg-green-50 p-4 rounded-2xl text-green-600 shadow-inner"><DollarSign size={28} /></div>
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Total Comprometido</p>
-              <p className="text-2xl font-black text-slate-800 tracking-tighter">R$ {totalMonth.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Busca */}
-      <div className="bg-white p-6 rounded-[32px] shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 relative">
+      {/* Filtros */}
+      <div className="bg-white p-6 rounded-[32px] shadow-sm border border-slate-200 flex gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
           <input 
-            type="text" 
-            placeholder="Buscar por OC ou Fornecedor..."
-            className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-blue-500/10 outline-none text-sm font-medium transition-all"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none" 
+            placeholder="Buscar OC ou Fornecedor..." 
+            value={searchTerm} 
+            onChange={e => setSearchTerm(e.target.value)}
           />
         </div>
-        <button onClick={() => setShowFilters(!showFilters)} className={`flex items-center gap-2 px-8 py-4 rounded-2xl text-sm font-black uppercase tracking-widest transition-all ${showFilters ? 'bg-slate-900 text-white shadow-xl' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-            <Filter size={18} /> Filtros
-        </button>
-        {showFilters && (
-          <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-[32px] shadow-2xl p-6 z-30">
-            <div className="flex gap-2">
-                {['Todos', 'Gerada', 'Aprovada', 'Enviada', 'Cancelada'].map(s => (
-                <button key={s} onClick={() => setFilterStatus(s)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase border ${filterStatus === s ? 'bg-blue-600 text-white' : 'bg-slate-50 text-slate-500'}`}>{s}</button>
-                ))}
-            </div>
-          </div>
-        )}
+        <div className="flex bg-slate-50 p-1 rounded-2xl border border-slate-100">
+            {['Todos', 'Gerada', 'Aprovada', 'Cancelada'].map(st => (
+                <button key={st} onClick={() => setFilterStatus(st)} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${filterStatus === st ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>{st}</button>
+            ))}
+        </div>
       </div>
 
       {/* Lista */}
       <div className="space-y-4">
-        {filteredOrders.length > 0 ? filteredOrders.map(order => (
-          <div key={order.id} className="bg-white p-4 md:p-6 rounded-[32px] shadow-sm border border-slate-100 hover:border-blue-200 transition-all flex flex-col md:flex-row items-center gap-6 group">
-            <div className="flex items-center gap-5 w-full md:w-auto">
-              <div className={`w-16 h-16 rounded-[20px] flex items-center justify-center border shadow-sm ${order.status === 'Cancelada' ? 'bg-red-50 text-red-400 border-red-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
-                {order.status === 'Cancelada' ? <XCircle size={28}/> : <ShoppingCart size={28} />}
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-1.5">
-                  <h3 className={`font-black text-xl tracking-tight ${order.status === 'Cancelada' ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{order.code}</h3>
-                  <span className={`px-4 py-1 rounded-full text-[9px] font-black uppercase border ${getStatusStyle(order.status)}`}>{order.status}</span>
-                </div>
-                <p className="text-sm text-slate-600 font-bold flex items-center gap-1"><Truck size={14} className="text-slate-400"/> {order.supplierName}</p>
-                <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Emissão: {new Date(order.createdAt).toLocaleDateString()}</p>
-              </div>
+        {filteredOrders.length === 0 ? (
+            <div className="py-20 text-center bg-slate-50 rounded-[40px] border-2 border-dashed border-slate-200">
+                <ShoppingCart className="mx-auto text-slate-300 mb-2" size={40}/>
+                <p className="text-slate-400 font-bold uppercase tracking-widest">Nenhuma compra encontrada</p>
             </div>
-
-            <div className="flex flex-1 w-full justify-between items-center md:px-10 gap-4">
-              <div className="flex-1 text-center">
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Valor Total</p>
-                <p className={`text-sm font-black ${canSeeValues ? 'text-green-600' : 'text-slate-300'}`}>{canSeeValues ? `R$ ${order.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '••••••'}</p>
-              </div>
-              <div className="flex-1 text-right">
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Itens</p>
-                <p className="text-sm font-black text-slate-800">{order.items?.length || '-'} un</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 w-full md:w-auto justify-end border-t md:border-t-0 pt-4 md:pt-0">
-              {order.status === 'Gerada' && (
-                <button onClick={() => handleRequestApprove(order)} className={`flex items-center gap-2 px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-xl ${canApprove ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}>
-                  <UserCheck size={18} /> Aprovar
-                </button>
-              )}
-              
-              <div className="flex items-center gap-1">
-                <button onClick={() => handlePrint(order)} className="p-3 text-slate-400 hover:text-blue-600 rounded-xl transition-all"><Printer size={20}/></button>
-                <div className="relative">
-                  <button onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === order.id ? null : order.id); }} className={`p-3 rounded-xl transition-all ${openMenuId === order.id ? 'bg-slate-900 text-white' : 'text-slate-400 hover:text-slate-600'}`}><MoreVertical size={20}/></button>
-                  {openMenuId === order.id && (
-                    <div className="absolute right-0 bottom-full mb-2 w-56 bg-white border border-slate-100 rounded-2xl shadow-2xl z-20 overflow-hidden">
-                        <button onClick={() => { setViewOrder(order); setOpenMenuId(null); }} className="w-full px-5 py-3 text-left text-xs font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50"><Eye size={16}/> Visualizar Itens</button>
-                        {order.status !== 'Cancelada' && <button onClick={() => handleRequestCancel(order)} className="w-full px-5 py-3 text-left text-xs font-bold text-amber-600 hover:bg-amber-50 flex items-center gap-3 border-b border-slate-50"><XCircle size={16}/> Cancelar OC</button>}
-                        <button onClick={() => handleRequestDelete(order)} className="w-full px-5 py-3 text-left text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-3"><Trash2 size={16}/> Excluir Registro</button>
+        ) : (
+            filteredOrders.map(order => (
+                <div key={order.id} className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex items-center justify-between hover:border-blue-200 transition-all group">
+                    <div className="flex items-center gap-6">
+                        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-black ${order.status === 'Cancelada' ? 'bg-red-50 text-red-400' : 'bg-blue-50 text-blue-600'}`}>
+                            {order.status === 'Cancelada' ? <XCircle/> : <ShoppingCart/>}
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-3">
+                                <h3 className="text-xl font-black text-slate-800">{order.code}</h3>
+                                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase border ${
+                                    order.status === 'Aprovada' ? 'bg-green-50 text-green-600 border-green-100' : 
+                                    order.status === 'Gerada' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-slate-50 text-slate-500 border-slate-100'
+                                }`}>{order.status}</span>
+                            </div>
+                            <p className="text-sm font-bold text-slate-500 flex items-center gap-1 mt-1"><Truck size={14}/> {order.supplierName}</p>
+                            <p className="text-[10px] font-black text-slate-300 uppercase mt-1">{new Date(order.createdAt).toLocaleDateString()}</p>
+                        </div>
                     </div>
-                  )}
+
+                    <div className="text-right mr-8">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Valor Total</p>
+                        <p className="text-2xl font-black text-slate-800">R$ {order.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                    </div>
+
+                    <div className="flex gap-2">
+                        {order.status === 'Gerada' && canApprove && (
+                            <button onClick={() => handleRequestApprove(order)} className="bg-green-600 text-white px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-600/20 flex items-center gap-2">
+                                <ShieldCheck size={16}/> Aprovar
+                            </button>
+                        )}
+                        <button onClick={() => setViewOrder(order)} className="p-3 bg-slate-50 text-slate-400 hover:text-blue-600 rounded-xl hover:bg-blue-50 transition-all"><Eye size={20}/></button>
+                        <button onClick={() => handlePrint(order)} className="p-3 bg-slate-50 text-slate-400 hover:text-blue-600 rounded-xl hover:bg-blue-50 transition-all"><Printer size={20}/></button>
+                        
+                        <div className="relative">
+                            <button onClick={() => setOpenMenuId(openMenuId === order.id ? null : order.id)} className="p-3 bg-slate-50 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-all"><MoreVertical size={20}/></button>
+                            {openMenuId === order.id && (
+                                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-20">
+                                    {order.status !== 'Cancelada' && <button onClick={() => handleRequestCancel(order)} className="w-full text-left px-4 py-3 text-xs font-bold text-amber-600 hover:bg-amber-50">Cancelar OC</button>}
+                                    <button onClick={() => handleRequestDelete(order)} className="w-full text-left px-4 py-3 text-xs font-bold text-red-600 hover:bg-red-50">Excluir Registro</button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
-              </div>
-            </div>
-          </div>
-        )) : (
-          <div className="py-24 text-center space-y-4 bg-slate-50 rounded-[48px] border-4 border-dashed border-slate-100">
-             <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mx-auto text-slate-200 shadow-inner"><ShoppingCart size={40} /></div>
-             <p className="text-slate-400 font-black uppercase text-xs tracking-[0.3em]">Nenhuma ordem de compra encontrada</p>
-          </div>
+            ))
         )}
       </div>
-
-      {!canSeeValues && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-8 py-4 rounded-full shadow-2xl flex items-center gap-3 animate-bounce">
-           <EyeOff size={18} className="text-amber-400" />
-           <p className="text-xs font-black uppercase tracking-widest">Modo Restrito: Valores ocultos.</p>
-        </div>
-      )}
 
       {/* Modal Visualizar Itens */}
       {viewOrder && (
@@ -385,10 +303,16 @@ const Purchases: React.FC = () => {
                 </div>
                 <div className="flex-1 overflow-y-auto p-6">
                     <table className="w-full text-left">
-                        <thead><tr><th>Item</th><th className="text-center">Qtd</th><th className="text-right">Total</th></tr></thead>
-                        <tbody>{viewOrder.items?.map((item: any, idx: number) => (
-                            <tr key={idx}><td className="py-2">{item.name}</td><td className="text-center">{item.quantity}</td><td className="text-right">R$ {(item.price * item.quantity).toFixed(2)}</td></tr>
-                        ))}</tbody>
+                        <thead><tr><th className="pb-2 text-xs font-black text-slate-400 uppercase">Item</th><th className="pb-2 text-center text-xs font-black text-slate-400 uppercase">Qtd</th><th className="pb-2 text-right text-xs font-black text-slate-400 uppercase">Total</th></tr></thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {viewOrder.items?.map((item: any, idx: number) => (
+                                <tr key={idx}>
+                                    <td className="py-3 text-sm font-bold text-slate-700">{item.name}</td>
+                                    <td className="py-3 text-center text-sm font-medium text-slate-500">{item.quantity} {item.unit}</td>
+                                    <td className="py-3 text-right text-sm font-bold text-slate-800">R$ {((item.price || 0) * (item.quantity || 1)).toFixed(2)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
                     </table>
                 </div>
             </div>
@@ -404,9 +328,8 @@ const Purchases: React.FC = () => {
               {confirmModal.type === 'approve' ? <ShieldCheck size={40} /> : <AlertTriangle size={40} />}
             </div>
             <h3 className="text-xl font-black text-slate-800 mb-2">Confirmar Ação?</h3>
-            <p className="text-sm text-slate-500 mb-6">{confirmModal.type === 'approve' ? 'Aprovar OC financeiramente.' : 'Esta ação é irreversível.'}</p>
-            <div className="grid grid-cols-2 gap-4">
-              <button onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })} className="py-3 bg-slate-100 rounded-2xl font-black text-xs uppercase">Voltar</button>
+            <div className="grid grid-cols-2 gap-4 mt-6">
+              <button onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })} className="py-3 bg-slate-100 rounded-2xl font-black text-xs uppercase text-slate-500">Voltar</button>
               <button onClick={executeAction} className={`py-3 text-white rounded-2xl font-black text-xs uppercase ${confirmModal.type === 'approve' ? 'bg-green-600' : 'bg-red-500'}`}>Confirmar</button>
             </div>
           </div>
