@@ -16,6 +16,7 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   updateProfile: (data: { full_name?: string; avatar_url?: string; role?: string }) => Promise<void>;
   isSuperAdmin: boolean;
+  checkPermission: (feature: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -39,13 +40,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error) {
           console.error('[Auth] Erro ao buscar perfil (mas mantendo sessão):', error.message);
           // Retorna fallback se não conseguir buscar o perfil, para não deslogar o usuário
-          return { id: userId, role: 'user', full_name: 'Usuário (Offline)' };
+          return { id: userId, role: 'user', full_name: 'Usuário (Offline)', permissions: {} };
       }
       
       return data || { 
         id: userId, 
         role: 'user', 
-        full_name: 'Usuário' 
+        full_name: 'Usuário',
+        permissions: {} 
       };
     } catch (err) {
       console.error('[Auth] Falha crítica no fetchProfile:', err);
@@ -209,6 +211,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
   };
 
+  // Helper para verificar permissões granulares
+  const checkPermission = (feature: string) => {
+      if (!profile) return false;
+      if (profile.role === 'admin' || profile.role === 'super_admin') return true;
+      return !!profile.permissions?.[feature];
+  };
+
   const value = {
     user,
     session,
@@ -217,7 +226,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signOut,
     signInWithGoogle,
     updateProfile,
-    isSuperAdmin: profile?.role === 'super_admin'
+    isSuperAdmin: profile?.role === 'super_admin' || profile?.role === 'admin',
+    checkPermission
   };
 
   return (
