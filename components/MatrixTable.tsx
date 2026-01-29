@@ -1,7 +1,7 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { useHistory } from 'react-router-dom';
-import { CheckCircle2, TrendingDown, ShoppingCart, Trophy, DollarSign, ArrowRight, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { CheckCircle2, TrendingDown, ShoppingCart, Trophy, DollarSign, ArrowRight, Loader2, AlertTriangle, RefreshCw, XCircle } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { quotationService } from '../services/quotationService';
 import { QuotationItem, SupplierPrice, Supplier } from '../types';
@@ -13,7 +13,7 @@ interface MatrixProps {
 }
 
 const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
-  const history = useHistory();
+  const navigate = useNavigate();
   const { addToast } = useToast();
   
   const [loading, setLoading] = useState(true);
@@ -26,6 +26,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
   const [prices, setPrices] = useState<SupplierPrice[]>([]);
 
   // Estado das seleções: { [itemId]: supplierId }
+  // Armazena quem venceu cada item (automaticamente ou manualmente)
   const [selections, setSelections] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -77,38 +78,41 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
       }
   };
 
-  const handleSelection = (itemId: string, supplierId: string) => {
+  const toggleSelection = (itemId: string, supplierId: string) => {
+      // Se clicar no que já está selecionado, não faz nada (tem que ter um vencedor se houver preço)
+      // Se clicar em outro, troca o vencedor
       setSelections(prev => ({ ...prev, [itemId]: supplierId }));
   };
 
   const calculateTotals = () => {
       let selectedTotal = 0;
-      let potentialTotal = 0; // Se escolhesse os mais caros (para calcular savings)
+      let maxTotal = 0; 
 
       Object.keys(selections).forEach(itemId => {
           const supplierId = selections[itemId];
           const priceObj = prices.find(p => p.quotation_item_id === itemId && p.supplier_id === supplierId);
           
+          // Calcula total selecionado
           if (priceObj) {
               const item = items.find(i => i.id === itemId);
               const qty = item?.quantity || 1;
               selectedTotal += (priceObj.price * qty);
           }
 
-          // Savings Logic
+          // Calcula economia baseada no maior preço disponível para aquele item
           const itemPrices = prices.filter(p => p.quotation_item_id === itemId).map(p => p.price);
           if (itemPrices.length > 0) {
               const maxPrice = Math.max(...itemPrices);
               const item = items.find(i => i.id === itemId);
               const qty = item?.quantity || 1;
-              potentialTotal += (maxPrice * qty);
+              maxTotal += (maxPrice * qty);
           }
       });
 
       return { 
           selected: selectedTotal, 
-          savings: potentialTotal - selectedTotal,
-          percent: potentialTotal > 0 ? ((potentialTotal - selectedTotal) / potentialTotal) * 100 : 0
+          savings: maxTotal - selectedTotal,
+          percent: maxTotal > 0 ? ((maxTotal - selectedTotal) / maxTotal) * 100 : 0
       };
   };
 
@@ -122,7 +126,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
       try {
           await quotationService.processPurchase(quotationId, selections, eventId);
           addToast('success', 'Ordens Geradas!', 'As OCs foram criadas e a cotação finalizada.');
-          history.push('/compras');
+          navigate('/compras');
       } catch (error: any) {
           addToast('error', 'Erro no Processamento', error.message);
       } finally {
@@ -147,18 +151,18 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
       <div className="bg-slate-900 text-white p-8 rounded-[40px] shadow-2xl flex flex-col lg:flex-row justify-between items-center gap-8 relative overflow-hidden">
          <div className="relative z-10">
              <h3 className="text-2xl font-black mb-1 flex items-center gap-2"><ShoppingCart className="text-blue-400"/> Matriz de Decisão</h3>
-             <p className="text-slate-400 font-medium text-sm">Selecione os vencedores clicando nas células.</p>
+             <p className="text-slate-400 font-medium text-sm">Clique nas células de preço para escolher o fornecedor vencedor.</p>
          </div>
          
-         <div className="flex gap-6 relative z-10">
+         <div className="flex gap-8 relative z-10">
              <div className="text-right">
-                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Total Selecionado</p>
+                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Custo Total</p>
                  <p className="text-3xl font-black text-white">R$ {totals.selected.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
              </div>
-             <div className="text-right pl-6 border-l border-slate-700">
+             <div className="text-right pl-8 border-l border-slate-700">
                  <p className="text-[10px] font-black uppercase tracking-widest text-green-500 mb-1 flex items-center justify-end gap-1"><TrendingDown size={14}/> Economia (Savings)</p>
                  <p className="text-3xl font-black text-green-400">R$ {totals.savings.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-                 <p className="text-xs font-bold text-green-600">{totals.percent.toFixed(1)}% abaixo do teto</p>
+                 <p className="text-xs font-bold text-green-600">{totals.percent.toFixed(1)}%</p>
              </div>
          </div>
 
@@ -231,27 +235,34 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
                               const minPrice = rowPrices.length > 0 ? Math.min(...rowPrices) : 0;
                               const isBestPrice = priceObj && priceObj.price === minPrice;
                               
+                              // Se este fornecedor é o selecionado para este item
                               const isSelected = selections[item.id] === sup.id;
 
                               if (!priceObj) {
-                                  return <td key={sup.id} className="p-4 text-center text-xs text-slate-300 font-medium bg-slate-50/30">Indisponível</td>;
+                                  return (
+                                    <td key={sup.id} className="p-4 text-center">
+                                        <div className="w-full py-4 rounded-2xl bg-slate-50 border border-slate-100 text-xs text-slate-300 font-medium flex flex-col items-center justify-center gap-1">
+                                            <XCircle size={14} /> Sem Cotação
+                                        </div>
+                                    </td>
+                                  );
                               }
 
                               return (
                                   <td key={sup.id} className="p-3 text-center">
                                       <button 
-                                        onClick={() => handleSelection(item.id, sup.id)}
+                                        onClick={() => toggleSelection(item.id, sup.id)}
                                         className={`w-full py-4 rounded-2xl border-2 transition-all flex flex-col items-center justify-center relative group ${
                                             isSelected 
                                             ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105 z-10' 
                                             : isBestPrice 
-                                                ? 'bg-green-50 border-green-200 text-slate-700 hover:border-green-400'
-                                                : 'bg-white border-slate-100 text-slate-500 hover:border-blue-200 hover:shadow-md'
+                                                ? 'bg-green-50 border-green-300 text-slate-800 hover:border-green-500 shadow-sm'
+                                                : 'bg-white border-slate-200 text-slate-500 hover:border-blue-300 hover:shadow-md'
                                         }`}
                                       >
                                           {isBestPrice && !isSelected && (
-                                              <div className="absolute -top-2.5 bg-green-500 text-white text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-wide shadow-sm">
-                                                  Melhor Oferta
+                                              <div className="absolute -top-3 bg-green-500 text-white text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-wide shadow-sm border border-white">
+                                                  Melhor Preço
                                               </div>
                                           )}
                                           

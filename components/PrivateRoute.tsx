@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Redirect } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Loader2, Car } from 'lucide-react';
 
@@ -27,7 +27,7 @@ export const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children
 
   // 2. VERIFICAÇÃO FINAL:
   if (!user) {
-    return <Redirect to="/login" />;
+    return <Navigate to="/login" />;
   }
 
   // 3. SUCESSO:

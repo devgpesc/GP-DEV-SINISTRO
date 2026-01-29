@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, ChevronRight, ArrowLeft, BarChart3, Trash2, Rocket, LayoutGrid, List, Eye, CheckSquare, Square, Package, Users } from 'lucide-react';
+import { Plus, Search, ChevronRight, ArrowLeft, BarChart3, Trash2, Rocket, LayoutGrid, List, Eye, CheckSquare, Square, Package, Users, Edit3, XCircle } from 'lucide-react';
 import MatrixTable from '../components/MatrixTable';
 import { supabase } from '../services/supabaseClient';
 import { Event, Supplier } from '../types';
 import { useToast } from '../context/ToastContext';
+import ActionModal from '../components/ActionModal';
 
 const Quotations: React.FC = () => {
   const { addToast } = useToast();
@@ -15,11 +16,12 @@ const Quotations: React.FC = () => {
   const [realSuppliers, setRealSuppliers] = useState<Supplier[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // State da Nova Cotação
+  // State da Nova/Edit Cotação
+  const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
   const [newQuote, setNewQuote] = useState({
     eventId: '',
     eventProtocol: '',
-    items: [] as { name: string, quantity: number }[], 
+    items: [] as { name: string, quantity: number, id?: string }[], 
     selectedSuppliers: [] as string[] 
   });
 
@@ -28,6 +30,7 @@ const Quotations: React.FC = () => {
   const [manualQty, setManualQty] = useState(1);
 
   const [quotes, setQuotes] = useState<any[]>([]);
+  const [quoteToDelete, setQuoteToDelete] = useState<any>(null);
   
   // Estado para passar para a Matriz
   const [activeQuoteId, setActiveQuoteId] = useState<string | null>(null);
@@ -62,7 +65,40 @@ const Quotations: React.FC = () => {
     q.eventRef?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleCreateQuote = async () => {
+  const handleEditQuote = async (quote: any) => {
+      setEditingQuoteId(quote.id);
+      
+      // Carregar itens e fornecedores da cotação
+      const { data: items } = await supabase.from('quotation_items').select('*').eq('quotation_id', quote.id);
+      const { data: qSuppliers } = await supabase.from('quotation_suppliers').select('supplier_id').eq('quotation_id', quote.id);
+      
+      setNewQuote({
+          eventId: quote.eventId,
+          eventProtocol: quote.eventRef,
+          items: items?.map(i => ({ name: i.name, quantity: i.quantity, id: i.id })) || [],
+          selectedSuppliers: qSuppliers?.map((qs: any) => qs.supplier_id) || []
+      });
+      
+      setStep(2);
+      setWizardStep(1);
+  };
+
+  const handleDeleteQuote = async () => {
+      if (!quoteToDelete) return;
+      
+      try {
+          const { error } = await supabase.from('quotations').delete().eq('id', quoteToDelete.id);
+          if (error) throw error;
+          
+          setQuotes(quotes.filter(q => q.id !== quoteToDelete.id));
+          addToast('success', 'Excluída', 'Cotação removida com sucesso.');
+          setQuoteToDelete(null);
+      } catch (error: any) {
+          addToast('error', 'Erro', 'Não foi possível excluir a cotação.');
+      }
+  };
+
+  const handleCreateOrUpdateQuote = async () => {
     if (!newQuote.eventId || newQuote.selectedSuppliers.length === 0) {
         addToast('warning', 'Dados Incompletos', "Selecione um evento e pelo menos um fornecedor.");
         return;
@@ -70,53 +106,72 @@ const Quotations: React.FC = () => {
 
     try {
         const selectedEvent = realEvents.find(e => e.id === newQuote.eventId);
-        const code = `COT-${new Date().getFullYear()}-${String(quotes.length + 1).padStart(4, '0')}`;
-        
-        // 1. Criar Cotação Header
-        const { data: quoteData, error: quoteError } = await supabase.from('quotations').insert([{
-            code: code,
-            eventRef: selectedEvent ? selectedEvent.protocol : 'N/A',
-            status: 'Em Aberto',
-            date: new Date().toLocaleDateString('pt-BR'),
-            suppliers: newQuote.selectedSuppliers.length,
-            itemCount: newQuote.items.length,
-            eventId: newQuote.eventId,
-            created_at: new Date().toISOString()
-        }]).select().single();
+        let quoteId = editingQuoteId;
 
-        if (quoteError) throw quoteError;
+        if (editingQuoteId) {
+            // UPDATE
+            await supabase.from('quotations').update({
+                suppliers: newQuote.selectedSuppliers.length,
+                "itemCount": newQuote.items.length,
+                updated_at: new Date().toISOString()
+            }).eq('id', editingQuoteId);
 
-        // 2. Salvar Itens (quotation_items)
+            // Atualizar Itens (Simplificado: Deletar e Recriar ou Upsert - aqui faremos upsert manual)
+            // Para simplificar a lógica de edição complexa, removemos os vínculos antigos e recriamos
+            await supabase.from('quotation_suppliers').delete().eq('quotation_id', editingQuoteId);
+            await supabase.from('quotation_items').delete().eq('quotation_id', editingQuoteId);
+            
+        } else {
+            // CREATE
+            const code = `COT-${new Date().getFullYear()}-${String(quotes.length + 1).padStart(4, '0')}`;
+            const { data: quoteData, error: quoteError } = await supabase.from('quotations').insert([{
+                code: code,
+                eventRef: selectedEvent ? selectedEvent.protocol : 'N/A',
+                status: 'Em Aberto',
+                date: new Date().toLocaleDateString('pt-BR'),
+                suppliers: newQuote.selectedSuppliers.length,
+                "itemCount": newQuote.items.length,
+                "eventId": newQuote.eventId,
+                created_at: new Date().toISOString()
+            }]).select().single();
+
+            if (quoteError) throw quoteError;
+            quoteId = quoteData.id;
+        }
+
+        if (!quoteId) throw new Error("ID da cotação inválido");
+
+        // Salvar Itens
         if (newQuote.items.length > 0) {
             const itemsPayload = newQuote.items.map(item => ({
-                quotation_id: quoteData.id,
+                quotation_id: quoteId,
                 name: item.name,
                 quantity: item.quantity,
                 status: 'Pendente'
             }));
-            const { error: itemsError } = await supabase.from('quotation_items').insert(itemsPayload);
-            if (itemsError) throw itemsError;
+            await supabase.from('quotation_items').insert(itemsPayload);
         }
 
-        // 3. Salvar Vínculo Fornecedores (quotation_suppliers)
+        // Salvar Vínculo Fornecedores
         if (newQuote.selectedSuppliers.length > 0) {
             const suppliersPayload = newQuote.selectedSuppliers.map(supId => ({
-                quotation_id: quoteData.id,
+                quotation_id: quoteId,
                 supplier_id: supId,
                 status: 'Aguardando'
             }));
-            const { error: supError } = await supabase.from('quotation_suppliers').insert(suppliersPayload);
-            if (supError) throw supError;
+            await supabase.from('quotation_suppliers').insert(suppliersPayload);
         }
         
-        // 4. Atualizar Status do Evento
+        // Atualizar Status do Evento
         await supabase.from('events').update({ status: 'Em Cotação' }).eq('id', newQuote.eventId);
         
-        addToast('success', 'Cotação Criada', 'RFQ gerada com sucesso. Acesse a matriz para simular respostas.');
-        setQuotes([quoteData, ...quotes]);
-        setActiveQuoteId(quoteData.id);
+        addToast('success', editingQuoteId ? 'Cotação Atualizada' : 'Cotação Criada', 'RFQ pronta. Acesse a matriz.');
+        
+        // Recarregar e ir para Matriz
+        await loadData();
+        setActiveQuoteId(quoteId);
         setActiveEventId(newQuote.eventId);
-        setStep(3); // Vai para a Matriz
+        setStep(3); 
 
     } catch (error: any) {
         console.error('Erro:', error);
@@ -150,8 +205,6 @@ const Quotations: React.FC = () => {
       setStep(3);
   };
 
-  // --- RENDERIZADORES ---
-
   const renderList = () => (
     <div className="space-y-6 animate-in fade-in duration-300">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
@@ -171,7 +224,7 @@ const Quotations: React.FC = () => {
             <button onClick={() => setViewMode('grid')} className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}><LayoutGrid size={18} /></button>
             <button onClick={() => setViewMode('list')} className={`p-2 rounded-lg transition-all ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}><List size={18} /></button>
           </div>
-          <button onClick={() => { setStep(2); setWizardStep(1); setNewQuote({eventId: '', eventProtocol: '', items: [], selectedSuppliers: []}); }} className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 shadow-xl shadow-blue-600/20 whitespace-nowrap">
+          <button onClick={() => { setStep(2); setWizardStep(1); setEditingQuoteId(null); setNewQuote({eventId: '', eventProtocol: '', items: [], selectedSuppliers: []}); }} className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 shadow-xl shadow-blue-600/20 whitespace-nowrap">
             <Plus size={20} /> Nova Cotação
           </button>
         </div>
@@ -180,25 +233,33 @@ const Quotations: React.FC = () => {
       {viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-2 duration-300">
           {filteredQuotes.map(quote => (
-            <div key={quote.id} className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200 hover:border-blue-200 transition-all group cursor-pointer relative overflow-hidden" onClick={() => openMatrix(quote)}>
-              <div className="flex justify-between items-start mb-6">
-                <div className="bg-blue-50 text-blue-600 p-4 rounded-3xl shadow-sm"><BarChart3 size={28} /></div>
-                <div className="flex flex-col items-end gap-2">
-                    <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-[0.2em] border ${quote.status === 'Finalizada' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
-                    {quote.status}
-                    </span>
-                </div>
+            <div key={quote.id} className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200 hover:border-blue-200 transition-all group relative overflow-hidden">
+              <div onClick={() => openMatrix(quote)} className="cursor-pointer">
+                  <div className="flex justify-between items-start mb-6">
+                    <div className="bg-blue-50 text-blue-600 p-4 rounded-3xl shadow-sm"><BarChart3 size={28} /></div>
+                    <div className="flex flex-col items-end gap-2">
+                        <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-[0.2em] border ${quote.status === 'Finalizada' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
+                        {quote.status}
+                        </span>
+                    </div>
+                  </div>
+                  <h3 className="font-black text-slate-800 text-xl tracking-tight leading-none mb-1">{quote.code}</h3>
+                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-6">Ref: {quote.eventRef}</p>
+                  
+                  <div className="flex justify-between items-center pt-6 border-t border-slate-50">
+                    <div className="flex -space-x-3">
+                        {[...Array(Math.min(quote.suppliers || 0, 5))].map((_, j) => (
+                          <div key={j} className="w-9 h-9 rounded-full border-4 border-white bg-slate-200 flex items-center justify-center text-[9px] font-black text-slate-500 shadow-sm">S{j+1}</div>
+                        ))}
+                    </div>
+                    <div className="flex items-center gap-2 text-blue-600 font-black text-[10px] uppercase tracking-widest group-hover:translate-x-1 transition-transform">Analisar <ChevronRight size={18} /></div>
+                  </div>
               </div>
-              <h3 className="font-black text-slate-800 text-xl tracking-tight leading-none mb-1">{quote.code}</h3>
-              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-6">Ref: {quote.eventRef}</p>
               
-              <div className="flex justify-between items-center pt-6 border-t border-slate-50">
-                 <div className="flex -space-x-3">
-                    {[...Array(Math.min(quote.suppliers || 0, 5))].map((_, j) => (
-                      <div key={j} className="w-9 h-9 rounded-full border-4 border-white bg-slate-200 flex items-center justify-center text-[9px] font-black text-slate-500 shadow-sm">S{j+1}</div>
-                    ))}
-                 </div>
-                 <div className="flex items-center gap-2 text-blue-600 font-black text-[10px] uppercase tracking-widest group-hover:translate-x-1 transition-transform">Analisar <ChevronRight size={18} /></div>
+              {/* Actions Overlay */}
+              <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={(e) => { e.stopPropagation(); handleEditQuote(quote); }} className="p-2 bg-white text-slate-400 hover:text-blue-600 rounded-xl shadow-sm hover:shadow-md transition-all"><Edit3 size={16}/></button>
+                  <button onClick={(e) => { e.stopPropagation(); setQuoteToDelete(quote); }} className="p-2 bg-white text-slate-400 hover:text-red-600 rounded-xl shadow-sm hover:shadow-md transition-all"><Trash2 size={16}/></button>
               </div>
             </div>
           ))}
@@ -220,8 +281,10 @@ const Quotations: React.FC = () => {
                   <td className="px-8 py-5"><p className="font-black text-slate-800 text-sm tracking-tight">{quote.code}</p></td>
                   <td className="px-8 py-5"><span className="text-blue-600 font-black text-xs bg-blue-50 px-3 py-1 rounded-lg border border-blue-100">{quote.eventRef}</span></td>
                   <td className="px-8 py-5 text-center"><span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${quote.status === 'Finalizada' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>{quote.status}</span></td>
-                  <td className="px-8 py-5 text-right flex justify-end gap-1">
-                     <button onClick={(e) => { e.stopPropagation(); openMatrix(quote); }} className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Eye size={18}/></button>
+                  <td className="px-8 py-5 text-right flex justify-end gap-2">
+                     <button onClick={(e) => { e.stopPropagation(); openMatrix(quote); }} className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all" title="Ver Matriz"><Eye size={18}/></button>
+                     <button onClick={(e) => { e.stopPropagation(); handleEditQuote(quote); }} className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all" title="Editar"><Edit3 size={18}/></button>
+                     <button onClick={(e) => { e.stopPropagation(); setQuoteToDelete(quote); }} className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all" title="Excluir"><Trash2 size={18}/></button>
                   </td>
                 </tr>
               ))}
@@ -237,7 +300,7 @@ const Quotations: React.FC = () => {
       <div className="flex items-center gap-6">
         <button onClick={() => setStep(1)} className="p-4 bg-white border border-slate-200 rounded-3xl hover:bg-slate-50 text-slate-600 shadow-sm transition-all"><ArrowLeft size={24}/></button>
         <div>
-          <h2 className="text-3xl font-black text-slate-800 tracking-tight">Nova Cotação (RFQ)</h2>
+          <h2 className="text-3xl font-black text-slate-800 tracking-tight">{editingQuoteId ? 'Editar Cotação' : 'Nova Cotação (RFQ)'}</h2>
           <p className="text-sm text-slate-500 font-medium">Configure os itens e convide fornecedores.</p>
         </div>
       </div>
@@ -249,10 +312,10 @@ const Quotations: React.FC = () => {
                <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2"><Package size={20} className="text-blue-600"/> 1. Selecione o Sinistro</h3>
                <div className="space-y-4">
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Eventos Disponíveis</label>
-                  <select className="w-full p-5 bg-slate-50 border border-slate-100 rounded-3xl outline-none focus:ring-4 focus:ring-blue-500/5 font-bold text-slate-800" value={newQuote.eventId} onChange={(e) => {
+                  <select className="w-full p-5 bg-slate-50 border border-slate-100 rounded-3xl outline-none focus:ring-4 focus:ring-blue-500/5 font-bold text-slate-800 disabled:opacity-50" value={newQuote.eventId} onChange={(e) => {
                       const evt = realEvents.find(ev => ev.id === e.target.value);
                       setNewQuote({...newQuote, eventId: e.target.value, eventProtocol: evt?.protocol || ''});
-                  }}>
+                  }} disabled={!!editingQuoteId}>
                     <option value="">Selecione...</option>
                     {realEvents.map(e => <option key={e.id} value={e.id}>{e.protocol} - {e.category} ({e.status})</option>)}
                   </select>
@@ -307,8 +370,8 @@ const Quotations: React.FC = () => {
 
           <div className="flex justify-between pt-6 border-t border-slate-50">
             <button onClick={() => setWizardStep(1)} className="px-8 py-4 text-slate-400 font-black uppercase text-[10px] hover:text-slate-600">Voltar</button>
-            <button onClick={handleCreateQuote} disabled={newQuote.selectedSuppliers.length === 0} className="px-16 py-6 bg-blue-600 text-white rounded-[28px] font-black text-sm uppercase tracking-[0.3em] shadow-2xl shadow-blue-600/40 flex items-center gap-4 hover:scale-105 transition-all disabled:opacity-50">
-                Lançar Cotação <Rocket size={20}/>
+            <button onClick={handleCreateOrUpdateQuote} disabled={newQuote.selectedSuppliers.length === 0} className="px-16 py-6 bg-blue-600 text-white rounded-[28px] font-black text-sm uppercase tracking-[0.3em] shadow-2xl shadow-blue-600/40 flex items-center gap-4 hover:scale-105 transition-all disabled:opacity-50">
+                {editingQuoteId ? 'Atualizar Cotação' : 'Lançar Cotação'} <Rocket size={20}/>
             </button>
           </div>
         </div>
@@ -333,6 +396,16 @@ const Quotations: React.FC = () => {
            <MatrixTable quotationId={activeQuoteId || undefined} eventId={activeEventId || undefined} />
         </div>
       )}
+
+      <ActionModal 
+        isOpen={!!quoteToDelete}
+        onClose={() => setQuoteToDelete(null)}
+        onConfirm={handleDeleteQuote}
+        title="Excluir Cotação?"
+        description="Esta ação removerá todos os itens e preços associados a esta cotação."
+        type="danger"
+        confirmText="Sim, Excluir"
+      />
     </div>
   );
 };

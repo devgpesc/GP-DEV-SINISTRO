@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Link, useHistory } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
 import { useToast } from '../context/ToastContext';
 import { Car, Mail, Lock, User, Loader2, ArrowLeft, ShieldCheck, AlertCircle } from 'lucide-react';
@@ -12,7 +12,7 @@ const Register: React.FC = () => {
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const history = useHistory();
+  const navigate = useNavigate();
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,7 +46,7 @@ const Register: React.FC = () => {
         addToast('success', 'Cadastro Realizado!', 'Sua conta foi criada com sucesso.');
         // Pequeno delay para UX
         setTimeout(() => {
-            history.push('/login');
+            navigate('/login');
         }, 1500);
       }
     } catch (err: any) {

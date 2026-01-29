@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { useHistory } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { 
@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 
 const Login: React.FC = () => {
-  const history = useHistory();
+  const navigate = useNavigate();
   const { user } = useAuth();
   
   const [email, setEmail] = useState('');
@@ -21,7 +21,7 @@ const Login: React.FC = () => {
 
   useEffect(() => {
     if (user) {
-      history.replace('/');
+      navigate('/', { replace: true });
     }
     // Tenta carregar config da empresa do banco
     const fetchSettings = async () => {
@@ -38,7 +38,7 @@ const Login: React.FC = () => {
         }
     };
     fetchSettings();
-  }, [user, history]);
+  }, [user, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
