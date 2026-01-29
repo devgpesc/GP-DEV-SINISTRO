@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Link, useLocation, Outlet } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, FileText, ShoppingCart, Users, Truck, 
   BarChart3, Settings, Package, Car, Bell, Search, UserCircle, X, ShoppingBag, Clock, Trash2, CheckCheck,
@@ -306,7 +306,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </div>
           </div>
         </header>
-        {children || <Outlet />}
+        {children}
       </main>
 
       {/* Modal de Configuração de Perfil */}

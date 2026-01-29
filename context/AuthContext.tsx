@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 // Fix: Types User and Session not exported in v1, define as any locally
 type Session = any;
@@ -23,11 +24,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadingError, setLoadingError] = useState(false);
+  
+  // Começa como TRUE para bloquear rotas até ter certeza
+  const [loading, setLoading] = useState(true); 
 
   // Busca perfil real no banco
-  const fetchProfile = useCallback(async (userId: string) => {
+  const fetchProfile = useCallback(async (userId: string, userEmail?: string, userMeta?: any) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -40,6 +42,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return null;
       }
       
+      // Se não existir perfil, cria objeto em memória baseado no Auth para não travar a UI
+      if (!data) {
+          console.warn('[Auth] Perfil DB não encontrado. Usando fallback de memória.');
+          return {
+              id: userId,
+              email: userEmail,
+              role: 'Usuário',
+              full_name: userMeta?.full_name || 'Usuário',
+              permissions: {}
+          };
+      }
+      
       return data;
     } catch (err) {
       console.error('[Auth] Falha crítica no fetchProfile:', err);
@@ -47,101 +61,87 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  // Lógica Principal de Inicialização
   useEffect(() => {
     let mounted = true;
 
-    // Timeout de segurança
-    const safetyTimeout = setTimeout(() => {
-        if (loading && mounted) {
-            console.warn('[Auth] Timeout de carregamento.');
-            setLoadingError(true);
-            setLoading(false);
-        }
-    }, 10000);
-
-    const initAuth = async () => {
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-            if (!mounted) return;
-
-            if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
-                if (newSession?.user) {
-                    setSession(newSession);
-                    setUser(newSession.user);
-                    
-                    // Busca perfil
-                    let p = await fetchProfile(newSession.user.id);
-                    
-                    // AUTO-FIX: Se o perfil não existir no banco, cria um objeto temporário na memória
-                    if (!p) {
-                        console.warn('[Auth] Perfil não encontrado no banco. Usando fallback de memória.');
-                        p = { 
-                            id: newSession.user.id, 
-                            email: newSession.user.email,
-                            role: 'Usuário', 
-                            full_name: newSession.user.user_metadata?.full_name || 'Usuário',
-                            permissions: {} 
-                        };
-                    }
-                    
-                    if (mounted) setProfile(p);
-                }
-                
-                if (window.location.hash && window.location.hash.includes('access_token')) {
-                    window.history.replaceState(null, '', window.location.pathname);
-                }
-                setLoading(false);
-            } else if (event === 'SIGNED_OUT') {
-                setSession(null);
-                setUser(null);
-                setProfile(null);
-                setLoading(false);
-            }
-        });
-
-        // Verificação Inicial
+    const initializeAuth = async () => {
         try {
-            const { data: { session: currentSession }, error } = await supabase.auth.getSession();
-            
-            if (error) {
-                if (error.status === 400 || error.message.includes('refresh_token')) {
-                    localStorage.clear();
-                    await supabase.auth.signOut();
-                }
-            }
+            // 1. Tenta recuperar sessão existente do LocalStorage
+            const { data: { session: initialSession }, error } = await supabase.auth.getSession();
 
-            if (mounted) {
-                if (currentSession?.user) {
-                    setSession(currentSession);
-                    setUser(currentSession.user);
-                    const p = await fetchProfile(currentSession.user.id);
-                    // Fallback visual
-                    setProfile(p || { 
-                        id: currentSession.user.id, 
-                        role: 'Usuário',
-                        full_name: currentSession.user.user_metadata?.full_name || 'Usuário',
-                        permissions: {} 
-                    });
-                } else {
-                    setUser(null);
+            if (error) throw error;
+
+            if (initialSession?.user) {
+                // Sessão válida encontrada
+                if (mounted) {
+                    setSession(initialSession);
+                    setUser(initialSession.user);
+                    
+                    // Re-hidrata o perfil
+                    const p = await fetchProfile(
+                        initialSession.user.id, 
+                        initialSession.user.email, 
+                        initialSession.user.user_metadata
+                    );
+                    setProfile(p);
                 }
-                setLoading(false);
             }
         } catch (err) {
-            console.error('[Auth] Erro crítico init:', err);
-            if (mounted) setLoading(false);
+            console.error('[Auth] Erro na inicialização:', err);
+            // Em caso de erro grave de token, limpa tudo para evitar loop
+            if (mounted) {
+                setUser(null);
+                setSession(null);
+            }
+        } finally {
+            if (mounted) {
+                setLoading(false); // Libera a UI independente do resultado
+            }
         }
-
-        return subscription;
     };
 
-    const subPromise = initAuth();
+    initializeAuth();
+
+    // 2. Escuta mudanças em tempo real (Login, Logout, Refresh Token)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+        if (!mounted) return;
+
+        console.log('[Auth] Evento:', event);
+
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+            setSession(newSession);
+            setUser(newSession?.user ?? null);
+            
+            if (newSession?.user) {
+                // Atualiza perfil apenas se ainda não tivermos (evita refetch desnecessário no refresh token)
+                // ou se o usuário mudou
+                if (!profile || profile.id !== newSession.user.id) {
+                    const p = await fetchProfile(
+                        newSession.user.id, 
+                        newSession.user.email, 
+                        newSession.user.user_metadata
+                    );
+                    setProfile(p);
+                }
+            }
+            setLoading(false);
+        } 
+        else if (event === 'SIGNED_OUT') {
+            setSession(null);
+            setUser(null);
+            setProfile(null);
+            setLoading(false);
+            // Limpa storage extra se necessário
+            localStorage.removeItem('sb-access-token'); 
+        }
+    });
 
     return () => {
-      mounted = false;
-      clearTimeout(safetyTimeout);
-      subPromise.then(sub => sub?.unsubscribe());
+        mounted = false;
+        subscription.unsubscribe();
     };
-  }, [fetchProfile]); 
+  }, [fetchProfile, profile]); // Dependência de profile adicionada para a verificação acima
 
   const signInWithGoogle = async () => {
     try {
@@ -162,44 +162,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOut = async () => {
     try {
-        setUser(null);
-        setSession(null);
-        setProfile(null);
-        localStorage.clear();
-        sessionStorage.clear();
+        setLoading(true);
         await supabase.auth.signOut();
+        // State update handled by onAuthStateChange
     } catch (error) {
         console.error("Erro ao sair:", error);
-    } finally {
-        window.location.href = '/login';
+        setLoading(false);
     }
   };
 
   const updateProfile = async (data: { full_name?: string; avatar_url?: string; role?: string }) => {
     if (!user) return;
     try {
-        // CORREÇÃO: Garante que 'email' seja enviado para evitar erro de constraint NOT NULL
-        // em caso de 'upsert' (inserção se não existir).
         const updates: any = {
             id: user.id,
-            email: user.email, // <--- CAMPO OBRIGATÓRIO NA TABELA
+            email: user.email,
             full_name: data.full_name,
             avatar_url: data.avatar_url,
             updated_at: new Date().toISOString(),
         };
 
-        // Adiciona role apenas se fornecida
-        if (data.role) {
-            updates.role = data.role;
-        }
+        if (data.role) updates.role = data.role;
 
-        // Limpeza de campos undefined para não enviar lixo
         Object.keys(updates).forEach(key => updates[key] === undefined && delete updates[key]);
 
         const { error } = await supabase.from('profiles').upsert(updates);
         if (error) throw error;
         
-        // Atualiza estado local
         setProfile((prev: any) => ({ ...prev, ...updates }));
     } catch (error) {
         console.error("Erro perfil:", error);
@@ -207,17 +196,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const handleHardReset = () => {
-      if (window.confirm('Isso corrigirá problemas de travamento limpando os dados locais. Continuar?')) {
-          localStorage.clear();
-          sessionStorage.clear();
-          window.location.href = '/login';
-      }
-  };
-
   const checkPermission = (feature: string) => {
       if (!profile) return false;
-      // Verifica Admin/super_admin ou Gerente com permissões específicas
       if (profile.role === 'Admin' || profile.role === 'super_admin') return true;
       return !!profile.permissions?.[feature];
   };
@@ -230,39 +210,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signOut,
     signInWithGoogle,
     updateProfile,
-    // Verifica Maiúsculo 'Admin' conforme constraint do banco
     isSuperAdmin: profile?.role === 'super_admin' || profile?.role === 'Admin',
     checkPermission
   };
 
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children} 
-      {loading && (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-8 p-4">
-          <div className="flex flex-col items-center">
-            <div className="relative flex items-center justify-center mb-6 animate-in zoom-in duration-500">
-                <div className="w-16 h-16 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
-                <div className="absolute inset-0 flex items-center justify-center">
-                    <Car className="text-blue-600" size={24} />
-                </div>
-            </div>
-            <p className="text-slate-400 font-black text-[10px] uppercase tracking-[0.3em] animate-pulse">
-                Carregando Sistema...
-            </p>
-          </div>
-          
-          <div className="flex flex-col gap-3 items-center animate-in fade-in slide-in-from-bottom-4 duration-700 delay-1000 fill-mode-forwards opacity-0" style={{animationDelay: '1s'}}>
-              <p className="text-xs text-slate-400 font-medium">O sistema está demorando?</p>
-              <button 
-                onClick={handleHardReset} 
-                className="flex items-center gap-2 px-6 py-3 bg-white border border-red-100 text-red-500 rounded-xl hover:bg-red-50 hover:border-red-200 transition-all text-xs font-bold uppercase tracking-wider shadow-sm"
-              >
-                  <AlertTriangle size={16} /> Forçar Logout e Corrigir
-              </button>
-          </div>
-        </div>
-      )}
+      {children}
     </AuthContext.Provider>
   );
 };

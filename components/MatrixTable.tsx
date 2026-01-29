@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useHistory } from 'react-router-dom';
 import { CheckCircle2, TrendingDown, ShoppingCart, Trophy, DollarSign, ArrowRight, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { quotationService } from '../services/quotationService';
@@ -13,7 +13,7 @@ interface MatrixProps {
 }
 
 const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
-  const navigate = useNavigate();
+  const history = useHistory();
   const { addToast } = useToast();
   
   const [loading, setLoading] = useState(true);
@@ -122,7 +122,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
       try {
           await quotationService.processPurchase(quotationId, selections, eventId);
           addToast('success', 'Ordens Geradas!', 'As OCs foram criadas e a cotação finalizada.');
-          navigate('/compras');
+          history.push('/compras');
       } catch (error: any) {
           addToast('error', 'Erro no Processamento', error.message);
       } finally {
