@@ -110,7 +110,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             
             if (error) {
                 console.error('[Auth] Erro getSession:', error);
-                // Se der erro de rede, não desloga imediatamente, deixa o estado anterior (se houver)
+                // Se der erro de rede, não desloga imediatamente
+                // Mas se for erro 400/401 (token invalido), limpamos tudo
+                if (error.status === 400 || error.message.includes('refresh_token')) {
+                    console.warn('[Auth] Sessão inválida detectada. Limpando armazenamento.');
+                    localStorage.clear();
+                    await supabase.auth.signOut();
+                }
             }
 
             if (mounted) {

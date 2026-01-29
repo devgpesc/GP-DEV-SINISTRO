@@ -1,3 +1,4 @@
+
 import { supabase } from './supabaseClient';
 import { Event } from '../types';
 
@@ -26,17 +27,22 @@ export const eventService = {
     }
 
     // 2. Verificar consistência no Banco de Dados
+    // CORREÇÃO: Busca por 'associate_id' (snake_case) que é o padrão atual do banco
     const { data: vehicle, error: vehicleError } = await supabase
         .from('vehicles')
-        .select('associateId')
+        .select('associate_id') 
         .eq('id', eventData.vehicleId)
         .single();
     
     if (vehicleError || !vehicle) {
+        console.error('Erro detalhado busca veículo:', vehicleError);
         throw new Error('Veículo selecionado não encontrado na base de dados.');
     }
 
-    if (vehicle.associateId !== eventData.associateId) {
+    // Verifica compatibilidade (lidando com possíveis nomes de campos legados se existirem, mas priorizando o novo)
+    const dbOwnerId = vehicle.associate_id || (vehicle as any).associateId;
+
+    if (dbOwnerId !== eventData.associateId) {
         throw new Error('Inconsistência: O veículo selecionado não pertence ao associado informado.');
     }
 

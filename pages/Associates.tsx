@@ -119,7 +119,6 @@ const Associates: React.FC = () => {
                       name: data.name || data.fantasy || prev.name,
                       email: data.email || prev.email,
                       phone: data.phone || prev.phone,
-                      // Se vier cidade/endereço, poderíamos preencher se houvesse campo
                   }));
                   setLookupMessage('Dados encontrados!');
                   addToast('success', 'Encontrado', 'Dados da empresa preenchidos.');
@@ -176,6 +175,7 @@ const Associates: React.FC = () => {
         }
 
         // --- LÓGICA DE VÍNCULO DE VEÍCULO SEGURO ---
+        // Isolado em try/catch para garantir que o modal feche mesmo se o veículo falhar
         if (result && result.id && formData.linkedPlate && formData.linkedPlate.length >= 7) {
             try {
                 const cleanPlate = formData.linkedPlate.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -191,10 +191,10 @@ const Associates: React.FC = () => {
                         .eq('id', existing.id);
                     
                     if (linkError) throw linkError;
-                    addToast('info', 'Veículo Vinculado', `Placa ${cleanPlate} associada ao novo cadastro.`);
+                    addToast('info', 'Veículo Vinculado', `Placa ${cleanPlate} associada ao cadastro.`);
                     
                 } else {
-                    // Cria novo veículo com PAYLOAD ROBUSTO (Evita erro de constraints)
+                    // Cria novo veículo com PAYLOAD ROBUSTO
                     const currentYear = new Date().getFullYear().toString();
                     
                     const newVehiclePayload = {
@@ -203,9 +203,9 @@ const Associates: React.FC = () => {
                         status: 'Ativo',
                         brand: 'A DEFINIR',
                         model: 'CADASTRO RÁPIDO',
-                        color: 'BRANCA', // Default seguro
-                        fuel: 'FLEX',    // Default seguro
-                        type: 'Automóvel', // Default seguro
+                        color: 'BRANCA',
+                        fuel: 'FLEX',
+                        type: 'Automóvel',
                         year_fab: currentYear,
                         year_model: currentYear,
                         created_at: new Date().toISOString()
@@ -215,23 +215,25 @@ const Associates: React.FC = () => {
                     
                     if (vError) {
                         console.error('Erro detalhado ao criar veículo:', vError);
-                        throw vError;
+                        throw new Error(`Falha ao criar veículo ${cleanPlate}.`);
                     }
                     addToast('info', 'Veículo Criado', `Placa ${cleanPlate} cadastrada automaticamente.`);
                 }
             } catch (vehicleErr: any) {
                 console.error("Falha ao processar veículo:", vehicleErr);
+                // Não lança o erro, apenas avisa, pois o associado já foi salvo
                 addToast('warning', 'Atenção', 'Associado salvo, mas houve erro ao vincular o veículo: ' + vehicleErr.message);
-                // Não relança o erro para não impedir o fechamento do modal, pois o associado já foi salvo.
             }
         }
 
+        // Se chegou aqui, o associado foi salvo (e o veículo tentado). Fecha o modal.
         setIsModalOpen(false);
+
     } catch (error: any) {
         console.error("Erro no cadastro:", error);
         // Tratamento específico para erro de permissão RLS
         if (error.code === '42501' || error.message?.includes('violates row-level security')) {
-             addToast('error', 'Permissão Negada', 'Verifique suas permissões de acesso.');
+             addToast('error', 'Permissão Negada', 'Verifique se você está logado corretamente.');
         } else {
              addToast('error', 'Erro ao Salvar', error.message || 'Falha na operação.');
         }
