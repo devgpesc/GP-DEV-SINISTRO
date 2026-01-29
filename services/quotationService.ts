@@ -17,7 +17,6 @@ export const quotationService = {
     if (itemsError) throw itemsError;
 
     // 2. Buscar Preços
-    // Precisamos dos preços de todos os itens desta cotação
     const itemIds = items.map(i => i.id);
     let prices: SupplierPrice[] = [];
     
@@ -32,7 +31,6 @@ export const quotationService = {
     }
 
     // 3. Buscar Fornecedores Participantes
-    // (Aqueles que foram convidados ou que já responderam)
     const { data: qSuppliers, error: qsError } = await supabase
         .from('quotation_suppliers')
         .select('supplier_id, suppliers(id, name, rating, city)')
@@ -46,11 +44,25 @@ export const quotationService = {
   },
 
   /**
+   * Salva ou atualiza um preço individual na matriz (Célula editável)
+   */
+  async savePrice(payload: { quotation_item_id: string, supplier_id: string, price: number, obs?: string }) {
+      const { error } = await supabase
+          .from('quotation_supplier_prices')
+          .upsert({
+              ...payload,
+              availability: true,
+              is_winner: false, // Reset winner status on edit
+              created_at: new Date().toISOString()
+          }, { onConflict: 'quotation_item_id, supplier_id' });
+      
+      if (error) throw error;
+  },
+
+  /**
    * Simula a resposta de fornecedores (Mock inteligente para demonstração)
-   * Em produção, isso viria de um portal do fornecedor.
    */
   async simulateSupplierResponses(quotationId: string) {
-      // 1. Pega itens e fornecedores
       const { items, suppliers } = await this.getMatrixData(quotationId);
       
       if (items.length === 0 || suppliers.length === 0) return;
@@ -59,7 +71,6 @@ export const quotationService = {
 
       for (const item of items) {
           for (const supplier of suppliers) {
-              // Verifica se já tem preço
               const { data: existing } = await supabase.from('quotation_supplier_prices')
                 .select('id')
                 .eq('quotation_item_id', item.id)
@@ -67,15 +78,14 @@ export const quotationService = {
                 .maybeSingle();
 
               if (!existing) {
-                  // Gera preço aleatório baseado numa média fictícia
                   const basePrice = Math.random() * 500 + 100; 
-                  const variation = (Math.random() - 0.5) * 50; // +/- 25
+                  const variation = (Math.random() - 0.5) * 50; 
                   
                   newPrices.push({
                       quotation_item_id: item.id,
                       supplier_id: supplier.id,
                       price: Number((basePrice + variation).toFixed(2)),
-                      availability: Math.random() > 0.1, // 90% chance de ter
+                      availability: Math.random() > 0.1,
                       is_winner: false
                   });
               }
@@ -93,15 +103,37 @@ export const quotationService = {
   async processPurchase(quotationId: string, selections: Record<string, string>, eventId?: string) {
       // selections: { [itemId]: supplierId }
       
-      // 1. Agrupar itens por fornecedor
-      const ordersBySupplier: Record<string, any[]> = {};
+      // 1. Validar e Buscar Dados
       const { items, prices } = await this.getMatrixData(quotationId);
+      const ordersBySupplier: Record<string, any[]> = {};
+
+      // 2. Marcar vencedores no banco (Auditoria)
+      // Resetar anteriores primeiro
+      const itemIds = items.map(i => i.id);
+      await supabase.from('quotation_supplier_prices')
+          .update({ is_winner: false })
+          .in('quotation_item_id', itemIds);
+
+      const winnersToUpdate: any[] = [];
 
       Object.entries(selections).forEach(([itemId, supplierId]) => {
           const item = items.find(i => i.id === itemId);
           const priceObj = prices.find(p => p.quotation_item_id === itemId && p.supplier_id === supplierId);
           
           if (item && priceObj) {
+              // Preparar atualização de vencedor
+              // Nota: Em produção, faríamos isso em batch, mas o Supabase update aceita filtros. 
+              // Faremos um loop de promises update por simplicidade ou um RPC. 
+              // Aqui, vamos apenas atualizar o objeto local para gerar a OC, 
+              // a persistência do 'is_winner' pode ser feita individualmente.
+              
+              winnersToUpdate.push(
+                  supabase.from('quotation_supplier_prices')
+                      .update({ is_winner: true })
+                      .match({ quotation_item_id: itemId, supplier_id: supplierId })
+              );
+
+              // Agrupar para OC
               if (!ordersBySupplier[supplierId]) {
                   ordersBySupplier[supplierId] = [];
               }
@@ -109,18 +141,21 @@ export const quotationService = {
                   name: item.name,
                   quantity: item.quantity,
                   price: priceObj.price,
-                  catalogId: itemId // Link lógico
+                  catalogId: item.catalog_item_id || null,
+                  unit: item.unit
               });
           }
       });
 
-      // 2. Criar OCs no banco
+      await Promise.all(winnersToUpdate);
+
+      // 3. Criar OCs no banco
       const promises = Object.keys(ordersBySupplier).map(async (supplierId) => {
           const cartItems = ordersBySupplier[supplierId];
           const total = cartItems.reduce((acc, i) => acc + (i.price * i.quantity), 0);
           
           const payload = {
-              code: `OC-${Date.now().toString().slice(-6)}`,
+              code: `OC-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`,
               eventId: eventId,
               supplierId: supplierId,
               items: cartItems, // JSONB
@@ -134,7 +169,12 @@ export const quotationService = {
 
       await Promise.all(promises);
 
-      // 3. Atualizar status da cotação
+      // 4. Atualizar status da cotação
       await supabase.from('quotations').update({ status: 'Finalizada' }).eq('id', quotationId);
+      
+      // 5. Atualizar status do Evento (se houver)
+      if (eventId) {
+          await supabase.from('events').update({ status: 'Aprovado' }).eq('id', eventId);
+      }
   }
 };

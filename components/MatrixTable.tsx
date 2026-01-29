@@ -1,6 +1,6 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import * as ReactRouterDOM from 'react-router-dom';
+const { useNavigate } = ReactRouterDOM;
 import { 
   CheckCircle2, TrendingDown, ShoppingCart, Trophy, DollarSign, ArrowRight, 
   Loader2, AlertTriangle, RefreshCw, XCircle, Edit2, Save, X, MessageSquare, 
@@ -124,16 +124,9 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
               supplier_id: editingCell.supplierId,
               price: priceValue,
               obs: editObs,
-              availability: true,
-              is_winner: false,
-              created_at: new Date().toISOString()
           };
 
-          const { error } = await supabase
-              .from('quotation_supplier_prices')
-              .upsert(payload, { onConflict: 'quotation_item_id, supplier_id' });
-
-          if (error) throw error;
+          await quotationService.savePrice(payload);
 
           await loadData(); 
           cancelEditing();
