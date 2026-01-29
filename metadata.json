@@ -1,0 +1,7 @@
+{
+  "name": "AutoClaims Pro - Gestão de Sinistros e Compras",
+  "description": "Sistema SaaS completo para gestão de sinistros veiculares, cotações inteligentes, matriz comparativa de preços, ordens de compra e auditoria financeira com IA.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
