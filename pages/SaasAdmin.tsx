@@ -4,7 +4,7 @@ import {
   Globe, Building, Users, Database, 
   TrendingUp, Activity, Plus, MoreVertical, 
   Search, ShieldAlert, LogIn, Loader2, CheckCircle, Mail, Lock, User, Copy, Check,
-  Edit, Trash2, Layers, DollarSign, BarChart3, PieChart, CreditCard, Layout
+  Edit, Trash2, Layers, DollarSign, BarChart3, PieChart, CreditCard, Layout, Calendar
 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { SaasTenant, SaasPlan } from '../types';
@@ -39,7 +39,7 @@ const SaasAdmin: React.FC = () => {
       document: '', 
       plan_id: '',
       status: 'active',
-      // Admin fields (only for creation)
+      // Admin fields
       adminName: '',
       adminEmail: '',
       adminPassword: ''
@@ -91,14 +91,29 @@ const SaasAdmin: React.FC = () => {
       setIsTenantModalOpen(true);
   };
 
-  const openEditTenantModal = (tenant: SaasTenant) => {
+  const openEditTenantModal = async (tenant: SaasTenant) => {
       setEditingTenant(tenant);
+      
+      // Carregar dados do dono (Admin)
+      let adminName = '';
+      let adminEmail = '';
+      
+      if (tenant.owner_id) {
+          const { data: profile } = await supabase.from('profiles').select('full_name, email').eq('id', tenant.owner_id).single();
+          if (profile) {
+              adminName = profile.full_name || '';
+              adminEmail = profile.email || '';
+          }
+      }
+
       setTenantForm({
           name: tenant.name,
           document: tenant.document,
           plan_id: tenant.plan_id,
           status: tenant.status,
-          adminName: '', adminEmail: '', adminPassword: '' // Não edita admin aqui
+          adminName: adminName, 
+          adminEmail: adminEmail, 
+          adminPassword: '' // Senha não é recuperável, apenas redefinível via fluxo de reset
       });
       setIsTenantModalOpen(true);
   };
@@ -122,7 +137,13 @@ const SaasAdmin: React.FC = () => {
                 .eq('id', editingTenant.id);
 
             if (error) throw error;
-            addToast('success', 'Atualizado', 'Dados da empresa atualizados.');
+
+            // Se houver dono vinculado, atualiza o nome do perfil
+            if (editingTenant.owner_id && tenantForm.adminName) {
+                await supabase.from('profiles').update({ full_name: tenantForm.adminName }).eq('id', editingTenant.owner_id);
+            }
+
+            addToast('success', 'Atualizado', 'Dados da empresa e administrador atualizados.');
             setIsTenantModalOpen(false);
             loadData();
 
@@ -217,8 +238,16 @@ const SaasAdmin: React.FC = () => {
       const totalRevenue = tenants.reduce((acc, t) => acc + (t.saas_plans?.price || 0), 0);
       const avgTicket = activeTenantsCount > 0 ? totalRevenue / activeTenantsCount : 0;
       const totalCapacity = tenants.reduce((acc, t) => acc + (t.saas_plans?.max_users || 0), 0);
+      
+      const today = new Date();
+      const newThisMonth = tenants.filter(t => {
+          const d = new Date(t.created_at);
+          return d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
+      }).length;
 
-      return { activeTenantsCount, totalRevenue, avgTicket, totalCapacity };
+      const projectedRevenue = totalRevenue * 12;
+
+      return { activeTenantsCount, totalRevenue, avgTicket, totalCapacity, newThisMonth, projectedRevenue };
   }, [tenants]);
 
   const filteredTenants = tenants.filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -255,38 +284,49 @@ const SaasAdmin: React.FC = () => {
       {activeTab === 'overview' && (
           <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
             {/* KPI Cards Expandidos */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <div className="bg-slate-900 text-white p-6 rounded-[32px] shadow-xl shadow-slate-900/10">
-                    <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-white/10 rounded-xl"><Globe size={20}/></div>
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Total MRR</span>
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                <div className="col-span-1 md:col-span-2 bg-slate-900 text-white p-6 rounded-[32px] shadow-xl shadow-slate-900/10 relative overflow-hidden">
+                    <div className="relative z-10">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="p-2 bg-white/10 rounded-xl"><Globe size={20}/></div>
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Total MRR</span>
+                        </div>
+                        <p className="text-3xl font-black">R$ {stats.totalRevenue.toLocaleString('pt-BR')}</p>
+                        <p className="text-[10px] text-green-400 font-bold mt-2 flex items-center gap-1"><TrendingUp size={12}/> Receita Mensal Recorrente</p>
                     </div>
-                    <p className="text-3xl font-black">R$ {stats.totalRevenue.toLocaleString('pt-BR')}</p>
-                    <p className="text-[10px] text-green-400 font-bold mt-2 flex items-center gap-1"><TrendingUp size={12}/> Métricas Reais</p>
+                    <div className="absolute right-0 top-0 h-full w-1/3 bg-gradient-to-l from-white/5 to-transparent"></div>
                 </div>
                 
-                <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
-                    <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><Building size={20}/></div>
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Empresas Ativas</span>
+                <div className="bg-white p-5 rounded-[32px] border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div className="flex items-center gap-2 mb-2">
+                        <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg"><Building size={16}/></div>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Ativas</span>
                     </div>
-                    <p className="text-3xl font-black text-slate-800">{stats.activeTenantsCount}</p>
+                    <p className="text-2xl font-black text-slate-800">{stats.activeTenantsCount}</p>
                 </div>
 
-                <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
-                    <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-green-50 text-green-600 rounded-xl"><DollarSign size={20}/></div>
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Ticket Médio</span>
+                <div className="bg-white p-5 rounded-[32px] border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div className="flex items-center gap-2 mb-2">
+                        <div className="p-1.5 bg-green-50 text-green-600 rounded-lg"><DollarSign size={16}/></div>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Ticket Méd.</span>
                     </div>
-                    <p className="text-3xl font-black text-slate-800">R$ {stats.avgTicket.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</p>
+                    <p className="text-2xl font-black text-slate-800">R$ {stats.avgTicket.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</p>
                 </div>
 
-                <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
-                    <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-amber-50 text-amber-600 rounded-xl"><Users size={20}/></div>
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Capacidade Usuários</span>
+                <div className="bg-white p-5 rounded-[32px] border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div className="flex items-center gap-2 mb-2">
+                        <div className="p-1.5 bg-purple-50 text-purple-600 rounded-lg"><Calendar size={16}/></div>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Novos (Mês)</span>
                     </div>
-                    <p className="text-3xl font-black text-slate-800">{stats.totalCapacity}</p>
+                    <p className="text-2xl font-black text-slate-800">{stats.newThisMonth}</p>
+                </div>
+
+                <div className="bg-white p-5 rounded-[32px] border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div className="flex items-center gap-2 mb-2">
+                        <div className="p-1.5 bg-amber-50 text-amber-600 rounded-lg"><Activity size={16}/></div>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Anual (Est.)</span>
+                    </div>
+                    <p className="text-xl font-black text-slate-800">{(stats.projectedRevenue / 1000).toFixed(1)}k</p>
                 </div>
             </div>
 
@@ -314,14 +354,15 @@ const SaasAdmin: React.FC = () => {
                     <div className="space-y-3">
                         {filteredTenants.map(tenant => (
                         <div key={tenant.id} className="flex items-center justify-between p-5 bg-slate-50 border border-slate-100 rounded-3xl hover:border-blue-200 hover:shadow-md transition-all group">
-                            <div className="flex items-center gap-5">
-                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg shadow-sm ${tenant.status === 'blocked' ? 'bg-red-100 text-red-500' : 'bg-white text-blue-600 border border-slate-200'}`}>
+                            {/* Lado Esquerdo: Identificação */}
+                            <div className="flex items-center gap-5 flex-1 min-w-0">
+                                <div className={`w-12 h-12 rounded-2xl flex-shrink-0 flex items-center justify-center font-black text-lg shadow-sm ${tenant.status === 'blocked' ? 'bg-red-100 text-red-500' : 'bg-white text-blue-600 border border-slate-200'}`}>
                                     {tenant.name.charAt(0)}
                                 </div>
-                                <div>
-                                    <h4 className="font-black text-slate-800 text-base flex items-center gap-2">
+                                <div className="truncate">
+                                    <h4 className="font-black text-slate-800 text-base flex items-center gap-2 truncate">
                                         {tenant.name}
-                                        <span className={`text-[9px] px-2 py-0.5 rounded uppercase tracking-widest border ${tenant.status === 'active' ? 'bg-green-100 text-green-700 border-green-200' : 'bg-red-100 text-red-700 border-red-200'}`}>
+                                        <span className={`text-[9px] px-2 py-0.5 rounded uppercase tracking-widest border flex-shrink-0 ${tenant.status === 'active' ? 'bg-green-100 text-green-700 border-green-200' : 'bg-red-100 text-red-700 border-red-200'}`}>
                                             {tenant.status === 'active' ? 'Ativo' : 'Bloqueado'}
                                         </span>
                                     </h4>
@@ -329,13 +370,14 @@ const SaasAdmin: React.FC = () => {
                                 </div>
                             </div>
                             
-                            <div className="flex items-center gap-8">
-                                <div className="text-right">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Plano</p>
-                                    <p className="font-bold text-slate-700 text-sm">{tenant.saas_plans?.name || '---'}</p>
+                            {/* Lado Direito: Dados e Ações (Grid fixo para alinhamento) */}
+                            <div className="flex items-center gap-6 flex-shrink-0">
+                                <div className="w-32 text-right">
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Plano</p>
+                                    <p className="font-bold text-slate-700 text-sm truncate" title={tenant.saas_plans?.name}>{tenant.saas_plans?.name || '---'}</p>
                                 </div>
-                                <div className="text-right w-24">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Valor</p>
+                                <div className="w-28 text-right border-l border-slate-200 pl-4 h-8 flex flex-col justify-center">
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Valor</p>
                                     <p className="font-black text-slate-800 text-sm">R$ {tenant.saas_plans?.price}/mês</p>
                                 </div>
                                 <button onClick={() => openEditTenantModal(tenant)} className="p-2 bg-white text-slate-400 hover:text-blue-600 border border-slate-200 hover:border-blue-200 rounded-xl transition-all shadow-sm">
@@ -441,26 +483,27 @@ const SaasAdmin: React.FC = () => {
                     </div>
                 </div>
 
-                {!editingTenant && (
-                    <div className="space-y-4 pt-4 border-t border-slate-100">
-                        <h4 className="text-[10px] font-black uppercase text-blue-600 tracking-widest mb-2 flex items-center gap-2"><User size={14}/> Administrador Inicial</h4>
-                        <div>
-                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Nome Completo</label>
-                            <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" 
-                                value={tenantForm.adminName} onChange={e => setTenantForm({...tenantForm, adminName: e.target.value})} placeholder="Ex: João Admin" />
-                        </div>
-                        <div>
-                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">E-mail de Acesso</label>
-                            <input required type="email" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" 
-                                value={tenantForm.adminEmail} onChange={e => setTenantForm({...tenantForm, adminEmail: e.target.value})} placeholder="admin@empresa.com" />
-                        </div>
+                <div className="space-y-4 pt-4 border-t border-slate-100">
+                    <h4 className="text-[10px] font-black uppercase text-blue-600 tracking-widest mb-2 flex items-center gap-2"><User size={14}/> {editingTenant ? 'Administrador da Conta' : 'Administrador Inicial'}</h4>
+                    <div>
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Nome Completo</label>
+                        <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" 
+                            value={tenantForm.adminName} onChange={e => setTenantForm({...tenantForm, adminName: e.target.value})} placeholder="Ex: João Admin" />
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">E-mail de Acesso</label>
+                        <input required type="email" disabled={!!editingTenant} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none disabled:opacity-60 disabled:bg-slate-100" 
+                            value={tenantForm.adminEmail} onChange={e => setTenantForm({...tenantForm, adminEmail: e.target.value})} placeholder="admin@empresa.com" />
+                        {editingTenant && <p className="text-[9px] text-slate-400 mt-1 pl-1">O e-mail não pode ser alterado diretamente aqui.</p>}
+                    </div>
+                    {!editingTenant && (
                         <div>
                             <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Senha Provisória</label>
                             <input required type="text" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" 
                                 value={tenantForm.adminPassword} onChange={e => setTenantForm({...tenantForm, adminPassword: e.target.value})} placeholder="Defina uma senha" />
                         </div>
-                    </div>
-                )}
+                    )}
+                </div>
 
                 <div className="flex justify-end gap-3 pt-4">
                     <button type="button" onClick={() => setIsTenantModalOpen(false)} disabled={isProcessing} className="px-6 py-3 text-slate-400 font-black uppercase text-[10px]">Cancelar</button>

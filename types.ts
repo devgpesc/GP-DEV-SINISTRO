@@ -157,6 +157,7 @@ export interface SaasTenant {
   name: string;
   document: string;
   plan_id: string;
+  owner_id?: string; // ID do usuário Admin da empresa
   status: 'active' | 'suspended' | 'blocked';
   created_at: string;
   saas_plans?: SaasPlan;
