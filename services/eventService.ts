@@ -21,13 +21,20 @@ export const eventService = {
   },
 
   async createEvent(eventData: Partial<Event>) {
-    // 1. VALIDAÇÃO DE VÍNCULO OBRIGATÓRIO
+    // 1. AUTENTICAÇÃO OBRIGATÓRIA (Critical Fix)
+    // Não permite criação sem usuário real, pois viola FK created_by -> profiles
+    const { data: { user }, error: authError } = await (supabase.auth as any).getUser();
+    
+    if (authError || !user || !user.id) {
+        throw new Error('Sessão inválida. É necessário estar logado para registrar um sinistro.');
+    }
+
+    // 2. VALIDAÇÃO DE CAMPOS OBRIGATÓRIOS
     if (!eventData.vehicleId || !eventData.associateId) {
         throw new Error('É obrigatório vincular um Associado e um Veículo para criar um sinistro.');
     }
 
-    // 2. Verificar consistência no Banco de Dados
-    // CORREÇÃO: Busca por 'associate_id' (snake_case) que é o padrão atual do banco
+    // 3. CONSISTÊNCIA DE DADOS (Veículo pertence ao Associado?)
     const { data: vehicle, error: vehicleError } = await supabase
         .from('vehicles')
         .select('associate_id') 
@@ -39,50 +46,58 @@ export const eventService = {
         throw new Error('Veículo selecionado não encontrado na base de dados.');
     }
 
-    // Verifica compatibilidade (lidando com possíveis nomes de campos legados se existirem, mas priorizando o novo)
     const dbOwnerId = vehicle.associate_id || (vehicle as any).associateId;
 
     if (dbOwnerId !== eventData.associateId) {
         throw new Error('Inconsistência: O veículo selecionado não pertence ao associado informado.');
     }
 
-    // Fix: Cast auth to any to support v2 methods despite v1 types
-    const { data: { user } } = await (supabase.auth as any).getUser();
-    
-    // 3. Preparar payload (remove campos relacionais e o ID para inserção)
-    // CRITICAL FIX: Destruturamos 'id' para garantir que ele NÃO vá no payload de insert
-    // Isso força o banco a usar o gen_random_uuid() default
+    // 4. PREPARAR PAYLOAD LIMPO
+    // Removemos campos relacionais, IDs indefinidos e garantimos created_by correto
     const { attachments, history, id, ...cleanEventData } = eventData;
 
     const payload = {
       ...cleanEventData,
-      created_by: user?.id || 'system',
+      // CORREÇÃO: Envia estritamente o UUID do usuário logado.
+      // Isso satisfaz a constraint "events_created_by_fkey"
+      created_by: user.id, 
       created_at: eventData.createdAt || new Date().toISOString(),
+      // Garante que as chaves estrangeiras estejam explicitamente no payload
+      vehicleId: eventData.vehicleId,
+      associateId: eventData.associateId
     };
 
-    // 4. Insert Real
+    // 5. INSERT REAL
     const { data, error } = await supabase
       .from('events')
       .insert([payload])
       .select()
       .single();
     
-    if (error) throw error;
+    if (error) {
+        console.error("Erro Supabase Insert:", error);
+        // Tratamento de erro amigável para FKs
+        if (error.message?.includes('violates foreign key constraint')) {
+            if (error.message?.includes('created_by')) throw new Error('Erro de Permissão: Seu usuário não tem perfil válido no sistema.');
+            if (error.message?.includes('associate')) throw new Error('Erro de Vínculo: O Associado informado não existe.');
+            if (error.message?.includes('vehicle')) throw new Error('Erro de Vínculo: O Veículo informado não existe.');
+        }
+        throw error;
+    }
     
-    // 5. Inserir Histórico Inicial (Se houver tabela event_history)
-    // Ignoramos erro aqui para não bloquear o fluxo principal se a tabela não existir ainda
+    // 6. INSERIR HISTÓRICO INICIAL
     if (data && data.id) {
         const { error: historyError } = await supabase.from('event_history').insert([{
             event_id: data.id,
             from_status: 'Criação',
             to_status: 'Aguardando',
             comment: 'Evento registrado via Portal.',
-            user_id: user?.id,
+            user_id: user.id,
             created_at: new Date().toISOString()
         }]);
 
         if (historyError) {
-             console.warn('Histórico não persistido (tabela pode não existir):', historyError);
+             console.warn('Aviso: Histórico inicial não persistido.', historyError);
         }
     }
 
