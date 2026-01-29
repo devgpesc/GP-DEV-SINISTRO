@@ -1,8 +1,9 @@
+
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
 import { useToast } from '../context/ToastContext';
-import { Car, Mail, Lock, User, Loader2, ArrowLeft, ShieldCheck } from 'lucide-react';
+import { Car, Mail, Lock, User, Loader2, ArrowLeft, ShieldCheck, AlertCircle } from 'lucide-react';
 
 const Register: React.FC = () => {
   const { addToast } = useToast();
@@ -19,29 +20,38 @@ const Register: React.FC = () => {
     setError(null);
 
     try {
-      // Fix: Cast auth to any
+      // Fix: Cast auth to any for v2 compatibility
       const { data, error: signUpError } = await (supabase.auth as any).signUp({
         email,
         password,
         options: {
           data: { 
-            full_name: name,
-            name: name
+            full_name: name, // Novo padrão
+            name: name       // Legado (para garantir compatibilidade com trigger antigo se não atualizado)
           }
         }
       });
 
       if (signUpError) {
-        setError(signUpError.message);
+        console.error("Erro detalhado:", signUpError);
+        if (signUpError.message.includes("Database error")) {
+            setError("Erro interno ao criar perfil. Por favor, contate o suporte (Erro de Trigger).");
+        } else if (signUpError.message.includes("unique")) {
+            setError("Este e-mail já está cadastrado.");
+        } else {
+            setError(signUpError.message);
+        }
         setLoading(false);
       } else if (data.user) {
-        addToast('success', 'Cadastro Realizado!', 'Verifique seu e-mail para confirmar a conta antes de logar.');
+        addToast('success', 'Cadastro Realizado!', 'Sua conta foi criada com sucesso.');
+        // Pequeno delay para UX
         setTimeout(() => {
             navigate('/login');
-        }, 2000);
+        }, 1500);
       }
-    } catch (err) {
-      setError("Erro ao conectar com o servidor de autenticação.");
+    } catch (err: any) {
+      console.error(err);
+      setError("Erro de conexão. Verifique sua internet e tente novamente.");
       setLoading(false);
     }
   };
@@ -63,7 +73,12 @@ const Register: React.FC = () => {
         <div className="bg-white p-10 rounded-[48px] shadow-2xl border border-slate-100">
           <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-8">Criar Cadastro de Produção</h2>
           
-          {error && <div className="mb-6 p-4 bg-red-50 text-red-600 text-xs font-bold rounded-2xl flex items-center gap-3"><ShieldCheck size={18}/> {error}</div>}
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-600 text-xs font-bold rounded-2xl flex items-start gap-3 animate-in slide-in-from-top-2">
+                <AlertCircle size={18} className="shrink-0 mt-0.5"/> 
+                <span className="leading-relaxed">{error}</span>
+            </div>
+          )}
 
           <form onSubmit={handleRegister} className="space-y-6">
             <div>
