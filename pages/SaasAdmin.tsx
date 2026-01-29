@@ -9,6 +9,7 @@ import {
 import { supabase } from '../services/supabaseClient';
 import { SaasTenant, SaasPlan } from '../types';
 import { useToast } from '../context/ToastContext';
+import ActionModal from '../components/ActionModal';
 
 const SaasAdmin: React.FC = () => {
   const { addToast } = useToast();
@@ -26,6 +27,7 @@ const SaasAdmin: React.FC = () => {
   const [isTenantModalOpen, setIsTenantModalOpen] = useState(false);
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [tenantToDelete, setTenantToDelete] = useState<SaasTenant | null>(null);
   
   // Processing States
   const [isProcessing, setIsProcessing] = useState(false);
@@ -124,6 +126,27 @@ const SaasAdmin: React.FC = () => {
           adminEmail: adminEmail, 
           adminPassword: '' // Senha não é recuperável
       });
+  };
+
+  const handleDeleteTenant = async () => {
+      if (!tenantToDelete) return;
+      setIsProcessing(true);
+      try {
+          const { error } = await supabase.from('saas_tenants').delete().eq('id', tenantToDelete.id);
+          if (error) throw error;
+          
+          setTenants(prev => prev.filter(t => t.id !== tenantToDelete.id));
+          addToast('success', 'Empresa Excluída', 'O registro foi removido com sucesso.');
+          setTenantToDelete(null);
+      } catch (error: any) {
+          addToast('error', 'Erro ao Excluir', error.message);
+          // Geralmente erro de Foreign Key se houver dados vinculados sem cascade
+          if (error.code === '23503') {
+              addToast('warning', 'Ação Bloqueada', 'Não é possível excluir empresas que possuem dados ou usuários ativos.');
+          }
+      } finally {
+          setIsProcessing(false);
+      }
   };
 
   const handleSaveTenant = async (e: React.FormEvent) => {
@@ -388,9 +411,14 @@ const SaasAdmin: React.FC = () => {
                                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Valor</p>
                                     <p className="font-black text-slate-800 text-sm">R$ {tenant.saas_plans?.price}/mês</p>
                                 </div>
-                                <button onClick={() => openEditTenantModal(tenant)} className="p-2 bg-white text-slate-400 hover:text-blue-600 border border-slate-200 hover:border-blue-200 rounded-xl transition-all shadow-sm">
-                                    <Edit size={18}/>
-                                </button>
+                                <div className="flex gap-2">
+                                    <button onClick={() => openEditTenantModal(tenant)} className="p-2 bg-white text-slate-400 hover:text-blue-600 border border-slate-200 hover:border-blue-200 rounded-xl transition-all shadow-sm">
+                                        <Edit size={18}/>
+                                    </button>
+                                    <button onClick={() => setTenantToDelete(tenant)} className="p-2 bg-white text-slate-400 hover:text-red-600 border border-slate-200 hover:border-red-200 rounded-xl transition-all shadow-sm">
+                                        <Trash2 size={18}/>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                         ))}
@@ -607,6 +635,17 @@ const SaasAdmin: React.FC = () => {
               </div>
           </div>
       )}
+
+      {/* Modal Confirmação de Exclusão */}
+      <ActionModal 
+        isOpen={!!tenantToDelete}
+        onClose={() => setTenantToDelete(null)}
+        onConfirm={handleDeleteTenant}
+        title="Excluir Empresa?"
+        description="Esta ação removerá permanentemente o acesso da empresa e seus registros."
+        type="danger"
+        confirmText="Sim, Excluir"
+      />
     </div>
   );
 };
