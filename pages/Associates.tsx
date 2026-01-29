@@ -153,7 +153,7 @@ const Associates: React.FC = () => {
             phone: formData.phone,
         };
 
-        let result;
+        let result: any;
         if (associateToEdit) {
             const { data, error } = await supabase.from('associates').update(payload).eq('id', associateToEdit.id).select().single();
             if (error) throw error;
