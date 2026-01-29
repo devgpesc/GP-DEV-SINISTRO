@@ -27,14 +27,15 @@ const supabaseAnonKey = (envKey && typeof envKey === 'string' && envKey.trim().l
   ? envKey 
   : 'demo-key';
 
-// Inicializa o cliente com persistência explícita no LocalStorage
+// Inicializa o cliente com persistência explícita no LocalStorage e Auto Refresh
+// Essa configuração é CRÍTICA para evitar o logout no F5
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
     storage: window.localStorage, // Garante uso do storage do navegador
-    storageKey: 'sb-autoclaims-auth-token', // Chave única para evitar conflitos localhost
+    storageKey: 'sb-autoclaims-auth-token', // Chave única para evitar conflitos
   },
   global: {
     headers: { 'x-application-name': 'autoclaims-pro' },

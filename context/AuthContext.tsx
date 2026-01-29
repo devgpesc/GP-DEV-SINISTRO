@@ -4,7 +4,6 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 type Session = any;
 type User = any;
 import { supabase } from '../services/supabaseClient';
-import { Car, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 
 interface AuthContextType {
   user: User | null;
@@ -25,10 +24,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<any>(null);
   
-  // Começa como TRUE para bloquear rotas até ter certeza
+  // Começa TRUE para bloquear a UI até termos certeza da sessão (evita flash de login)
   const [loading, setLoading] = useState(true); 
 
-  // Busca perfil real no banco
+  // Busca perfil real no banco com retry
   const fetchProfile = useCallback(async (userId: string, userEmail?: string, userMeta?: any) => {
     try {
       const { data, error } = await supabase
@@ -42,9 +41,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return null;
       }
       
-      // Se não existir perfil, cria objeto em memória baseado no Auth para não travar a UI
+      // Fallback em memória se o trigger falhou (Safety net)
       if (!data) {
-          console.warn('[Auth] Perfil DB não encontrado. Usando fallback de memória.');
+          console.warn('[Auth] Perfil DB não encontrado. Usando fallback.');
           return {
               id: userId,
               email: userEmail,
@@ -61,24 +60,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // Lógica Principal de Inicialização
+  // Inicialização "Blindada"
   useEffect(() => {
     let mounted = true;
 
     const initializeAuth = async () => {
         try {
-            // 1. Tenta recuperar sessão existente do LocalStorage
+            // 1. Verifica sessão persistida (LocalStorage)
             const { data: { session: initialSession }, error } = await supabase.auth.getSession();
 
             if (error) throw error;
 
             if (initialSession?.user) {
-                // Sessão válida encontrada
                 if (mounted) {
                     setSession(initialSession);
                     setUser(initialSession.user);
-                    
-                    // Re-hidrata o perfil
+                    // Busca perfil antes de liberar a tela
                     const p = await fetchProfile(
                         initialSession.user.id, 
                         initialSession.user.email, 
@@ -86,24 +83,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     );
                     setProfile(p);
                 }
+            } else {
+                // Sem sessão, limpa estados
+                if (mounted) {
+                    setUser(null);
+                    setSession(null);
+                    setProfile(null);
+                }
             }
         } catch (err) {
             console.error('[Auth] Erro na inicialização:', err);
-            // Em caso de erro grave de token, limpa tudo para evitar loop
             if (mounted) {
                 setUser(null);
                 setSession(null);
             }
         } finally {
             if (mounted) {
-                setLoading(false); // Libera a UI independente do resultado
+                setLoading(false); // SÓ AGORA libera a UI
             }
         }
     };
 
     initializeAuth();
 
-    // 2. Escuta mudanças em tempo real (Login, Logout, Refresh Token)
+    // 2. Escuta mudanças em tempo real
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
         if (!mounted) return;
 
@@ -114,8 +117,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUser(newSession?.user ?? null);
             
             if (newSession?.user) {
-                // Atualiza perfil apenas se ainda não tivermos (evita refetch desnecessário no refresh token)
-                // ou se o usuário mudou
+                // Atualiza perfil se necessário
                 if (!profile || profile.id !== newSession.user.id) {
                     const p = await fetchProfile(
                         newSession.user.id, 
@@ -132,8 +134,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUser(null);
             setProfile(null);
             setLoading(false);
-            // Limpa storage extra se necessário
-            localStorage.removeItem('sb-access-token'); 
+            localStorage.removeItem('sb-autoclaims-auth-token'); 
         }
     });
 
@@ -141,7 +142,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         mounted = false;
         subscription.unsubscribe();
     };
-  }, [fetchProfile, profile]); // Dependência de profile adicionada para a verificação acima
+  }, [fetchProfile, profile]); 
 
   const signInWithGoogle = async () => {
     try {
@@ -164,7 +165,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
         setLoading(true);
         await supabase.auth.signOut();
-        // State update handled by onAuthStateChange
     } catch (error) {
         console.error("Erro ao sair:", error);
         setLoading(false);

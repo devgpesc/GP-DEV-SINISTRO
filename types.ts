@@ -40,7 +40,13 @@ export interface PurchaseOrder {
   code: string;
   eventId: string;
   supplierId: string;
-  items: Array<{ catalogId: string; name: string; quantity: number; price: number }>;
+  items: Array<{ 
+    catalogId: string; // Link com Catálogo
+    name: string; 
+    quantity: number; 
+    price: number;
+    catalog_item_id?: string; // Novo
+  }>;
   total: number;
   status: 'Gerada' | 'Enviada' | 'Aprovada' | 'Recebida' | 'Cancelada';
   createdAt: string;
@@ -67,6 +73,7 @@ export interface QuotationItem {
   unit: string;
   category?: string;
   target_price?: number;
+  catalog_item_id?: string; // Link com Catálogo
   status: 'Pendente' | 'Cotado' | 'Comprado';
 }
 

@@ -1,9 +1,9 @@
 
-import React, { useState, useEffect } from 'react';
-import { Plus, Search, ChevronRight, ArrowLeft, BarChart3, Trash2, Rocket, LayoutGrid, List, Eye, CheckSquare, Square, Package, Users, Edit3, XCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Plus, Search, ChevronRight, ArrowLeft, BarChart3, Trash2, Rocket, LayoutGrid, List, Eye, CheckSquare, Package, Users, Edit3, XCircle, Box, Zap, Save, Loader2 } from 'lucide-react';
 import MatrixTable from '../components/MatrixTable';
 import { supabase } from '../services/supabaseClient';
-import { Event, Supplier } from '../types';
+import { Event, Supplier, CatalogItem } from '../types';
 import { useToast } from '../context/ToastContext';
 import ActionModal from '../components/ActionModal';
 
@@ -18,16 +18,31 @@ const Quotations: React.FC = () => {
   
   // State da Nova/Edit Cotação
   const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
+  
+  // Interface Estendida para o State
+  interface WizardItem {
+      id?: string;
+      name: string;
+      quantity: number;
+      unit: string;
+      category?: string;
+      catalog_item_id?: string;
+  }
+
   const [newQuote, setNewQuote] = useState({
     eventId: '',
     eventProtocol: '',
-    items: [] as { name: string, quantity: number, id?: string }[], 
+    items: [] as WizardItem[], 
     selectedSuppliers: [] as string[] 
   });
 
-  // Input temporário para adicionar itens manuais no Wizard
-  const [manualItem, setManualItem] = useState('');
+  // States do Wizard Inteligente
+  const [itemSearch, setItemSearch] = useState('');
   const [manualQty, setManualQty] = useState(1);
+  const [showCatalogDropdown, setShowCatalogDropdown] = useState(false);
+  const [searchResults, setSearchResults] = useState<CatalogItem[]>([]);
+  const [isSearchingCatalog, setIsSearchingCatalog] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [quotes, setQuotes] = useState<any[]>([]);
   const [quoteToDelete, setQuoteToDelete] = useState<any>(null);
@@ -40,23 +55,41 @@ const Quotations: React.FC = () => {
     loadData();
   }, []);
 
+  // Busca no Catálogo (Debounce)
+  useEffect(() => {
+      const delayDebounceFn = setTimeout(async () => {
+          if (itemSearch.trim().length >= 2) {
+              setIsSearchingCatalog(true);
+              try {
+                  const { data } = await supabase
+                      .from('catalog_items')
+                      .select('*')
+                      .or(`name.ilike.%${itemSearch}%,code.ilike.%${itemSearch}%`)
+                      .limit(5);
+                  setSearchResults(data || []);
+                  setShowCatalogDropdown(true);
+              } catch (e) {
+                  console.error(e);
+              } finally {
+                  setIsSearchingCatalog(false);
+              }
+          } else {
+              setSearchResults([]);
+              setShowCatalogDropdown(false);
+          }
+      }, 300);
+
+      return () => clearTimeout(delayDebounceFn);
+  }, [itemSearch]);
+
   const loadData = async () => {
-    // 1. Carregar eventos
-    const { data: eventsData } = await supabase.from('events')
-        .select('*')
-        .order('created_at', { ascending: false });
+    const { data: eventsData } = await supabase.from('events').select('*').order('created_at', { ascending: false });
     setRealEvents(eventsData || []);
 
-    // 2. Carregar fornecedores
-    const { data: suppliersData } = await supabase.from('suppliers')
-        .select('*')
-        .eq('status', 'Ativo');
+    const { data: suppliersData } = await supabase.from('suppliers').select('*').eq('status', 'Ativo');
     setRealSuppliers(suppliersData || []);
 
-    // 3. Carregar cotações existentes
-    const { data: quotesData } = await supabase.from('quotations')
-        .select('*')
-        .order('created_at', { ascending: false });
+    const { data: quotesData } = await supabase.from('quotations').select('*').order('created_at', { ascending: false });
     setQuotes(quotesData || []);
   };
 
@@ -68,14 +101,20 @@ const Quotations: React.FC = () => {
   const handleEditQuote = async (quote: any) => {
       setEditingQuoteId(quote.id);
       
-      // Carregar itens e fornecedores da cotação
       const { data: items } = await supabase.from('quotation_items').select('*').eq('quotation_id', quote.id);
       const { data: qSuppliers } = await supabase.from('quotation_suppliers').select('supplier_id').eq('quotation_id', quote.id);
       
       setNewQuote({
           eventId: quote.eventId,
           eventProtocol: quote.eventRef,
-          items: items?.map(i => ({ name: i.name, quantity: i.quantity, id: i.id })) || [],
+          items: items?.map(i => ({ 
+              id: i.id,
+              name: i.name, 
+              quantity: i.quantity, 
+              unit: i.unit || 'UN',
+              catalog_item_id: i.catalog_item_id,
+              category: i.category
+          })) || [],
           selectedSuppliers: qSuppliers?.map((qs: any) => qs.supplier_id) || []
       });
       
@@ -85,11 +124,8 @@ const Quotations: React.FC = () => {
 
   const handleDeleteQuote = async () => {
       if (!quoteToDelete) return;
-      
       try {
-          const { error } = await supabase.from('quotations').delete().eq('id', quoteToDelete.id);
-          if (error) throw error;
-          
+          await supabase.from('quotations').delete().eq('id', quoteToDelete.id);
           setQuotes(quotes.filter(q => q.id !== quoteToDelete.id));
           addToast('success', 'Excluída', 'Cotação removida com sucesso.');
           setQuoteToDelete(null);
@@ -109,20 +145,17 @@ const Quotations: React.FC = () => {
         let quoteId = editingQuoteId;
 
         if (editingQuoteId) {
-            // UPDATE
             await supabase.from('quotations').update({
                 suppliers: newQuote.selectedSuppliers.length,
                 "itemCount": newQuote.items.length,
                 updated_at: new Date().toISOString()
             }).eq('id', editingQuoteId);
 
-            // Atualizar Itens (Simplificado: Deletar e Recriar ou Upsert - aqui faremos upsert manual)
-            // Para simplificar a lógica de edição complexa, removemos os vínculos antigos e recriamos
+            // Estratégia de reconstrução para simplificar lógica de atualização
             await supabase.from('quotation_suppliers').delete().eq('quotation_id', editingQuoteId);
             await supabase.from('quotation_items').delete().eq('quotation_id', editingQuoteId);
             
         } else {
-            // CREATE
             const code = `COT-${new Date().getFullYear()}-${String(quotes.length + 1).padStart(4, '0')}`;
             const { data: quoteData, error: quoteError } = await supabase.from('quotations').insert([{
                 code: code,
@@ -141,18 +174,19 @@ const Quotations: React.FC = () => {
 
         if (!quoteId) throw new Error("ID da cotação inválido");
 
-        // Salvar Itens
         if (newQuote.items.length > 0) {
             const itemsPayload = newQuote.items.map(item => ({
                 quotation_id: quoteId,
                 name: item.name,
                 quantity: item.quantity,
+                unit: item.unit || 'UN',
+                category: item.category,
+                catalog_item_id: item.catalog_item_id || null, 
                 status: 'Pendente'
             }));
             await supabase.from('quotation_items').insert(itemsPayload);
         }
 
-        // Salvar Vínculo Fornecedores
         if (newQuote.selectedSuppliers.length > 0) {
             const suppliersPayload = newQuote.selectedSuppliers.map(supId => ({
                 quotation_id: quoteId,
@@ -162,12 +196,9 @@ const Quotations: React.FC = () => {
             await supabase.from('quotation_suppliers').insert(suppliersPayload);
         }
         
-        // Atualizar Status do Evento
         await supabase.from('events').update({ status: 'Em Cotação' }).eq('id', newQuote.eventId);
         
         addToast('success', editingQuoteId ? 'Cotação Atualizada' : 'Cotação Criada', 'RFQ pronta. Acesse a matriz.');
-        
-        // Recarregar e ir para Matriz
         await loadData();
         setActiveQuoteId(quoteId);
         setActiveEventId(newQuote.eventId);
@@ -179,14 +210,58 @@ const Quotations: React.FC = () => {
     }
   };
 
-  const addItem = () => {
-      if (manualItem.trim()) {
-          setNewQuote(prev => ({
-              ...prev, 
-              items: [...prev.items, { name: manualItem, quantity: manualQty }]
-          }));
-          setManualItem('');
-          setManualQty(1);
+  // --- LÓGICA DO WIZARD INTELIGENTE ---
+
+  const addCatalogItem = (cItem: CatalogItem) => {
+      setNewQuote(prev => ({
+          ...prev,
+          items: [...prev.items, { 
+              name: cItem.name, 
+              quantity: manualQty, 
+              unit: cItem.unit, 
+              category: cItem.category, 
+              catalog_item_id: cItem.id 
+          }]
+      }));
+      setItemSearch('');
+      setManualQty(1);
+      setShowCatalogDropdown(false);
+      searchInputRef.current?.focus();
+  };
+
+  const addManualItem = async () => {
+      if (!itemSearch.trim()) return;
+      const manualName = itemSearch.trim();
+      
+      setNewQuote(prev => ({
+          ...prev, 
+          items: [...prev.items, { name: manualName, quantity: manualQty, unit: 'UN', category: 'Geral' }]
+      }));
+      setItemSearch('');
+      setManualQty(1);
+      setShowCatalogDropdown(false);
+  };
+
+  const createAndAddCatalogItem = async () => {
+      if (!itemSearch.trim()) return;
+      
+      const newItemPayload = {
+          name: itemSearch.trim(),
+          code: `NEW-${Date.now().toString().slice(-4)}`,
+          category: 'Geral',
+          type: 'Peça',
+          unit: 'UN'
+      };
+
+      try {
+          const { data, error } = await supabase.from('catalog_items').insert([newItemPayload]).select().single();
+          if (error) throw error;
+          
+          addCatalogItem(data);
+          addToast('success', 'Item Criado', 'Adicionado ao catálogo e à cotação.');
+          
+      } catch (e: any) {
+          addToast('error', 'Erro', 'Falha ao criar item no catálogo.');
       }
   };
 
@@ -207,6 +282,7 @@ const Quotations: React.FC = () => {
 
   const renderList = () => (
     <div className="space-y-6 animate-in fade-in duration-300">
+      {/* ... (Search Bar e Actions igual anterior) ... */}
       <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
         <div className="relative flex-1 w-full">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
@@ -218,12 +294,7 @@ const Quotations: React.FC = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        
         <div className="flex items-center gap-3">
-          <div className="bg-slate-100 p-1 rounded-xl flex">
-            <button onClick={() => setViewMode('grid')} className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}><LayoutGrid size={18} /></button>
-            <button onClick={() => setViewMode('list')} className={`p-2 rounded-lg transition-all ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}><List size={18} /></button>
-          </div>
           <button onClick={() => { setStep(2); setWizardStep(1); setEditingQuoteId(null); setNewQuote({eventId: '', eventProtocol: '', items: [], selectedSuppliers: []}); }} className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 shadow-xl shadow-blue-600/20 whitespace-nowrap">
             <Plus size={20} /> Nova Cotação
           </button>
@@ -256,7 +327,6 @@ const Quotations: React.FC = () => {
                   </div>
               </div>
               
-              {/* Actions Overlay */}
               <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button onClick={(e) => { e.stopPropagation(); handleEditQuote(quote); }} className="p-2 bg-white text-slate-400 hover:text-blue-600 rounded-xl shadow-sm hover:shadow-md transition-all"><Edit3 size={16}/></button>
                   <button onClick={(e) => { e.stopPropagation(); setQuoteToDelete(quote); }} className="p-2 bg-white text-slate-400 hover:text-red-600 rounded-xl shadow-sm hover:shadow-md transition-all"><Trash2 size={16}/></button>
@@ -264,34 +334,7 @@ const Quotations: React.FC = () => {
             </div>
           ))}
         </div>
-      ) : (
-        <div className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm animate-in slide-in-from-bottom-2 duration-300">
-          <table className="w-full text-left">
-            <thead className="bg-slate-50 border-b border-slate-100">
-              <tr>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Código</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Protocolo Ref.</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {filteredQuotes.map(quote => (
-                <tr key={quote.id} className="hover:bg-slate-50/50 transition-colors group cursor-pointer" onClick={() => openMatrix(quote)}>
-                  <td className="px-8 py-5"><p className="font-black text-slate-800 text-sm tracking-tight">{quote.code}</p></td>
-                  <td className="px-8 py-5"><span className="text-blue-600 font-black text-xs bg-blue-50 px-3 py-1 rounded-lg border border-blue-100">{quote.eventRef}</span></td>
-                  <td className="px-8 py-5 text-center"><span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${quote.status === 'Finalizada' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>{quote.status}</span></td>
-                  <td className="px-8 py-5 text-right flex justify-end gap-2">
-                     <button onClick={(e) => { e.stopPropagation(); openMatrix(quote); }} className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all" title="Ver Matriz"><Eye size={18}/></button>
-                     <button onClick={(e) => { e.stopPropagation(); handleEditQuote(quote); }} className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all" title="Editar"><Edit3 size={18}/></button>
-                     <button onClick={(e) => { e.stopPropagation(); setQuoteToDelete(quote); }} className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all" title="Excluir"><Trash2 size={18}/></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      ) : null}
     </div>
   );
 
@@ -305,7 +348,6 @@ const Quotations: React.FC = () => {
         </div>
       </div>
 
-      {/* STEP 1: Selecionar Evento e Itens */}
       {wizardStep === 1 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="bg-white p-10 rounded-[48px] shadow-sm border border-slate-200 h-full">
@@ -322,20 +364,77 @@ const Quotations: React.FC = () => {
                </div>
             </div>
 
-            <div className="bg-white p-10 rounded-[48px] shadow-sm border border-slate-200 h-full flex flex-col">
+            <div className="bg-white p-10 rounded-[48px] shadow-sm border border-slate-200 h-full flex flex-col relative">
                <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2"><List size={20} className="text-blue-600"/> 2. Defina os Itens</h3>
                <div className="flex-1 space-y-4">
-                  <div className="flex gap-2">
-                      <input className="flex-1 p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-medium" placeholder="Nome da peça ou serviço..." value={manualItem} onChange={e => setManualItem(e.target.value)} onKeyDown={e => e.key === 'Enter' && addItem()} />
-                      <input type="number" className="w-20 p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-medium text-center" value={manualQty} onChange={e => setManualQty(Number(e.target.value))} min={1} />
-                      <button onClick={addItem} className="bg-slate-900 text-white p-4 rounded-2xl"><Plus size={20}/></button>
+                  
+                  {/* Busca Inteligente */}
+                  <div className="relative z-20">
+                      <div className="flex gap-2">
+                          <div className="flex-1 relative">
+                              <input 
+                                ref={searchInputRef}
+                                className="w-full p-4 pl-12 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-medium focus:ring-2 focus:ring-blue-500/20 transition-all" 
+                                placeholder="Busque no catálogo ou digite..." 
+                                value={itemSearch} 
+                                onChange={e => setItemSearch(e.target.value)} 
+                                onKeyDown={e => e.key === 'Enter' && !showCatalogDropdown && addManualItem()} 
+                              />
+                              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                                  {isSearchingCatalog ? <Loader2 className="animate-spin" size={20}/> : <Search size={20}/>}
+                              </div>
+                          </div>
+                          <input type="number" className="w-20 p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-medium text-center" value={manualQty} onChange={e => setManualQty(Number(e.target.value))} min={1} />
+                          <button onClick={addManualItem} className="bg-slate-900 text-white p-4 rounded-2xl shadow-lg hover:scale-105 transition-all"><Plus size={20}/></button>
+                      </div>
+
+                      {/* Dropdown de Catálogo */}
+                      {showCatalogDropdown && (
+                          <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-100 max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-2 z-50">
+                              {searchResults.length > 0 ? (
+                                  <>
+                                    <div className="p-2 bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Catálogo Oficial</div>
+                                    {searchResults.map(item => (
+                                        <button key={item.id} onClick={() => addCatalogItem(item)} className="w-full text-left p-3 hover:bg-blue-50 flex justify-between items-center group transition-colors">
+                                            <div>
+                                                <p className="text-sm font-bold text-slate-700">{item.name}</p>
+                                                <p className="text-[10px] text-slate-400 font-medium">{item.code} • {item.unit} • {item.category}</p>
+                                            </div>
+                                            <Plus size={16} className="text-blue-600 opacity-0 group-hover:opacity-100"/>
+                                        </button>
+                                    ))}
+                                  </>
+                              ) : (
+                                  <div className="p-4 text-center">
+                                      <p className="text-xs text-slate-400 mb-2">Item não encontrado no catálogo.</p>
+                                      <button onClick={createAndAddCatalogItem} className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center justify-center gap-1 w-full p-2 rounded-xl hover:bg-blue-50">
+                                          <Save size={14}/> Cadastrar "{itemSearch}" e Adicionar
+                                      </button>
+                                  </div>
+                              )}
+                          </div>
+                      )}
                   </div>
-                  <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
-                      {newQuote.items.length === 0 && <p className="text-center text-slate-400 py-10 text-xs uppercase tracking-widest font-bold">Nenhum item adicionado</p>}
+
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 mt-4 custom-scrollbar">
+                      {newQuote.items.length === 0 && (
+                          <div className="py-10 text-center border-2 border-dashed border-slate-100 rounded-3xl">
+                              <Box className="mx-auto text-slate-200 mb-2" size={32}/>
+                              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Lista vazia</p>
+                          </div>
+                      )}
                       {newQuote.items.map((item, idx) => (
-                          <div key={idx} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
-                              <span className="font-bold text-slate-700 text-sm">{item.name} <span className="text-slate-400 text-xs ml-1">x{item.quantity}</span></span>
-                              <button onClick={() => setNewQuote(prev => ({...prev, items: prev.items.filter((_, i) => i !== idx)}))} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button>
+                          <div key={idx} className="flex justify-between items-center p-3 bg-white rounded-xl border border-slate-100 shadow-sm group hover:border-blue-100 transition-all">
+                              <div className="flex items-center gap-3">
+                                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${item.catalog_item_id ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-400'}`}>
+                                      {item.catalog_item_id ? <Zap size={14} fill="currentColor"/> : <Box size={14}/>}
+                                  </div>
+                                  <div>
+                                      <p className="font-bold text-slate-700 text-sm">{item.name}</p>
+                                      <p className="text-[10px] text-slate-400 font-bold uppercase">{item.quantity} {item.unit} {item.category ? `• ${item.category}` : ''}</p>
+                                  </div>
+                              </div>
+                              <button onClick={() => setNewQuote(prev => ({...prev, items: prev.items.filter((_, i) => i !== idx)}))} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"><Trash2 size={16}/></button>
                           </div>
                       ))}
                   </div>
@@ -349,11 +448,9 @@ const Quotations: React.FC = () => {
         </div>
       )}
 
-      {/* STEP 2: Selecionar Fornecedores */}
       {wizardStep === 2 && (
         <div className="bg-white p-10 rounded-[48px] shadow-sm border border-slate-200">
           <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2"><Users size={20} className="text-blue-600"/> 3. Convide Fornecedores</h3>
-          
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8 max-h-[400px] overflow-y-auto p-2">
              {realSuppliers.map(sup => (
                  <div key={sup.id} onClick={() => toggleSupplier(sup.id)} className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex items-center justify-between group ${newQuote.selectedSuppliers.includes(sup.id) ? 'border-blue-600 bg-blue-50' : 'border-slate-100 hover:border-slate-300'}`}>
@@ -367,7 +464,6 @@ const Quotations: React.FC = () => {
                  </div>
              ))}
           </div>
-
           <div className="flex justify-between pt-6 border-t border-slate-50">
             <button onClick={() => setWizardStep(1)} className="px-8 py-4 text-slate-400 font-black uppercase text-[10px] hover:text-slate-600">Voltar</button>
             <button onClick={handleCreateOrUpdateQuote} disabled={newQuote.selectedSuppliers.length === 0} className="px-16 py-6 bg-blue-600 text-white rounded-[28px] font-black text-sm uppercase tracking-[0.3em] shadow-2xl shadow-blue-600/40 flex items-center gap-4 hover:scale-105 transition-all disabled:opacity-50">
@@ -392,11 +488,9 @@ const Quotations: React.FC = () => {
                   <p className="text-sm text-slate-500">Compare preços e aprove as melhores ofertas.</p>
               </div>
            </div>
-           {/* Componente Matriz conectado aos dados reais */}
            <MatrixTable quotationId={activeQuoteId || undefined} eventId={activeEventId || undefined} />
         </div>
       )}
-
       <ActionModal 
         isOpen={!!quoteToDelete}
         onClose={() => setQuoteToDelete(null)}

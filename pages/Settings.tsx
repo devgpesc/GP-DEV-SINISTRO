@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Save, CheckCircle, Database, Bell, Shield, Globe, Mail, User, Building, Users, MoreVertical, Edit2, Plus, Loader2, X, AlertTriangle, Copy, Check, Send, Info, Key, Server, Cpu, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Settings as SettingsIcon, Save, CheckCircle, Database, Bell, Shield, Globe, Mail, User, Building, Users, MoreVertical, Edit2, Plus, Loader2, X, AlertTriangle, Copy, Check, Send, Info, Key, Server, Cpu, ToggleLeft, ToggleRight, Zap, Brain, MessageSquare } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { useToast } from '../context/ToastContext';
 
@@ -307,7 +307,7 @@ const Settings: React.FC = () => {
                   </div>
               )}
 
-              {/* OUTRAS ABAS MANTIDAS (Notifications, Security, Integrations) */}
+              {/* ABA DE INTEGRAÇÕES (IA) */}
               {activeTab === 'integrations' && (
                   <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
                       <div className="flex items-center gap-3 pb-6 border-b border-slate-50">
@@ -320,16 +320,37 @@ const Settings: React.FC = () => {
 
                       <div className="space-y-6">
                           <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
-                              <h4 className="flex items-center gap-2 text-sm font-black text-slate-700 uppercase tracking-widest mb-4">
+                              <h4 className="flex items-center gap-2 text-sm font-black text-slate-700 uppercase tracking-widest mb-6">
                                   <Cpu size={16} className="text-blue-500"/> Modelos de IA (LLMs)
                               </h4>
-                              <div className="space-y-4">
+                              
+                              <div className="space-y-5">
+                                  {/* Gemini */}
                                   <div>
-                                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Gemini API Key (Google)</label>
-                                      <div className="flex gap-2">
-                                          <input type="password" placeholder="AIzaSy..." className="flex-1 p-3 rounded-xl border border-slate-200 text-sm font-mono outline-none"
-                                              value={companyInfo.gemini_key} onChange={e => setCompanyInfo({...companyInfo, gemini_key: e.target.value})} />
-                                      </div>
+                                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 flex items-center gap-1"><Cpu size={12}/> Gemini API Key (Google) <span className="text-blue-500">* Padrão</span></label>
+                                      <input type="password" placeholder="AIzaSy..." className="w-full p-3 rounded-xl border border-slate-200 text-sm font-mono outline-none focus:ring-2 focus:ring-blue-500/20 transition-all bg-white"
+                                          value={companyInfo.gemini_key} onChange={e => setCompanyInfo({...companyInfo, gemini_key: e.target.value})} />
+                                  </div>
+
+                                  {/* OpenAI */}
+                                  <div>
+                                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 flex items-center gap-1"><Zap size={12}/> OpenAI API Key (GPT-4)</label>
+                                      <input type="password" placeholder="sk-..." className="w-full p-3 rounded-xl border border-slate-200 text-sm font-mono outline-none focus:ring-2 focus:ring-green-500/20 transition-all bg-white"
+                                          value={companyInfo.openai_key} onChange={e => setCompanyInfo({...companyInfo, openai_key: e.target.value})} />
+                                  </div>
+
+                                  {/* Anthropic / Claude */}
+                                  <div>
+                                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 flex items-center gap-1"><Brain size={12}/> Anthropic API Key (Claude 3.5)</label>
+                                      <input type="password" placeholder="sk-ant-api..." className="w-full p-3 rounded-xl border border-slate-200 text-sm font-mono outline-none focus:ring-2 focus:ring-amber-500/20 transition-all bg-white"
+                                          value={companyInfo.anthropic_key} onChange={e => setCompanyInfo({...companyInfo, anthropic_key: e.target.value})} />
+                                  </div>
+
+                                  {/* Groq */}
+                                  <div>
+                                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 flex items-center gap-1"><Server size={12}/> Groq API Key (Llama 3 / Mixtral)</label>
+                                      <input type="password" placeholder="gsk_..." className="w-full p-3 rounded-xl border border-slate-200 text-sm font-mono outline-none focus:ring-2 focus:ring-red-500/20 transition-all bg-white"
+                                          value={companyInfo.groq_key} onChange={e => setCompanyInfo({...companyInfo, groq_key: e.target.value})} />
                                   </div>
                               </div>
                           </div>
