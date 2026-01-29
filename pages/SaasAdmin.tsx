@@ -4,7 +4,7 @@ import {
   Globe, Building, Users, Database, 
   TrendingUp, Activity, Plus, MoreVertical, 
   Search, ShieldAlert, LogIn, Loader2, CheckCircle, Mail, Lock, User, Copy, Check,
-  Edit, Trash2, Layers, DollarSign, BarChart3, PieChart, CreditCard, Layout, Calendar
+  Edit, Trash2, Layers, DollarSign, BarChart3, PieChart, CreditCard, Layout, Calendar, AlertCircle
 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { SaasTenant, SaasPlan } from '../types';
@@ -29,6 +29,7 @@ const SaasAdmin: React.FC = () => {
   
   // Processing States
   const [isProcessing, setIsProcessing] = useState(false);
+  const [loadingAdminData, setLoadingAdminData] = useState(false);
   const [createdCredentials, setCreatedCredentials] = useState<any>(null);
   const [copied, setCopied] = useState(false);
 
@@ -93,16 +94,24 @@ const SaasAdmin: React.FC = () => {
 
   const openEditTenantModal = async (tenant: SaasTenant) => {
       setEditingTenant(tenant);
+      setIsTenantModalOpen(true); // Abre modal primeiro para UX
       
       // Carregar dados do dono (Admin)
       let adminName = '';
       let adminEmail = '';
       
       if (tenant.owner_id) {
-          const { data: profile } = await supabase.from('profiles').select('full_name, email').eq('id', tenant.owner_id).single();
-          if (profile) {
-              adminName = profile.full_name || '';
-              adminEmail = profile.email || '';
+          setLoadingAdminData(true);
+          try {
+              const { data: profile } = await supabase.from('profiles').select('full_name, email').eq('id', tenant.owner_id).single();
+              if (profile) {
+                  adminName = profile.full_name || '';
+                  adminEmail = profile.email || '';
+              }
+          } catch (e) {
+              console.error("Erro ao buscar admin", e);
+          } finally {
+              setLoadingAdminData(false);
           }
       }
 
@@ -113,9 +122,8 @@ const SaasAdmin: React.FC = () => {
           status: tenant.status,
           adminName: adminName, 
           adminEmail: adminEmail, 
-          adminPassword: '' // Senha não é recuperável, apenas redefinível via fluxo de reset
+          adminPassword: '' // Senha não é recuperável
       });
-      setIsTenantModalOpen(true);
   };
 
   const handleSaveTenant = async (e: React.FormEvent) => {
@@ -484,25 +492,33 @@ const SaasAdmin: React.FC = () => {
                 </div>
 
                 <div className="space-y-4 pt-4 border-t border-slate-100">
-                    <h4 className="text-[10px] font-black uppercase text-blue-600 tracking-widest mb-2 flex items-center gap-2"><User size={14}/> {editingTenant ? 'Administrador da Conta' : 'Administrador Inicial'}</h4>
-                    <div>
-                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Nome Completo</label>
-                        <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" 
-                            value={tenantForm.adminName} onChange={e => setTenantForm({...tenantForm, adminName: e.target.value})} placeholder="Ex: João Admin" />
-                    </div>
-                    <div>
-                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">E-mail de Acesso</label>
-                        <input required type="email" disabled={!!editingTenant} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none disabled:opacity-60 disabled:bg-slate-100" 
-                            value={tenantForm.adminEmail} onChange={e => setTenantForm({...tenantForm, adminEmail: e.target.value})} placeholder="admin@empresa.com" />
-                        {editingTenant && <p className="text-[9px] text-slate-400 mt-1 pl-1">O e-mail não pode ser alterado diretamente aqui.</p>}
-                    </div>
-                    {!editingTenant && (
+                    <h4 className="text-[10px] font-black uppercase text-blue-600 tracking-widest mb-2 flex items-center gap-2">
+                        <User size={14}/> 
+                        {editingTenant ? 'Administrador da Conta' : 'Administrador Inicial'}
+                        {loadingAdminData && <Loader2 size={12} className="animate-spin ml-2"/>}
+                    </h4>
+                    
+                    {/* Admin Fields */}
+                    <div className={`transition-opacity ${loadingAdminData ? 'opacity-50' : 'opacity-100'}`}>
                         <div>
-                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Senha Provisória</label>
-                            <input required type="text" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" 
-                                value={tenantForm.adminPassword} onChange={e => setTenantForm({...tenantForm, adminPassword: e.target.value})} placeholder="Defina uma senha" />
+                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Nome Completo</label>
+                            <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" 
+                                value={tenantForm.adminName} onChange={e => setTenantForm({...tenantForm, adminName: e.target.value})} placeholder="Ex: João Admin" />
                         </div>
-                    )}
+                        <div className="mt-4">
+                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">E-mail de Acesso</label>
+                            <input required type="email" disabled={!!editingTenant} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none disabled:opacity-60 disabled:bg-slate-100" 
+                                value={tenantForm.adminEmail} onChange={e => setTenantForm({...tenantForm, adminEmail: e.target.value})} placeholder="admin@empresa.com" />
+                            {editingTenant && <p className="text-[9px] text-slate-400 mt-1 pl-1 flex items-center gap-1"><AlertCircle size={10}/> Para alterar o e-mail, utilize a gestão de usuários.</p>}
+                        </div>
+                        {!editingTenant && (
+                            <div className="mt-4">
+                                <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Senha Provisória</label>
+                                <input required type="text" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" 
+                                    value={tenantForm.adminPassword} onChange={e => setTenantForm({...tenantForm, adminPassword: e.target.value})} placeholder="Defina uma senha" />
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 <div className="flex justify-end gap-3 pt-4">
@@ -516,7 +532,7 @@ const SaasAdmin: React.FC = () => {
         </div>
       )}
 
-      {/* Modal Plano (Criar/Editar) */}
+      {/* Modal Plano, Success Modal... (Mantidos sem alteração) */}
       {isPlanModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
               <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => !isProcessing && setIsPlanModalOpen(false)}></div>
@@ -557,7 +573,6 @@ const SaasAdmin: React.FC = () => {
           </div>
       )}
 
-      {/* Modal Sucesso */}
       {showSuccessModal && createdCredentials && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
               <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-md"></div>

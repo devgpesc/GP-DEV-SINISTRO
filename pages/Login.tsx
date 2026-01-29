@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 const { useNavigate } = ReactRouterDOM;
@@ -53,7 +54,11 @@ const Login: React.FC = () => {
       // Sucesso é tratado pelo AuthContext
     } catch (err: any) {
       console.error(err);
-      setError('Falha na autenticação. Verifique suas credenciais.');
+      if (err.message === 'Invalid login credentials') {
+          setError('Credenciais inválidas. Se você criou a conta com o Google, utilize o botão "Entrar com Google".');
+      } else {
+          setError('Falha na autenticação. Verifique suas credenciais.');
+      }
       setLocalLoading(false);
     }
   };

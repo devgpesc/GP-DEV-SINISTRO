@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 const { Link, useLocation } = ReactRouterDOM;
@@ -42,7 +43,7 @@ const NavItem = ({ to, icon: Icon, label, active, badge }: { to: string, icon: a
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
-  const { user, profile, isSuperAdmin, signOut, updateProfile } = useAuth();
+  const { user, profile, isSuperAdmin, signOut, updateProfile, checkPermission } = useAuth();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   
@@ -58,6 +59,16 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   // Toast State
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  // Permissions Logic
+  const role = profile?.role || 'Usuário';
+  const isManagerOrAdmin = role === 'Gerente' || role === 'Admin' || role === 'super_admin';
+  
+  // Permissões Específicas
+  const canViewFinancial = isManagerOrAdmin || checkPermission('financial_view');
+  const canApprove = isManagerOrAdmin || checkPermission('approve_purchases');
+  const canManageTeam = isManagerOrAdmin || checkPermission('manage_users');
+  const canViewReports = isManagerOrAdmin || checkPermission('view_reports');
 
   useEffect(() => {
     // Carrega logo da empresa
@@ -185,17 +196,34 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <p className="px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Operacional</p>
             <NavItem to="/" icon={LayoutDashboard} label="Dashboard" active={location.pathname === '/'} />
             <NavItem to="/eventos" icon={FileText} label="Eventos" active={location.pathname === '/eventos'} />
-            <NavItem to="/cotacoes" icon={Search} label="Cotações" active={location.pathname === '/cotacoes'} />
-            <NavItem to="/compras" icon={ShoppingCart} label="Compras" active={location.pathname === '/compras'} />
-            <NavItem to="/entregas" icon={Truck} label="Entregas" active={location.pathname === '/entregas'} />
             
-            <p className="px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 mt-6">Gestão</p>
-            <NavItem to="/associados" icon={UserCheck} label="Associados" active={location.pathname === '/associados'} />
-            <NavItem to="/fornecedores" icon={Users} label="Fornecedores" active={location.pathname === '/fornecedores'} />
-            <NavItem to="/veiculos" icon={Car} label="Veículos" active={location.pathname === '/veiculos'} />
-            <NavItem to="/catalogo" icon={Package} label="Catálogo" active={location.pathname === '/catalogo'} />
-            <NavItem to="/relatorios" icon={BarChart3} label="Relatórios" active={location.pathname === '/relatorios'} />
-            <NavItem to="/configuracoes" icon={Settings} label="Configurações" active={location.pathname === '/configuracoes'} />
+            {/* Itens Financeiros/Compras - Condicional */}
+            {(canViewFinancial || canApprove) && (
+                <>
+                    <NavItem to="/cotacoes" icon={Search} label="Cotações" active={location.pathname === '/cotacoes'} />
+                    <NavItem to="/compras" icon={ShoppingCart} label="Compras" active={location.pathname === '/compras'} />
+                    <NavItem to="/entregas" icon={Truck} label="Entregas" active={location.pathname === '/entregas'} />
+                </>
+            )}
+            
+            {/* Itens de Gestão - Apenas Gerente, Admin ou Permissão Específica */}
+            {isManagerOrAdmin && (
+                <>
+                    <p className="px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 mt-6">Gestão</p>
+                    <NavItem to="/associados" icon={UserCheck} label="Associados" active={location.pathname === '/associados'} />
+                    <NavItem to="/fornecedores" icon={Users} label="Fornecedores" active={location.pathname === '/fornecedores'} />
+                    <NavItem to="/veiculos" icon={Car} label="Veículos" active={location.pathname === '/veiculos'} />
+                    <NavItem to="/catalogo" icon={Package} label="Catálogo" active={location.pathname === '/catalogo'} />
+                </>
+            )}
+
+            {(canViewReports || isManagerOrAdmin) && (
+                <NavItem to="/relatorios" icon={BarChart3} label="Relatórios" active={location.pathname === '/relatorios'} />
+            )}
+
+            {(isSuperAdmin || profile?.role === 'Admin') && (
+                <NavItem to="/configuracoes" icon={Settings} label="Configurações" active={location.pathname === '/configuracoes'} />
+            )}
           </nav>
         </div>
         
@@ -225,6 +253,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       </aside>
 
       <main className="flex-1 ml-64 p-8 relative print:ml-0 print:p-0 print:w-full">
+        {/* Header e restante do layout permanecem iguais... */}
         <header className="flex justify-between items-center mb-8 print:hidden">
           <div>
             <h2 className="text-2xl font-bold text-slate-800">
@@ -315,7 +344,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowProfileModal(false)}></div>
            <div className="relative bg-white w-full max-w-sm rounded-[36px] shadow-2xl overflow-hidden animate-in zoom-in duration-300 border border-white/20">
               
-              {/* Header com Gradiente - Z-Index 0 para ficar atrás do conteúdo se houver conflito */}
               <div className="h-28 bg-gradient-to-br from-indigo-600 to-blue-700 relative z-0 flex justify-end p-4">
                  <button 
                     onClick={() => setShowProfileModal(false)} 
@@ -325,9 +353,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                  </button>
               </div>
 
-              {/* Conteúdo do Modal - Z-Index 20 para garantir que fique acima do header */}
               <div className="px-8 pb-8 -mt-14 relative z-20">
-                 {/* Avatar Area */}
                  <div className="flex justify-center mb-6">
                     <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
                        <div className="w-28 h-28 rounded-[36px] bg-white p-1.5 shadow-xl rotate-3 group-hover:rotate-0 transition-all duration-300">
