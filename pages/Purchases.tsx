@@ -34,8 +34,26 @@ const Purchases: React.FC = () => {
 
   const loadOrders = async () => {
     setLoading(true);
-    const { data } = await supabase.from('purchase_orders').select('*').order('createdAt', { ascending: false });
-    setOrders(data || []);
+    // QUERY CORRIGIDA: Ordenação por created_at (snake_case)
+    const { data, error } = await supabase
+        .from('purchase_orders')
+        .select('*')
+        .order('created_at', { ascending: false });
+    
+    if (error) {
+        console.error("Erro ao carregar compras:", error);
+        setToast({ show: true, title: 'Erro de Carregamento', message: 'Não foi possível buscar as OCs.', type: 'info' });
+    } else {
+        // Mapeamento para garantir compatibilidade com a interface PurchaseOrder (que usa camelCase)
+        const mappedOrders = data?.map((o: any) => ({
+            ...o,
+            eventId: o.event_id || o.eventId,
+            supplierId: o.supplier_id || o.supplierId,
+            createdAt: o.created_at || o.createdAt,
+            // items já vem como JSONB array
+        })) || [];
+        setOrders(mappedOrders);
+    }
     setLoading(false);
   };
 
@@ -289,7 +307,7 @@ const Purchases: React.FC = () => {
                   <h3 className={`font-black text-xl tracking-tight ${order.status === 'Cancelada' ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{order.code}</h3>
                   <span className={`px-4 py-1 rounded-full text-[9px] font-black uppercase border ${getStatusStyle(order.status)}`}>{order.status}</span>
                 </div>
-                <p className="text-[11px] text-slate-500 font-bold uppercase">Evento: <span className="text-blue-600">EVT-REF</span> • {new Date(order.createdAt).toLocaleDateString()}</p>
+                <p className="text-[11px] text-slate-500 font-bold uppercase">Emissão: {new Date(order.createdAt).toLocaleDateString()}</p>
               </div>
             </div>
 

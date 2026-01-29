@@ -103,6 +103,10 @@ export const quotationService = {
   async processPurchase(quotationId: string, selections: Record<string, string>, eventId?: string) {
       // selections: { [itemId]: supplierId }
       
+      // 0. Obter Usuário Atual (Necessário para RLS e Auditoria)
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Usuário não autenticado.");
+
       // 1. Validar e Buscar Dados
       const { items, prices } = await this.getMatrixData(quotationId);
       const ordersBySupplier: Record<string, any[]> = {};
@@ -122,11 +126,6 @@ export const quotationService = {
           
           if (item && priceObj) {
               // Preparar atualização de vencedor
-              // Nota: Em produção, faríamos isso em batch, mas o Supabase update aceita filtros. 
-              // Faremos um loop de promises update por simplicidade ou um RPC. 
-              // Aqui, vamos apenas atualizar o objeto local para gerar a OC, 
-              // a persistência do 'is_winner' pode ser feita individualmente.
-              
               winnersToUpdate.push(
                   supabase.from('quotation_supplier_prices')
                       .update({ is_winner: true })
@@ -149,28 +148,38 @@ export const quotationService = {
 
       await Promise.all(winnersToUpdate);
 
-      // 3. Criar OCs no banco
+      // 3. Criar OCs no banco (PAYLOAD CORRIGIDO SNAKE_CASE)
       const promises = Object.keys(ordersBySupplier).map(async (supplierId) => {
           const cartItems = ordersBySupplier[supplierId];
           const total = cartItems.reduce((acc, i) => acc + (i.price * i.quantity), 0);
           
+          // Gera código aleatório OC-ANO-XXXX
+          const code = `OC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+          
           const payload = {
-              code: `OC-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`,
-              eventId: eventId,
-              supplierId: supplierId,
-              items: cartItems, // JSONB
+              code: code,
+              event_id: eventId || null,      // snake_case
+              supplier_id: supplierId,        // snake_case
+              quotation_id: quotationId,      // snake_case (novo vínculo)
+              items: cartItems,               // JSONB
               total: total,
-              status: 'Gerada', // Status inicial
-              createdAt: new Date().toISOString()
+              status: 'Gerada',
+              created_at: new Date().toISOString(), // snake_case
+              created_by: user.id             // snake_case (CRÍTICO)
           };
 
-          return supabase.from('purchase_orders').insert([payload]);
+          const { error } = await supabase.from('purchase_orders').insert([payload]);
+          if (error) {
+              console.error("Erro ao criar OC para fornecedor " + supplierId, error);
+              throw new Error(`Falha ao gerar OC: ${error.message}`);
+          }
       });
 
       await Promise.all(promises);
 
       // 4. Atualizar status da cotação
-      await supabase.from('quotations').update({ status: 'Finalizada' }).eq('id', quotationId);
+      const { error: quoteError } = await supabase.from('quotations').update({ status: 'Finalizada' }).eq('id', quotationId);
+      if (quoteError) console.warn("Erro ao finalizar cotação:", quoteError);
       
       // 5. Atualizar status do Evento (se houver)
       if (eventId) {
