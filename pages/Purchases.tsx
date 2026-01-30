@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   ShoppingCart, Search, Filter, CheckCircle2, XCircle, Printer, MoreVertical, 
-  DollarSign, UserCheck, X, Eye, EyeOff, Loader2, Info, Trash2, ShieldCheck, AlertTriangle, Truck
+  DollarSign, UserCheck, X, Eye, EyeOff, Loader2, Info, Trash2, ShieldCheck, AlertTriangle, Truck, Calendar
 } from 'lucide-react';
 import { PurchaseOrder } from '../types';
 import { supabase } from '../services/supabaseClient';
@@ -11,7 +11,6 @@ const Purchases: React.FC = () => {
   const [currentUserRole] = useState<'Admin' | 'Gerente' | 'User'>('Admin');
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('Todos');
   const [orders, setOrders] = useState<any[]>([]); 
   const [loading, setLoading] = useState(true);
@@ -35,8 +34,6 @@ const Purchases: React.FC = () => {
   const loadOrders = async () => {
     setLoading(true);
     
-    // QUERY RELACIONAL COMPLETA
-    // Traz a OC, o Fornecedor e os Itens Relacionados
     const { data, error } = await supabase
         .from('purchase_orders')
         .select(`
@@ -60,16 +57,12 @@ const Purchases: React.FC = () => {
         console.error("Erro ao carregar compras:", error);
         setToast({ show: true, title: 'Erro', message: 'Falha ao buscar OCs.', type: 'info' });
     } else {
-        // Mapeamento para estrutura da UI
-        // Converte purchase_order_items -> items
         const mappedOrders = data?.map((o: any) => ({
             id: o.id,
             code: o.code,
             eventId: o.event_id,
             supplierId: o.supplier_id,
             supplierName: o.suppliers?.name || 'Fornecedor Desconhecido',
-            
-            // Mapeia os itens relacionais para o formato que a UI espera
             items: o.purchase_order_items?.map((poi: any) => ({
                 name: poi.name,
                 quantity: poi.quantity,
@@ -77,7 +70,6 @@ const Purchases: React.FC = () => {
                 price: poi.unit_price,
                 total: poi.total_price
             })) || [],
-            
             total: o.total || 0,
             status: o.status,
             createdAt: o.created_at
@@ -95,7 +87,6 @@ const Purchases: React.FC = () => {
   }, [toast]);
 
   const canApprove = currentUserRole === 'Admin' || currentUserRole === 'Gerente';
-  const canSeeValues = currentUserRole === 'Admin' || currentUserRole === 'Gerente';
 
   const updateOrderStatus = async (id: string, newStatus: PurchaseOrder['status']) => {
     const { error } = await supabase.from('purchase_orders').update({ status: newStatus }).eq('id', id);
@@ -264,46 +255,57 @@ const Purchases: React.FC = () => {
             </div>
         ) : (
             filteredOrders.map(order => (
-                <div key={order.id} className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex items-center justify-between hover:border-blue-200 transition-all group">
-                    <div className="flex items-center gap-6">
-                        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-black ${order.status === 'Cancelada' ? 'bg-red-50 text-red-400' : 'bg-blue-50 text-blue-600'}`}>
-                            {order.status === 'Cancelada' ? <XCircle/> : <ShoppingCart/>}
+                <div key={order.id} className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm hover:border-blue-200 transition-all group">
+                    <div className="flex items-center gap-4">
+                        
+                        {/* 1. IDENTIFICAÇÃO DO PEDIDO (ESQUERDA) */}
+                        <div className="w-16 h-16 rounded-2xl flex-shrink-0 flex items-center justify-center text-2xl font-black bg-blue-50 text-blue-600">
+                            {order.status === 'Cancelada' ? <XCircle className="text-red-400"/> : <ShoppingCart/>}
                         </div>
-                        <div>
-                            <div className="flex items-center gap-3">
-                                <h3 className="text-xl font-black text-slate-800">{order.code}</h3>
-                                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase border ${
+                        
+                        <div className="flex-1 min-w-0 pr-4">
+                            <div className="flex items-center gap-3 mb-1">
+                                <h3 className="text-lg font-black text-slate-800 whitespace-nowrap">{order.code}</h3>
+                                <span className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black uppercase border flex-shrink-0 ${
                                     order.status === 'Aprovada' ? 'bg-green-50 text-green-600 border-green-100' : 
-                                    order.status === 'Gerada' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-slate-50 text-slate-500 border-slate-100'
+                                    order.status === 'Cancelada' ? 'bg-red-50 text-red-600 border-red-100' : 
+                                    'bg-slate-50 text-slate-500 border-slate-100'
                                 }`}>{order.status}</span>
                             </div>
-                            <p className="text-sm font-bold text-slate-500 flex items-center gap-1 mt-1"><Truck size={14}/> {order.supplierName}</p>
-                            <p className="text-[10px] font-black text-slate-300 uppercase mt-1">Itens: {order.items.length} • {new Date(order.createdAt).toLocaleDateString()}</p>
+                            <div className="flex items-center gap-4 text-xs text-slate-500 font-bold">
+                                <span className="flex items-center gap-1 text-slate-700 truncate max-w-[200px]"><Truck size={12} className="text-blue-400"/> {order.supplierName}</span>
+                                <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+                                <span className="flex items-center gap-1"><Calendar size={12}/> {new Date(order.createdAt).toLocaleDateString()}</span>
+                                <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+                                <span>{order.items.length} itens</span>
+                            </div>
                         </div>
-                    </div>
 
-                    <div className="text-right mr-8">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Valor Total</p>
-                        <p className="text-2xl font-black text-slate-800">R$ {order.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-                    </div>
+                        {/* 2. VALOR TOTAL (ALINHADO À DIREITA COM LARGURA FIXA) */}
+                        <div className="flex flex-col items-end justify-center px-8 border-l border-r border-slate-50 h-12 min-w-[200px]">
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Valor Total</p>
+                            <p className="text-2xl font-black text-slate-800 leading-none">R$ {order.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                        </div>
 
-                    <div className="flex gap-2">
-                        {order.status === 'Gerada' && canApprove && (
-                            <button onClick={() => handleRequestApprove(order)} className="bg-green-600 text-white px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-600/20 flex items-center gap-2">
-                                <ShieldCheck size={16}/> Aprovar
-                            </button>
-                        )}
-                        <button onClick={() => setViewOrder(order)} className="p-3 bg-slate-50 text-slate-400 hover:text-blue-600 rounded-xl hover:bg-blue-50 transition-all"><Eye size={20}/></button>
-                        <button onClick={() => handlePrint(order)} className="p-3 bg-slate-50 text-slate-400 hover:text-blue-600 rounded-xl hover:bg-blue-50 transition-all"><Printer size={20}/></button>
-                        
-                        <div className="relative">
-                            <button onClick={() => setOpenMenuId(openMenuId === order.id ? null : order.id)} className="p-3 bg-slate-50 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-all"><MoreVertical size={20}/></button>
-                            {openMenuId === order.id && (
-                                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-20">
-                                    {order.status !== 'Cancelada' && <button onClick={() => handleRequestCancel(order)} className="w-full text-left px-4 py-3 text-xs font-bold text-amber-600 hover:bg-amber-50">Cancelar OC</button>}
-                                    <button onClick={() => handleRequestDelete(order)} className="w-full text-left px-4 py-3 text-xs font-bold text-red-600 hover:bg-red-50">Excluir Registro</button>
-                                </div>
+                        {/* 3. AÇÕES (DIREITA) */}
+                        <div className="flex gap-2 pl-2 flex-shrink-0">
+                            {order.status === 'Gerada' && canApprove && (
+                                <button onClick={() => handleRequestApprove(order)} className="bg-green-600 text-white px-4 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-600/20 flex items-center gap-2" title="Aprovar OC">
+                                    <ShieldCheck size={16}/>
+                                </button>
                             )}
+                            <button onClick={() => setViewOrder(order)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-blue-600 rounded-xl hover:border-blue-200 transition-all shadow-sm" title="Ver Detalhes"><Eye size={18}/></button>
+                            <button onClick={() => handlePrint(order)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-blue-600 rounded-xl hover:border-blue-200 transition-all shadow-sm" title="Imprimir"><Printer size={18}/></button>
+                            
+                            <div className="relative">
+                                <button onClick={() => setOpenMenuId(openMenuId === order.id ? null : order.id)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-50 transition-all shadow-sm"><MoreVertical size={18}/></button>
+                                {openMenuId === order.id && (
+                                    <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-20 animate-in fade-in zoom-in duration-200">
+                                        {order.status !== 'Cancelada' && <button onClick={() => handleRequestCancel(order)} className="w-full text-left px-4 py-3 text-xs font-bold text-amber-600 hover:bg-amber-50 border-b border-slate-50">Cancelar OC</button>}
+                                        <button onClick={() => handleRequestDelete(order)} className="w-full text-left px-4 py-3 text-xs font-bold text-red-600 hover:bg-red-50">Excluir Registro</button>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
