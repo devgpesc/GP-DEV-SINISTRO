@@ -6,6 +6,7 @@ import {
   Search, ShieldAlert, LogIn, Loader2, CheckCircle, Mail, Lock, User, Copy, Check,
   Edit, Trash2, Layers, DollarSign, BarChart3, PieChart, CreditCard, Layout, Calendar, AlertCircle
 } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js'; // Import necessário para o Fallback
 import { supabase } from '../services/supabaseClient';
 import { SaasTenant, SaasPlan } from '../types';
 import { useToast } from '../context/ToastContext';
@@ -187,7 +188,7 @@ const SaasAdmin: React.FC = () => {
             if (tenantForm.adminPassword.length < 6) throw new Error("A senha deve ter no mínimo 6 caracteres.");
 
             try {
-                // Tentativa 1: Via Edge Function (Ideal para criar User Auth)
+                // Tentativa 1: Via Edge Function (Ideal)
                 const { data, error } = await supabase.functions.invoke('create-tenant', {
                     body: {
                         companyName: tenantForm.name,
@@ -208,40 +209,100 @@ const SaasAdmin: React.FC = () => {
                     password: tenantForm.adminPassword
                 });
                 
+                setIsTenantModalOpen(false);
+                setShowSuccessModal(true);
+                loadData();
+                
             } catch (functionError: any) {
                 console.error("Function Error:", functionError);
                 
-                // FALLBACK: Cria apenas o Tenant sem o usuário se a Function falhar
-                // Isso permite testes de UI mesmo sem backend de functions
-                if (functionError.message?.includes('Failed to send a request') || functionError.message?.includes('Function not found')) {
-                    const { data: userData } = await supabase.auth.getUser();
-                    if (!userData?.user) throw new Error('Não foi possível usar fallback (sem usuário logado).');
+                // FALLBACK INTELIGENTE (Client-Side)
+                // Se a Edge Function falhar, tentamos criar o usuário e o tenant via frontend.
+                try {
+                    console.log("Tentando criação via Client-Side...");
+                    
+                    const envUrl = (import.meta as any).env.VITE_SUPABASE_URL;
+                    const envKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY;
+                    
+                    // 1. Criar instância limpa do Supabase (para não deslogar o admin atual)
+                    const tempClient = createClient(envUrl, envKey);
+                    
+                    // 2. Criar Usuário (SignUp)
+                    const { data: authData, error: authError } = await tempClient.auth.signUp({
+                        email: tenantForm.adminEmail,
+                        password: tenantForm.adminPassword,
+                        options: {
+                            data: { full_name: tenantForm.adminName }
+                        }
+                    });
 
-                    const { error: dbError } = await supabase.from('saas_tenants').insert({
+                    if (authError) throw authError;
+                    if (!authData.user) throw new Error("Falha ao criar usuário (sem retorno).");
+
+                    const newUserId = authData.user.id;
+
+                    // 3. Promover usuário a Admin (Usando o client autenticado do Admin Atual)
+                    // Requer política RLS "Admins can update all"
+                    const { error: profileError } = await supabase
+                        .from('profiles')
+                        .update({ role: 'Admin', full_name: tenantForm.adminName })
+                        .eq('id', newUserId);
+                        
+                    if (profileError) {
+                        console.warn("Aviso: Falha ao promover usuário (verifique RLS)", profileError);
+                    }
+
+                    // 4. Criar Tenant vinculado ao novo usuário
+                    const { error: tenantError } = await supabase.from('saas_tenants').insert({
                         name: tenantForm.name,
                         document: tenantForm.document,
                         plan_id: tenantForm.plan_id,
-                        owner_id: userData.user.id, // Fallback para o admin atual
+                        owner_id: newUserId,
                         status: 'active'
                     });
 
-                    if (dbError) throw dbError;
+                    if (tenantError) throw tenantError;
 
+                    // Sucesso no Fallback
                     setCreatedCredentials({
                         company: tenantForm.name,
-                        email: "Admin Atual (Fallback)",
-                        password: "N/A (Function Offline)"
+                        email: tenantForm.adminEmail,
+                        password: tenantForm.adminPassword,
+                        note: !authData.session ? "E-mail de confirmação enviado." : ""
                     });
                     
-                    addToast('warning', 'Modo Fallback', 'Edge Function indisponível. Empresa criada vinculada ao seu usuário.');
-                } else {
-                    throw functionError;
+                    setIsTenantModalOpen(false);
+                    setShowSuccessModal(true);
+                    loadData();
+                    addToast('success', 'Empresa Criada', 'Processo realizado via navegador (Fallback).');
+
+                } catch (clientError: any) {
+                    console.error("Client Fallback Failed:", clientError);
+                    
+                    // ULTIMATE FALLBACK: Vincula ao Admin Atual
+                    const { data: userData } = await supabase.auth.getUser();
+                    if (userData?.user) {
+                        await supabase.from('saas_tenants').insert({
+                            name: tenantForm.name,
+                            document: tenantForm.document,
+                            plan_id: tenantForm.plan_id,
+                            owner_id: userData.user.id,
+                            status: 'active'
+                        });
+                        setCreatedCredentials({
+                            company: tenantForm.name,
+                            email: "Admin Atual (Fallback)",
+                            password: "N/A (Function Offline)"
+                        });
+                        setIsTenantModalOpen(false);
+                        setShowSuccessModal(true);
+                        loadData();
+                        addToast('warning', 'Modo Fallback', 'Erro crítico. Empresa criada vinculada à sua conta.');
+                    } else {
+                        throw clientError;
+                    }
                 }
             }
-            
-            setIsTenantModalOpen(false);
-            setShowSuccessModal(true);
-            loadData();
         }
     } catch (err: any) {
         addToast('error', 'Erro', err.message);
@@ -346,8 +407,7 @@ const SaasAdmin: React.FC = () => {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-20">
-      
-      {/* Header com Abas (Mantido igual) */}
+      {/* ... Header e Tabs ... */}
       <div className="flex justify-between items-end border-b border-slate-200 pb-1">
           <div className="flex gap-8">
               <button onClick={() => setActiveTab('overview')} className={`pb-4 text-sm font-black uppercase tracking-widest transition-all border-b-2 ${activeTab === 'overview' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>Visão Geral</button>
@@ -356,7 +416,6 @@ const SaasAdmin: React.FC = () => {
       </div>
 
       {activeTab === 'overview' && (
-          // ... Conteúdo Overview Mantido (Sem alterações visuais drásticas, apenas lógica de fallback já aplicada anteriormente)
           <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
             {/* KPI Cards Expandidos */}
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -474,6 +533,7 @@ const SaasAdmin: React.FC = () => {
 
       {activeTab === 'plans' && (
           <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+              {/* ... Conteúdo de Planos (Mantido) ... */}
               <div className="flex justify-between items-center">
                   <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Layers size={20} className="text-blue-600"/> Planos de Assinatura</h3>
                   <button onClick={() => openPlanModal()} className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-slate-800 shadow-xl">
@@ -520,7 +580,7 @@ const SaasAdmin: React.FC = () => {
           </div>
       )}
 
-      {/* Modal Tenant (Mantido) */}
+      {/* Modal Tenant */}
       {isTenantModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => !isProcessing && setIsTenantModalOpen(false)}></div>
@@ -605,7 +665,7 @@ const SaasAdmin: React.FC = () => {
         </div>
       )}
 
-      {/* Modal Plano (Atualizado com Features) */}
+      {/* Modal Plano (Mantido) */}
       {isPlanModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
               <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => !isProcessing && setIsPlanModalOpen(false)}></div>
@@ -635,7 +695,6 @@ const SaasAdmin: React.FC = () => {
                               value={planForm.max_events} onChange={e => setPlanForm({...planForm, max_events: Number(e.target.value)})} />
                       </div>
 
-                      {/* FEATURE SELECTOR */}
                       <div className="pt-4 border-t border-slate-100">
                           <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Funcionalidades Inclusas</label>
                           <div className="space-y-2">
@@ -665,6 +724,7 @@ const SaasAdmin: React.FC = () => {
           </div>
       )}
 
+      {/* Modal Sucesso */}
       {showSuccessModal && createdCredentials && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
               <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-md"></div>
@@ -674,7 +734,7 @@ const SaasAdmin: React.FC = () => {
                   </div>
                   <h3 className="text-2xl font-black text-slate-800 mb-2">Empresa Criada!</h3>
                   <p className="text-sm text-slate-500 mb-8 font-medium">
-                      O ambiente para <strong>{createdCredentials.company}</strong> foi configurado e o usuário admin criado.
+                      O ambiente para <strong>{createdCredentials.company}</strong> foi configurado com sucesso.
                   </p>
 
                   <div className="bg-slate-50 rounded-2xl border border-slate-200 p-6 text-left mb-6 relative group">
@@ -690,6 +750,11 @@ const SaasAdmin: React.FC = () => {
                               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Senha</p>
                               <p className="font-bold text-slate-800 font-mono">{createdCredentials.password}</p>
                           </div>
+                          {createdCredentials.note && (
+                              <div className="pt-2">
+                                  <p className="text-[10px] font-bold text-amber-500 flex items-center gap-1"><AlertCircle size={10}/> {createdCredentials.note}</p>
+                              </div>
+                          )}
                       </div>
                   </div>
 
