@@ -81,9 +81,11 @@ const Dashboard: React.FC = () => {
   };
 
   useEffect(() => {
-    loadDashboardData();
+    if (profile) {
+        loadDashboardData();
+    }
     return () => { if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current); };
-  }, [profile]); // Recarrega se o perfil mudar
+  }, [profile?.id, profile?.role]); // Depend on primitives to prevent loops
 
   // --- KPI CALCULATIONS (Executive Only) ---
   const kpis = useMemo(() => {

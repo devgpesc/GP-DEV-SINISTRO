@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 // Fix: Types User and Session not exported in v1, define as any locally
 type Session = any;
 type User = any;
@@ -26,6 +26,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   
   // Começa TRUE para bloquear a UI até termos certeza da sessão (evita flash de login)
   const [loading, setLoading] = useState(true); 
+
+  // Ref para acessar o perfil atual dentro do listener sem recriar o efeito
+  const profileRef = useRef(profile);
+  useEffect(() => {
+    profileRef.current = profile;
+  }, [profile]);
 
   // Busca perfil real no banco com retry
   const fetchProfile = useCallback(async (userId: string, userEmail?: string, userMeta?: any) => {
@@ -81,7 +87,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         initialSession.user.email, 
                         initialSession.user.user_metadata
                     );
-                    setProfile(p);
+                    if (mounted) setProfile(p);
                 }
             } else {
                 // Sem sessão, limpa estados
@@ -117,14 +123,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUser(newSession?.user ?? null);
             
             if (newSession?.user) {
-                // Atualiza perfil se necessário
-                if (!profile || profile.id !== newSession.user.id) {
+                // Usa ref para checar estado atual sem re-triggerar o effect
+                const currentProfile = profileRef.current;
+                
+                // Atualiza perfil se necessário (se não existe ou se o ID mudou)
+                if (!currentProfile || currentProfile.id !== newSession.user.id) {
                     const p = await fetchProfile(
                         newSession.user.id, 
                         newSession.user.email, 
                         newSession.user.user_metadata
                     );
-                    setProfile(p);
+                    if (mounted) setProfile(p);
                 }
             }
             setLoading(false);
@@ -142,7 +151,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         mounted = false;
         subscription.unsubscribe();
     };
-  }, [fetchProfile, profile]); 
+  }, [fetchProfile]); // Removed 'profile' from dependencies to prevent loop
 
   const signInWithGoogle = async () => {
     try {
