@@ -283,7 +283,11 @@ const Associates: React.FC = () => {
       {viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in duration-300">
           {filteredAssociates.map(associate => (
-            <div key={associate.id} className="bg-white p-6 rounded-[32px] border border-slate-200 hover:border-blue-300 transition-all shadow-sm group relative">
+            <div 
+                key={associate.id} 
+                onClick={() => handleOpenModal(associate)}
+                className="bg-white p-6 rounded-[32px] border border-slate-200 hover:border-blue-300 transition-all shadow-sm group relative cursor-pointer"
+            >
               <div className="flex justify-between items-start mb-4">
                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg ${associate.type === 'PJ' ? 'bg-indigo-50 text-indigo-600' : 'bg-blue-50 text-blue-600'}`}>
                     {associate.type === 'PJ' ? <Shield size={24}/> : <User size={24}/>}
@@ -298,8 +302,8 @@ const Associates: React.FC = () => {
                   <p className="text-xs text-indigo-600 font-bold mb-4 flex items-center gap-1"><User size={12}/> Resp: {associate.responsible}</p>
               )}
               <div className="absolute top-4 right-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                 <button onClick={() => handleOpenModal(associate)} className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Edit3 size={18}/></button>
-                 <button onClick={() => setDeleteId(associate.id)} className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18}/></button>
+                 <button onClick={(e) => { e.stopPropagation(); handleOpenModal(associate); }} className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Edit3 size={18}/></button>
+                 <button onClick={(e) => { e.stopPropagation(); setDeleteId(associate.id); }} className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18}/></button>
               </div>
             </div>
           ))}
@@ -316,13 +320,13 @@ const Associates: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-slate-50">
                  {filteredAssociates.map(a => (
-                   <tr key={a.id} className="hover:bg-slate-50/50 group">
+                   <tr key={a.id} onClick={() => handleOpenModal(a)} className="hover:bg-slate-50/50 group cursor-pointer">
                       <td className="px-8 py-5"><span className="font-bold text-slate-700">{a.name}</span></td>
                       <td className="px-8 py-5 text-xs font-bold text-slate-500">{a.document}</td>
                       <td className="px-8 py-5 text-right">
                          <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => handleOpenModal(a)} className="p-2 text-slate-400 hover:text-blue-600 rounded-lg"><Edit3 size={18}/></button>
-                            <button onClick={() => setDeleteId(a.id)} className="p-2 text-slate-400 hover:text-red-600 rounded-lg"><Trash2 size={18}/></button>
+                            <button onClick={(e) => { e.stopPropagation(); handleOpenModal(a); }} className="p-2 text-slate-400 hover:text-blue-600 rounded-lg"><Edit3 size={18}/></button>
+                            <button onClick={(e) => { e.stopPropagation(); setDeleteId(a.id); }} className="p-2 text-slate-400 hover:text-red-600 rounded-lg"><Trash2 size={18}/></button>
                          </div>
                       </td>
                    </tr>

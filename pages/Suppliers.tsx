@@ -4,7 +4,7 @@ import {
   Plus, Search, Star, MessageCircle, MapPin, X, 
   LayoutGrid, List, Edit, Trash2, Shield, Loader2, 
   TrendingUp, Clock, Globe, User, Mail, Phone, AlertTriangle, Home,
-  History, Send, ThumbsUp
+  History, Send, ThumbsUp, Truck
 } from 'lucide-react';
 import { Supplier } from '../types';
 import { supabase } from '../services/supabaseClient';
@@ -304,50 +304,93 @@ const Suppliers: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* ... Header e Filtros (Mantidos iguais ao original) ... */}
+      {/* Header e Filtros */}
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input type="text" placeholder="Buscar por nome ou CNPJ..." className="w-full pl-10 pr-4 py-3 bg-slate-50 rounded-2xl outline-none border border-slate-100 text-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
         </div>
-        <button onClick={handleCreate} className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 shadow-xl shadow-blue-500/20 whitespace-nowrap">
-          <Plus size={18} /> Novo Parceiro
-        </button>
+        <div className="flex items-center gap-3">
+            <div className="flex bg-slate-100 p-1 rounded-xl">
+               <button onClick={() => setViewMode('grid')} className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}><LayoutGrid size={18}/></button>
+               <button onClick={() => setViewMode('list')} className={`p-2 rounded-lg transition-all ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}><List size={18}/></button>
+            </div>
+            <button onClick={handleCreate} className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 shadow-xl shadow-blue-500/20 whitespace-nowrap">
+              <Plus size={18} /> Novo Parceiro
+            </button>
+        </div>
       </div>
 
-      <div className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm">
-        <table className="w-full text-left">
-          <thead className="bg-slate-50 border-b border-slate-100">
-            <tr>
-              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Fornecedor</th>
-              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Cidade</th>
-              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Avaliação</th>
-              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50">
-            {filtered.map(s => (
-              <tr key={s.id} className="hover:bg-slate-50/50 transition-colors group cursor-pointer" onClick={() => handleEdit(s)}>
-                <td className="px-8 py-5">
-                  <p className="font-bold text-slate-800">{s.name}</p>
-                  <p className="text-[10px] text-slate-400 font-bold">{s.cnpj}</p>
-                </td>
-                <td className="px-8 py-5 text-xs font-bold text-slate-500 uppercase">{s.city}</td>
-                <td className="px-8 py-5">
-                   <div className="flex items-center gap-1 text-amber-500">
-                      <Star size={14} fill="currentColor"/>
-                      <span className="text-xs font-black text-slate-700">{Number(s.rating).toFixed(1)}</span>
-                   </div>
-                </td>
-                <td className="px-8 py-5 text-right flex justify-end gap-2">
-                   <button onClick={(e) => { e.stopPropagation(); handleEdit(s); }} className="p-2 text-slate-400 hover:text-blue-600 rounded-lg"><Edit size={18}/></button>
-                   <button onClick={(e) => { e.stopPropagation(); setDeleteId(s.id); }} className="p-2 text-slate-400 hover:text-red-600 rounded-lg"><Trash2 size={18}/></button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {viewMode === 'grid' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in duration-300">
+              {filtered.map(s => (
+                  <div 
+                    key={s.id} 
+                    onClick={() => handleEdit(s)}
+                    className="bg-white p-6 rounded-[32px] border border-slate-200 hover:border-blue-200 transition-all shadow-sm group relative cursor-pointer"
+                  >
+                      <div className="flex justify-between items-start mb-4">
+                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg bg-indigo-50 text-indigo-600`}>
+                              <Truck size={24}/>
+                          </div>
+                          <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${s.status === 'Ativo' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                              {s.status}
+                          </span>
+                      </div>
+                      
+                      <h3 className="font-black text-slate-800 text-lg mb-1 truncate" title={s.name}>{s.name}</h3>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">{s.cnpj}</p>
+                      
+                      <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                          <p className="text-xs font-bold text-slate-500 flex items-center gap-1 uppercase"><MapPin size={12}/> {s.city}</p>
+                          <div className="flex items-center gap-1 text-amber-500">
+                              <Star size={14} fill="currentColor"/>
+                              <span className="text-xs font-black text-slate-700">{Number(s.rating).toFixed(1)}</span>
+                          </div>
+                      </div>
+
+                      <div className="absolute top-4 right-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={(e) => { e.stopPropagation(); handleEdit(s); }} className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Edit size={18}/></button>
+                          <button onClick={(e) => { e.stopPropagation(); setDeleteId(s.id); }} className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18}/></button>
+                      </div>
+                  </div>
+              ))}
+          </div>
+      ) : (
+          <div className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm animate-in fade-in duration-300">
+            <table className="w-full text-left">
+              <thead className="bg-slate-50 border-b border-slate-100">
+                <tr>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Fornecedor</th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Cidade</th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Avaliação</th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {filtered.map(s => (
+                  <tr key={s.id} className="hover:bg-slate-50/50 transition-colors group cursor-pointer" onClick={() => handleEdit(s)}>
+                    <td className="px-8 py-5">
+                      <p className="font-bold text-slate-800">{s.name}</p>
+                      <p className="text-[10px] text-slate-400 font-bold">{s.cnpj}</p>
+                    </td>
+                    <td className="px-8 py-5 text-xs font-bold text-slate-500 uppercase">{s.city}</td>
+                    <td className="px-8 py-5">
+                      <div className="flex items-center gap-1 text-amber-500">
+                          <Star size={14} fill="currentColor"/>
+                          <span className="text-xs font-black text-slate-700">{Number(s.rating).toFixed(1)}</span>
+                      </div>
+                    </td>
+                    <td className="px-8 py-5 text-right flex justify-end gap-2">
+                      <button onClick={(e) => { e.stopPropagation(); handleEdit(s); }} className="p-2 text-slate-400 hover:text-blue-600 rounded-lg"><Edit size={18}/></button>
+                      <button onClick={(e) => { e.stopPropagation(); setDeleteId(s.id); }} className="p-2 text-slate-400 hover:text-red-600 rounded-lg"><Trash2 size={18}/></button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+      )}
 
       {isModalOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">

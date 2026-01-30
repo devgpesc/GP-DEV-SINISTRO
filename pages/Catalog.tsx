@@ -164,14 +164,18 @@ const Catalog: React.FC = () => {
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in duration-300">
           {filteredItems.map(item => (
-            <div key={item.id} className="bg-white p-6 rounded-2xl border border-slate-200 hover:border-blue-200 transition-all shadow-sm group relative">
+            <div 
+                key={item.id} 
+                onClick={() => handleOpenModal(item)}
+                className="bg-white p-6 rounded-2xl border border-slate-200 hover:border-blue-200 transition-all shadow-sm group relative cursor-pointer"
+            >
               <div className="flex justify-between mb-4">
                  <div className={`p-3 rounded-xl ${item.type === 'Peça' ? 'bg-blue-50 text-blue-600' : 'bg-indigo-50 text-indigo-600'}`}>
                     {item.type === 'Peça' ? <Package size={24}/> : <Settings size={24}/>}
                  </div>
                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => handleOpenModal(item)} className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Edit3 size={18}/></button>
-                    <button onClick={() => handleDelete(item.id)} className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={18}/></button>
+                    <button onClick={(e) => { e.stopPropagation(); handleOpenModal(item); }} className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Edit3 size={18}/></button>
+                    <button onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }} className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={18}/></button>
                  </div>
               </div>
               <h3 className="font-bold text-slate-800">{item.name}</h3>
@@ -198,7 +202,7 @@ const Catalog: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-slate-50">
                  {filteredItems.map(item => (
-                   <tr key={item.id} className="hover:bg-slate-50/50 group">
+                   <tr key={item.id} onClick={() => handleOpenModal(item)} className="hover:bg-slate-50/50 group cursor-pointer">
                       <td className="px-6 py-4 text-xs font-bold text-slate-400">{item.code}</td>
                       <td className="px-6 py-4">
                          <p className="text-sm font-bold text-slate-800">{item.name}</p>
@@ -207,8 +211,8 @@ const Catalog: React.FC = () => {
                       <td className="px-6 py-4 text-xs font-bold text-blue-600">{item.category}</td>
                       <td className="px-6 py-4 text-right">
                          <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => handleOpenModal(item)} className="p-2 text-slate-400 hover:text-blue-600 rounded-lg"><Edit3 size={16}/></button>
-                            <button onClick={() => handleDelete(item.id)} className="p-2 text-slate-400 hover:text-red-600 rounded-lg"><Trash2 size={16}/></button>
+                            <button onClick={(e) => { e.stopPropagation(); handleOpenModal(item); }} className="p-2 text-slate-400 hover:text-blue-600 rounded-lg"><Edit3 size={16}/></button>
+                            <button onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }} className="p-2 text-slate-400 hover:text-red-600 rounded-lg"><Trash2 size={16}/></button>
                          </div>
                       </td>
                    </tr>

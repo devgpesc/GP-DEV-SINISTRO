@@ -42,7 +42,8 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
         </div>
       );
     }
-    return this.props.children;
+    // Cast this to any to access props if TypeScript fails to infer it from React.Component
+    return (this as any).props.children;
   }
 }
 

@@ -4,7 +4,8 @@ import {
   Globe, Building, Users, Database, 
   TrendingUp, Activity, Plus, MoreVertical, 
   Search, ShieldAlert, LogIn, Loader2, CheckCircle, Mail, Lock, User, Copy, Check,
-  Edit, Trash2, Layers, DollarSign, BarChart3, PieChart, CreditCard, Layout, Calendar, AlertCircle
+  Edit, Trash2, Layers, DollarSign, BarChart3, PieChart, CreditCard, Layout, Calendar, AlertCircle,
+  LayoutGrid, List
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js'; // Import necessário para o Fallback
 import { supabase } from '../services/supabaseClient';
@@ -18,6 +19,7 @@ const SaasAdmin: React.FC = () => {
   // Estado Geral
   const [activeTab, setActiveTab] = useState<'overview' | 'plans'>('overview');
   const [loading, setLoading] = useState(true);
+  const [planViewMode, setPlanViewMode] = useState<'grid' | 'list'>('grid');
   
   // Dados
   const [tenants, setTenants] = useState<SaasTenant[]>([]);
@@ -217,17 +219,14 @@ const SaasAdmin: React.FC = () => {
                 console.error("Function Error:", functionError);
                 
                 // FALLBACK INTELIGENTE (Client-Side)
-                // Se a Edge Function falhar, tentamos criar o usuário e o tenant via frontend.
                 try {
                     console.log("Tentando criação via Client-Side...");
                     
                     const envUrl = (import.meta as any).env.VITE_SUPABASE_URL;
                     const envKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY;
                     
-                    // 1. Criar instância limpa do Supabase (para não deslogar o admin atual)
                     const tempClient = createClient(envUrl, envKey);
                     
-                    // 2. Criar Usuário (SignUp)
                     const { data: authData, error: authError } = await tempClient.auth.signUp({
                         email: tenantForm.adminEmail,
                         password: tenantForm.adminPassword,
@@ -241,8 +240,6 @@ const SaasAdmin: React.FC = () => {
 
                     const newUserId = authData.user.id;
 
-                    // 3. Promover usuário a Admin (Usando o client autenticado do Admin Atual)
-                    // Requer política RLS "Admins can update all"
                     const { error: profileError } = await supabase
                         .from('profiles')
                         .update({ role: 'Admin', full_name: tenantForm.adminName })
@@ -252,7 +249,6 @@ const SaasAdmin: React.FC = () => {
                         console.warn("Aviso: Falha ao promover usuário (verifique RLS)", profileError);
                     }
 
-                    // 4. Criar Tenant vinculado ao novo usuário
                     const { error: tenantError } = await supabase.from('saas_tenants').insert({
                         name: tenantForm.name,
                         document: tenantForm.document,
@@ -263,7 +259,6 @@ const SaasAdmin: React.FC = () => {
 
                     if (tenantError) throw tenantError;
 
-                    // Sucesso no Fallback
                     setCreatedCredentials({
                         company: tenantForm.name,
                         email: tenantForm.adminEmail,
@@ -279,7 +274,6 @@ const SaasAdmin: React.FC = () => {
                 } catch (clientError: any) {
                     console.error("Client Fallback Failed:", clientError);
                     
-                    // ULTIMATE FALLBACK: Vincula ao Admin Atual
                     const { data: userData } = await supabase.auth.getUser();
                     if (userData?.user) {
                         await supabase.from('saas_tenants').insert({
@@ -487,7 +481,11 @@ const SaasAdmin: React.FC = () => {
                 ) : (
                     <div className="space-y-3">
                         {filteredTenants.map(tenant => (
-                        <div key={tenant.id} className="flex items-center justify-between p-5 bg-slate-50 border border-slate-100 rounded-3xl hover:border-blue-200 hover:shadow-md transition-all group">
+                        <div 
+                            key={tenant.id} 
+                            onClick={() => openEditTenantModal(tenant)}
+                            className="flex items-center justify-between p-5 bg-slate-50 border border-slate-100 rounded-3xl hover:border-blue-200 hover:shadow-md transition-all group cursor-pointer"
+                        >
                             {/* Lado Esquerdo: Identificação */}
                             <div className="flex items-center gap-5 flex-1 min-w-0">
                                 <div className={`w-12 h-12 rounded-2xl flex-shrink-0 flex items-center justify-center font-black text-lg shadow-sm ${tenant.status === 'blocked' ? 'bg-red-100 text-red-500' : 'bg-white text-blue-600 border border-slate-200'}`}>
@@ -515,10 +513,16 @@ const SaasAdmin: React.FC = () => {
                                     <p className="font-black text-slate-800 text-sm">R$ {tenant.saas_plans?.price}/mês</p>
                                 </div>
                                 <div className="flex gap-2">
-                                    <button onClick={() => openEditTenantModal(tenant)} className="p-2 bg-white text-slate-400 hover:text-blue-600 border border-slate-200 hover:border-blue-200 rounded-xl transition-all shadow-sm">
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); openEditTenantModal(tenant); }} 
+                                        className="p-2 bg-white text-slate-400 hover:text-blue-600 border border-slate-200 hover:border-blue-200 rounded-xl transition-all shadow-sm"
+                                    >
                                         <Edit size={18}/>
                                     </button>
-                                    <button onClick={() => setTenantToDelete(tenant)} className="p-2 bg-white text-slate-400 hover:text-red-600 border border-slate-200 hover:border-red-200 rounded-xl transition-all shadow-sm">
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); setTenantToDelete(tenant); }} 
+                                        className="p-2 bg-white text-slate-400 hover:text-red-600 border border-slate-200 hover:border-red-200 rounded-xl transition-all shadow-sm"
+                                    >
                                         <Trash2 size={18}/>
                                     </button>
                                 </div>
@@ -533,50 +537,94 @@ const SaasAdmin: React.FC = () => {
 
       {activeTab === 'plans' && (
           <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
-              {/* ... Conteúdo de Planos (Mantido) ... */}
               <div className="flex justify-between items-center">
                   <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Layers size={20} className="text-blue-600"/> Planos de Assinatura</h3>
-                  <button onClick={() => openPlanModal()} className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-slate-800 shadow-xl">
-                      <Plus size={16}/> Novo Plano
-                  </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {plans.map(plan => (
-                      <div key={plan.id} className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl hover:border-blue-200 hover:-translate-y-1 transition-all group relative">
-                          <div className="flex justify-between items-start mb-6">
-                              <span className="bg-blue-50 text-blue-700 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border border-blue-100">
-                                  {plan.name}
-                              </span>
-                              <button onClick={() => openPlanModal(plan)} className="p-2 bg-slate-50 text-slate-400 hover:text-blue-600 rounded-xl transition-colors">
-                                  <Edit size={16}/>
-                              </button>
-                          </div>
-                          
-                          <div className="mb-6">
-                              <span className="text-4xl font-black text-slate-800">R$ {plan.price}</span>
-                              <span className="text-slate-400 font-bold text-xs ml-1">/mês</span>
-                          </div>
-
-                          <div className="space-y-3 pt-6 border-t border-slate-100">
-                              <div className="flex items-center gap-3 text-sm font-bold text-slate-600">
-                                  <Users size={16} className="text-blue-500"/>
-                                  Até {plan.max_users} Usuários
-                              </div>
-                              <div className="flex items-center gap-3 text-sm font-bold text-slate-600">
-                                  <Activity size={16} className="text-green-500"/>
-                                  Até {plan.max_events} Eventos/mês
-                              </div>
-                              {plan.features?.ai_analysis && (
-                                  <div className="flex items-center gap-3 text-sm font-bold text-indigo-600">
-                                      <CheckCircle size={16}/>
-                                      IA Visionária Inclusa
-                                  </div>
-                              )}
-                          </div>
+                  <div className="flex items-center gap-3">
+                      <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200">
+                         <button onClick={() => setPlanViewMode('grid')} className={`p-2 rounded-xl transition-all ${planViewMode === 'grid' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}><LayoutGrid size={18}/></button>
+                         <button onClick={() => setPlanViewMode('list')} className={`p-2 rounded-xl transition-all ${planViewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}><List size={18}/></button>
                       </div>
-                  ))}
+                      <button onClick={() => openPlanModal()} className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-slate-800 shadow-xl">
+                          <Plus size={16}/> Novo Plano
+                      </button>
+                  </div>
               </div>
+
+              {planViewMode === 'grid' ? (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {plans.map(plan => (
+                          <div 
+                            key={plan.id} 
+                            onClick={() => openPlanModal(plan)}
+                            className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl hover:border-blue-200 hover:-translate-y-1 transition-all group relative cursor-pointer"
+                          >
+                              <div className="flex justify-between items-start mb-6">
+                                  <span className="bg-blue-50 text-blue-700 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border border-blue-100">
+                                      {plan.name}
+                                  </span>
+                                  <button onClick={(e) => { e.stopPropagation(); openPlanModal(plan); }} className="p-2 bg-slate-50 text-slate-400 hover:text-blue-600 rounded-xl transition-colors">
+                                      <Edit size={16}/>
+                                  </button>
+                              </div>
+                              
+                              <div className="mb-6">
+                                  <span className="text-4xl font-black text-slate-800">R$ {plan.price}</span>
+                                  <span className="text-slate-400 font-bold text-xs ml-1">/mês</span>
+                              </div>
+
+                              <div className="space-y-3 pt-6 border-t border-slate-100">
+                                  <div className="flex items-center gap-3 text-sm font-bold text-slate-600">
+                                      <Users size={16} className="text-blue-500"/>
+                                      Até {plan.max_users} Usuários
+                                  </div>
+                                  <div className="flex items-center gap-3 text-sm font-bold text-slate-600">
+                                      <Activity size={16} className="text-green-500"/>
+                                      Até {plan.max_events} Eventos/mês
+                                  </div>
+                                  {plan.features?.ai_analysis && (
+                                      <div className="flex items-center gap-3 text-sm font-bold text-indigo-600">
+                                          <CheckCircle size={16}/>
+                                          IA Visionária Inclusa
+                                      </div>
+                                  )}
+                              </div>
+                          </div>
+                      ))}
+                  </div>
+              ) : (
+                  <div className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm">
+                      <table className="w-full text-left">
+                          <thead className="bg-slate-50 border-b border-slate-100">
+                              <tr>
+                                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Plano</th>
+                                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Preço</th>
+                                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Limites</th>
+                                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
+                              </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                              {plans.map(plan => (
+                                  <tr key={plan.id} onClick={() => openPlanModal(plan)} className="hover:bg-slate-50/50 cursor-pointer group">
+                                      <td className="px-8 py-5">
+                                          <span className="bg-blue-50 text-blue-700 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border border-blue-100">
+                                              {plan.name}
+                                          </span>
+                                      </td>
+                                      <td className="px-8 py-5 font-black text-slate-800">R$ {plan.price}/mês</td>
+                                      <td className="px-8 py-5 text-sm text-slate-600">
+                                          {plan.max_users} Usuários • {plan.max_events} Eventos
+                                      </td>
+                                      <td className="px-8 py-5 text-right">
+                                          <button onClick={(e) => { e.stopPropagation(); openPlanModal(plan); }} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all">
+                                              <Edit size={18}/>
+                                          </button>
+                                      </td>
+                                  </tr>
+                              ))}
+                          </tbody>
+                      </table>
+                  </div>
+              )}
           </div>
       )}
 
