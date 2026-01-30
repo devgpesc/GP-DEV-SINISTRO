@@ -17,17 +17,28 @@ interface AIAnalysisOptions {
 export const aiService = {
   
   async getConfig() {
-    const { data } = await supabase.from('saas_settings').select('*').limit(1).single();
-    return {
-      provider: (data?.ai_provider || 'google') as LLMProvider,
-      model: data?.ai_model || 'gemini-3-pro-preview',
-      keys: {
-        google: data?.gemini_key || process.env.API_KEY, // Fallback to env
-        openai: data?.openai_key,
-        anthropic: data?.anthropic_key,
-        groq: data?.groq_key
-      }
-    };
+    try {
+        const { data, error } = await supabase.from('saas_settings').select('*').limit(1).single();
+        if (error) throw error;
+        
+        return {
+          provider: (data?.ai_provider || 'google') as LLMProvider,
+          model: data?.ai_model || 'gemini-3-pro-preview',
+          keys: {
+            google: data?.gemini_key || process.env.API_KEY, 
+            openai: data?.openai_key,
+            anthropic: data?.anthropic_key,
+            groq: data?.groq_key
+          }
+        };
+    } catch (e) {
+        // Fallback se a tabela de configurações não estiver acessível
+        return {
+            provider: 'google',
+            model: 'gemini-3-pro-preview',
+            keys: { google: process.env.API_KEY }
+        };
+    }
   },
 
   async generateStrategicInsight(options: AIAnalysisOptions): Promise<string> {
@@ -36,32 +47,42 @@ export const aiService = {
     
     try {
       if (config.provider === 'google') {
-        const ai = new GoogleGenAI({ apiKey: config.keys.google });
+        const apiKey = config.keys.google;
+        
+        if (!apiKey) {
+            return "⚠️ Chave de API do Google não configurada. Acesse Configurações > Inteligência Artificial e insira sua chave.";
+        }
+
+        const ai = new GoogleGenAI({ apiKey });
         
         const response = await ai.models.generateContent({
-          model: 'gemini-3-pro-preview', // Force PRO for strategic analysis
+          model: 'gemini-3-pro-preview', 
           contents: `Analise estes dados e forneça insights estratégicos:\n${JSON.stringify(options.data)}\n\nContexto Adicional: ${options.context || ''}`,
           config: {
             systemInstruction: systemPrompt,
             temperature: 0.7,
-            thinkingConfig: { thinkingBudget: 4000 } // Deep thinking for strategy
+            thinkingConfig: { thinkingBudget: 4000 } 
           }
         });
         
         return response.text || "Sem resposta da IA.";
       } 
       
-      // Implementação de Fallback/Outros Providers (Mock funcional para estrutura)
-      // Em produção, isso chamaria os endpoints REST respectivos
+      // Fallback para outros providers (Mock funcional)
       if (config.provider === 'openai' && config.keys.openai) {
-         // Placeholder para chamada OpenAI
          return "Integração OpenAI configurada. (Simulação: Análise estratégica gerada com sucesso via GPT-4)";
       }
 
-      return "Provedor de IA não configurado ou chave ausente. Verifique as configurações.";
+      return `O provedor ${config.provider} foi selecionado, mas a chave de API não foi encontrada nas configurações.`;
 
     } catch (error: any) {
       console.error("AI Service Error:", error);
+      
+      // Tratamento amigável para erro de cota (429)
+      if (error.message?.includes('429') || error.message?.includes('quota') || error.message?.includes('RESOURCE_EXHAUSTED')) {
+          return "⚠️ Limite de uso da IA excedido (Erro 429). \n\nO plano gratuito do Google Gemini atingiu o limite de requisições. Para continuar usando a IA Visionária sem interrupções, por favor acesse 'Configurações > Inteligência Artificial' e insira sua própria Chave de API (Google Gemini API Key).";
+      }
+
       return `Erro na análise de IA: ${error.message}`;
     }
   },

@@ -14,6 +14,11 @@ import { PurchaseOrder, Delivery } from '../types';
 import { aiService } from '../services/aiService';
 import { useToast } from '../context/ToastContext';
 
+// Helper para remover acentos e facilitar busca
+const normalizeText = (text: string) => {
+  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+};
+
 const Reports: React.FC = () => {
   const { addToast } = useToast();
   const [loading, setLoading] = useState(true);
@@ -22,7 +27,7 @@ const Reports: React.FC = () => {
 
   // Filtros
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
-  const [categoryFilter, setCategoryFilter] = useState('Todos');
+  const [categoryFilter, setCategoryFilter] = useState('Todas Categorias');
 
   // Dados Reais
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
@@ -63,7 +68,7 @@ const Reports: React.FC = () => {
       const insight = await aiService.generateStrategicInsight({
         data: dataSnapshot,
         type: 'financial',
-        context: 'O usuário deseja saber onde pode cortar custos e melhorar o tempo de fechamento de sinistros.'
+        context: 'O gestor precisa de uma análise focada em redução de desperdícios e eficiência de compras em português.'
       });
 
       setAiAnalysis(insight);
@@ -81,25 +86,50 @@ const Reports: React.FC = () => {
   // --- CÁLCULOS ESTRATÉGICOS (KPIs) ---
   const filteredOrders = useMemo(() => {
     return orders.filter(o => {
-      if (dateRange.start && new Date(o.createdAt) < new Date(dateRange.start)) return false;
-      if (dateRange.end && new Date(o.createdAt) > new Date(dateRange.end)) return false;
+      // Filtro de Data Início
+      if (dateRange.start) {
+          const startDate = new Date(dateRange.start);
+          const orderDate = new Date(o.createdAt);
+          startDate.setHours(0,0,0,0); // Início do dia
+          if (orderDate < startDate) return false;
+      }
+      
+      // Filtro de Data Fim
+      if (dateRange.end) {
+          const endDate = new Date(dateRange.end);
+          endDate.setHours(23, 59, 59, 999); // Final do dia
+          const orderDate = new Date(o.createdAt);
+          if (orderDate > endDate) return false;
+      }
+
+      // Filtro de Categoria (Com Normalização para ignorar acentos)
+      if (categoryFilter !== 'Todas Categorias' && categoryFilter !== 'Todos') {
+          if (!o.items || !Array.isArray(o.items)) return false;
+          
+          const searchCat = normalizeText(categoryFilter).replace(/s$/, ''); // Remove plural simples
+          
+          const hasCategory = o.items.some((item: any) => {
+              const itemCat = normalizeText(item.category || item.type || '');
+              const itemName = normalizeText(item.name || '');
+              // Busca na categoria ou no nome do item
+              return itemCat.includes(searchCat) || itemName.includes(searchCat);
+          });
+          
+          if (!hasCategory) return false;
+      }
+
       return true;
     });
-  }, [orders, dateRange]);
+  }, [orders, dateRange, categoryFilter]);
 
   const strategicKPIs = useMemo(() => {
     const totalSpent = filteredOrders.reduce((acc, o) => acc + (o.total || 0), 0);
     const completedOrders = filteredOrders.filter(o => o.status === 'Aprovada' || o.status === 'Recebida');
-    const totalItems = completedOrders.reduce((acc, o) => acc + (o.items?.length || 0), 0);
     
-    // Savings Estimado (Comparativo Base de Mercado vs Pago - Mockado para exemplo se não tiver dados de cotação)
-    // Em produção real, compararíamos `target_price` com `unit_price`.
-    const estimatedMarketValue = totalSpent * 1.15; // Supondo 15% de economia média
+    // Estimativa de Economia (Mock lógica de negócio para demonstração)
+    const estimatedMarketValue = totalSpent * 1.15; 
     const savings = estimatedMarketValue - totalSpent;
     
-    // SLA Médio (Criação -> Aprovação) - Mock se não tiver approvedAt
-    const avgSLA = 2.4; // Dias
-
     return {
       totalSpent,
       savings,
@@ -115,12 +145,17 @@ const Reports: React.FC = () => {
     const grouped: any = {};
     filteredOrders.forEach(o => {
       const date = new Date(o.createdAt);
-      const key = `${date.getMonth() + 1}/${date.getFullYear()}`;
-      if (!grouped[key]) grouped[key] = { name: key, total: 0, savings: 0 };
-      grouped[key].total += o.total;
-      grouped[key].savings += (o.total * 0.15); // Simulação de savings
+      // Formatação PT-BR para o gráfico
+      const key = `${date.toLocaleString('pt-BR', { month: 'short' })}/${date.getFullYear()}`;
+      // Chave de ordenação interna
+      const sortKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      
+      if (!grouped[sortKey]) grouped[sortKey] = { name: key, total: 0, savings: 0, rawDate: date };
+      grouped[sortKey].total += o.total;
+      grouped[sortKey].savings += (o.total * 0.15); 
     });
-    return Object.values(grouped).sort((a: any, b: any) => a.name.localeCompare(b.name));
+    
+    return Object.keys(grouped).sort().map(k => grouped[k]);
   }, [filteredOrders]);
 
   const statusData = useMemo(() => {
@@ -145,7 +180,7 @@ const Reports: React.FC = () => {
         <div className="flex gap-3">
             <button onClick={handleGenerateAnalysis} disabled={analyzing} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 transition-all hover:scale-105 disabled:opacity-70">
                 {analyzing ? <Loader2 className="animate-spin" size={16}/> : <Brain size={16}/>}
-                {analyzing ? 'Analisando...' : 'IA Visionária'}
+                {analyzing ? 'Gerando Insights...' : 'IA Estratégica'}
             </button>
             <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm">
                 <Printer size={16}/> PDF
@@ -168,23 +203,23 @@ const Reports: React.FC = () => {
             <option>Peças</option>
             <option>Serviços</option>
          </select>
-         <button onClick={() => { setDateRange({start: '', end: ''}); setCategoryFilter('Todos'); }} className="p-2 text-slate-400 hover:text-blue-600"><RefreshCw size={16}/></button>
+         <button onClick={() => { setDateRange({start: '', end: ''}); setCategoryFilter('Todas Categorias'); }} className="p-2 text-slate-400 hover:text-blue-600" title="Limpar Filtros"><RefreshCw size={16}/></button>
       </div>
 
       {/* Strategic KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
            <div className="flex justify-between items-start">
-               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Gasto (Real)</p>
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Investimento Total</p>
                <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><DollarSign size={18}/></div>
            </div>
            <h3 className="text-2xl font-black text-slate-800 mt-2">R$ {strategicKPIs.totalSpent.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</h3>
-           <p className="text-[10px] font-bold text-slate-400 mt-1 flex items-center gap-1"><TrendingUp size={10} className="text-slate-400"/> Volume bruto</p>
+           <p className="text-[10px] font-bold text-slate-400 mt-1 flex items-center gap-1"><TrendingUp size={10} className="text-slate-400"/> Volume filtrado</p>
         </div>
 
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
            <div className="flex justify-between items-start">
-               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Savings (Economia)</p>
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Economia (Savings)</p>
                <div className="p-2 bg-green-50 text-green-600 rounded-xl"><TrendingDown size={18}/></div>
            </div>
            <h3 className="text-2xl font-black text-slate-800 mt-2">R$ {strategicKPIs.savings.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</h3>
@@ -227,7 +262,7 @@ const Reports: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Financial Trend */}
         <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm h-[400px] flex flex-col">
-           <h3 className="text-lg font-black text-slate-800 mb-6">Tendência de Gastos e Savings</h3>
+           <h3 className="text-lg font-black text-slate-800 mb-6">Tendência de Despesas e Economia</h3>
            <div className="flex-1">
               <ResponsiveContainer width="100%" height="100%">
                  <AreaChart data={chartData}>
@@ -244,10 +279,10 @@ const Reports: React.FC = () => {
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
                     <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
-                    <Tooltip contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'}} />
+                    <Tooltip contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'}} formatter={(val: number) => `R$ ${val.toLocaleString('pt-BR')}`} />
                     <Legend />
-                    <Area type="monotone" dataKey="total" name="Gasto Total" stroke="#3b82f6" fillOpacity={1} fill="url(#colorTotal)" strokeWidth={3} />
-                    <Area type="monotone" dataKey="savings" name="Savings" stroke="#10b981" fillOpacity={1} fill="url(#colorSavings)" strokeWidth={3} />
+                    <Area type="monotone" dataKey="total" name="Despesa Real" stroke="#3b82f6" fillOpacity={1} fill="url(#colorTotal)" strokeWidth={3} />
+                    <Area type="monotone" dataKey="savings" name="Economia Gerada" stroke="#10b981" fillOpacity={1} fill="url(#colorSavings)" strokeWidth={3} />
                  </AreaChart>
               </ResponsiveContainer>
            </div>

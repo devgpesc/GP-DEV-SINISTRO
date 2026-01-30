@@ -21,10 +21,12 @@ export const auditService = {
         }]);
 
         if (error) {
-            console.warn('Falha ao registrar auditoria (verifique se a tabela existe):', error.message);
+            console.warn('[Audit] Falha ao registrar (verifique RLS/Tabela):', error.message);
+        } else {
+            console.log(`[Audit] ${action} em ${entity} registrado.`);
         }
     } catch (e) {
-        console.error('Erro no serviço de auditoria:', e);
+        console.error('[Audit] Erro inesperado:', e);
     }
   },
 

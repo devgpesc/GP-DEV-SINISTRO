@@ -1,8 +1,10 @@
+
 import React, { useState } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 const { Link, useNavigate } = ReactRouterDOM;
 import { supabase } from '../services/supabaseClient';
 import { useToast } from '../context/ToastContext';
+import { auditService } from '../services/auditService';
 import { Car, Mail, Lock, User, Loader2, ArrowLeft, ShieldCheck, AlertCircle } from 'lucide-react';
 
 const Register: React.FC = () => {
@@ -20,34 +22,41 @@ const Register: React.FC = () => {
     setError(null);
 
     try {
-      // Fix: Cast auth to any for v2 compatibility
       const { data, error: signUpError } = await (supabase.auth as any).signUp({
         email,
         password,
         options: {
           data: { 
-            full_name: name, // Novo padrão
-            name: name       // Legado (para garantir compatibilidade com trigger antigo se não atualizado)
+            full_name: name,
+            name: name
           }
         }
       });
 
       if (signUpError) {
         console.error("Erro detalhado:", signUpError);
-        if (signUpError.message.includes("Database error")) {
-            setError("Erro interno ao criar perfil. Por favor, contate o suporte (Erro de Trigger).");
-        } else if (signUpError.message.includes("unique")) {
+        if (signUpError.message.includes("unique")) {
             setError("Este e-mail já está cadastrado.");
         } else {
             setError(signUpError.message);
         }
         setLoading(false);
       } else if (data.user) {
-        addToast('success', 'Cadastro Realizado!', 'Sua conta foi criada com sucesso.');
-        // Pequeno delay para UX
-        setTimeout(() => {
-            navigate('/login');
-        }, 1500);
+        // Sucesso no registro
+        
+        // Tenta logar automaticamente (Funciona se o Supabase não exigir email confirm)
+        if (data.session) {
+             // Auditoria de Registro
+             await auditService.log('Register', 'User', data.user.id, { email: data.user.email });
+             
+             addToast('success', 'Bem-vindo!', 'Conta criada e conectada.');
+             setTimeout(() => navigate('/'), 1000);
+        } else {
+             // Caso exija confirmação de email
+             addToast('success', 'Cadastro Realizado!', 'Verifique seu e-mail para confirmar a conta.');
+             setError("Conta criada! Por favor, verifique sua caixa de entrada (e spam) para clicar no link de confirmação antes de fazer login.");
+             setLoading(false); // Para o loading para o usuário ler a mensagem
+        }
       }
     } catch (err: any) {
       console.error(err);
@@ -74,7 +83,7 @@ const Register: React.FC = () => {
           <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-8">Criar Cadastro de Produção</h2>
           
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-600 text-xs font-bold rounded-2xl flex items-start gap-3 animate-in slide-in-from-top-2">
+            <div className={`mb-6 p-4 border rounded-2xl flex items-start gap-3 text-xs font-bold animate-in slide-in-from-top-2 ${error.includes('verifique') ? 'bg-green-50 border-green-100 text-green-700' : 'bg-red-50 border-red-100 text-red-600'}`}>
                 <AlertCircle size={18} className="shrink-0 mt-0.5"/> 
                 <span className="leading-relaxed">{error}</span>
             </div>

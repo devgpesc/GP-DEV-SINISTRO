@@ -1,34 +1,19 @@
+
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { 
-  TrendingUp, 
-  TrendingDown, 
-  Clock, 
-  ShieldAlert, 
-  DollarSign, 
-  ShoppingBag,
-  ArrowUpRight,
-  ArrowDownRight,
-  Database,
-  CheckCircle,
-  Loader2,
-  Package,
-  WifiOff,
-  RefreshCw
+  TrendingUp, TrendingDown, Clock, ShieldAlert, DollarSign, ShoppingBag,
+  ArrowUpRight, ArrowDownRight, Database, CheckCircle, Loader2, Package,
+  WifiOff, RefreshCw, Plus, FileText, Car, User
 } from 'lucide-react';
 import { 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer, 
-  AreaChart, 
-  Area,
-  PieChart,
-  Pie,
-  Cell
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area,
+  PieChart, Pie, Cell
 } from 'recharts';
 import { supabase } from '../services/supabaseClient';
 import { PurchaseOrder, Event } from '../types';
+import { useAuth } from '../context/AuthContext';
+import * as ReactRouterDOM from 'react-router-dom';
+const { Link } = ReactRouterDOM;
 
 const KPICard = ({ title, value, change, trend, icon: Icon, color }: any) => (
   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
@@ -49,26 +34,19 @@ const KPICard = ({ title, value, change, trend, icon: Icon, color }: any) => (
 );
 
 const Dashboard: React.FC = () => {
+  const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
-  
-  // Real Data State
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
-
-  // Timeout Ref
   const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Helper seguro para buscar dados mesmo se a tabela não existir
+  // Verificação de Role
+  const isExecutive = profile?.role === 'Admin' || profile?.role === 'Gerente' || profile?.role === 'super_admin';
+
   const safeFetch = async (table: string) => {
     try {
         const { data, error } = await supabase.from(table).select('*');
-        if (error) {
-            if (error.code === '42P01') {
-                return [];
-            }
-            console.warn(`Info: Tabela ${table} inacessível ou vazia.`);
-            return [];
-        }
+        if (error) return [];
         return data || [];
     } catch (err) {
         return [];
@@ -77,31 +55,25 @@ const Dashboard: React.FC = () => {
 
   const loadDashboardData = async () => {
     setLoading(true);
-    
-    // Timeout de segurança: 10 segundos
     if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
     loadingTimeoutRef.current = setTimeout(() => {
-        setLoading((prev) => {
-            if (prev) {
-                console.warn('Dashboard timeout forced.');
-                return false;
-            }
-            return prev;
-        });
+        setLoading((prev) => prev ? false : prev);
     }, 10000);
 
     try {
-        // Busca paralela otimizada sem verificações de conexão redundantes
-        const [ordersData, eventsData] = await Promise.all([
-            safeFetch('purchase_orders'),
-            safeFetch('events')
-        ]);
+        // Se for usuário comum, carregamos menos dados (apenas eventos para contagem)
+        const promises = [safeFetch('events')];
+        if (isExecutive) {
+            promises.push(safeFetch('purchase_orders'));
+        }
 
-        setOrders(ordersData);
-        setEvents(eventsData);
-
+        const results = await Promise.all(promises);
+        setEvents(results[0]);
+        if (isExecutive) {
+            setOrders(results[1]);
+        }
     } catch (err: any) {
-        console.error("Erro ao carregar dashboard:", err);
+        console.error("Erro dashboard:", err);
     } finally {
         if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
         setLoading(false);
@@ -110,39 +82,30 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     loadDashboardData();
-    return () => {
-        if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
-    };
-  }, []);
+    return () => { if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current); };
+  }, [profile]); // Recarrega se o perfil mudar
 
-  // --- KPI CALCULATIONS ---
+  // --- KPI CALCULATIONS (Executive Only) ---
   const kpis = useMemo(() => {
-    const totalPurchases = orders
-        .filter(o => o.status !== 'Cancelada')
-        .reduce((acc, curr) => acc + curr.total, 0);
-    
-    const savings = totalPurchases * 0.12; // Estimativa baseada em dados reais
-    
-    const openEvents = events.filter(e => e.status !== 'Concluído' && e.status !== 'Cancelado' as any).length;
-    
+    if (!isExecutive) return null;
+    const totalPurchases = orders.filter(o => o.status !== 'Cancelada').reduce((acc, curr) => acc + curr.total, 0);
+    const savings = totalPurchases * 0.12; 
+    const openEvents = events.filter(e => e.status !== 'Concluído').length;
     const activeOrders = orders.filter(o => o.status !== 'Cancelada').length;
     const avgTicket = activeOrders > 0 ? totalPurchases / activeOrders : 0;
-
     return { totalPurchases, savings, openEvents, avgTicket };
-  }, [orders, events]);
+  }, [orders, events, isExecutive]);
 
-  // --- CHARTS DATA ---
+  // --- CHARTS DATA (Executive Only) ---
   const chartData = useMemo(() => {
+    if (!isExecutive) return [];
     const months: any = {};
     const today = new Date();
-    
-    // Initialize last 6 months
     for(let i=5; i>=0; i--) {
         const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
         const key = d.toLocaleString('default', { month: 'short' });
         months[key] = { name: key, custo: 0, economia: 0 };
     }
-
     orders.forEach(o => {
         if(o.status === 'Cancelada') return;
         const d = new Date(o.createdAt);
@@ -152,44 +115,83 @@ const Dashboard: React.FC = () => {
             months[key].economia += (o.total * 0.12);
         }
     });
-
     return Object.values(months);
-  }, [orders]);
+  }, [orders, isExecutive]);
 
   const statusData = useMemo(() => {
     const counts: any = {};
-    events.forEach(e => {
-        counts[e.status] = (counts[e.status] || 0) + 1;
-    });
-    
+    events.forEach(e => { counts[e.status] = (counts[e.status] || 0) + 1; });
     const colors: any = { 'Aguardando': '#94a3b8', 'Em Cotação': '#3b82f6', 'Aprovado': '#22c55e', 'Concluído': '#1e293b' };
-    
-    return Object.keys(counts).map(status => ({
-        name: status,
-        value: counts[status],
-        color: colors[status] || '#cbd5e1'
-    }));
+    return Object.keys(counts).map(status => ({ name: status, value: counts[status], color: colors[status] || '#cbd5e1' }));
   }, [events]);
-
-  const pendingOrders = orders.filter(o => o.status === 'Gerada').slice(0, 5);
 
   if (loading) {
       return (
           <div className="h-[70vh] flex flex-col items-center justify-center text-slate-400 animate-in fade-in duration-300">
               <Loader2 className="animate-spin mb-4 text-blue-600" size={48}/>
-              <p className="font-bold text-xs uppercase tracking-[0.2em] animate-pulse">Atualizando Indicadores...</p>
+              <p className="font-bold text-xs uppercase tracking-[0.2em] animate-pulse">Carregando...</p>
           </div>
       );
   }
 
+  // --- DASHBOARD OPERACIONAL (USUÁRIO COMUM) ---
+  if (!isExecutive) {
+      return (
+        <div className="space-y-8 animate-in fade-in duration-500 max-w-5xl mx-auto">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-[32px] p-10 text-white shadow-xl shadow-blue-900/20 relative overflow-hidden">
+                <div className="relative z-10">
+                    <h2 className="text-3xl font-black mb-2">Olá, {profile?.full_name?.split(' ')[0] || 'Colaborador'}!</h2>
+                    <p className="text-blue-100 font-medium max-w-xl">Bem-vindo ao AutoClaims Pro. Selecione uma ação abaixo para começar seu dia de trabalho.</p>
+                </div>
+                <div className="absolute right-0 top-0 h-full w-1/3 bg-white/5 skew-x-12"></div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Link to="/eventos" className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm hover:shadow-lg hover:border-blue-300 transition-all group relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <FileText size={100} className="text-blue-600"/>
+                    </div>
+                    <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-6">
+                        <ShieldAlert size={28}/>
+                    </div>
+                    <h3 className="text-xl font-black text-slate-800 mb-2">Meus Sinistros</h3>
+                    <p className="text-sm text-slate-500 font-medium mb-6">Acompanhe o andamento dos processos e registre novos eventos.</p>
+                    <div className="flex items-center gap-2 text-blue-600 font-bold text-sm uppercase tracking-wider">
+                        Acessar <ArrowUpRight size={18}/>
+                    </div>
+                </Link>
+
+                <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div>
+                        <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2"><Clock size={20} className="text-blue-600"/> Resumo Rápido</h3>
+                        <div className="space-y-4">
+                            <div className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
+                                <span className="text-sm font-bold text-slate-600">Eventos Ativos</span>
+                                <span className="bg-white px-3 py-1 rounded-lg text-sm font-black text-slate-800 shadow-sm border border-slate-100">{events.length}</span>
+                            </div>
+                            <div className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
+                                <span className="text-sm font-bold text-slate-600">Aguardando Ação</span>
+                                <span className="bg-amber-100 px-3 py-1 rounded-lg text-sm font-black text-amber-700 border border-amber-200">
+                                    {events.filter(e => e.status === 'Aguardando' || e.status === 'Em Cotação').length}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+      );
+  }
+
+  // --- DASHBOARD EXECUTIVO (ADMIN/GERENTE) ---
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
             {/* KPI Section */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <KPICard title="Total Compras" value={`R$ ${kpis.totalPurchases.toLocaleString('pt-BR', {maximumFractionDigits: 0})}`} trend="up" icon={ShoppingBag} color="blue" />
-                <KPICard title="Economia Estimada" value={`R$ ${kpis.savings.toLocaleString('pt-BR', {maximumFractionDigits: 0})}`} trend="up" icon={TrendingDown} color="green" />
-                <KPICard title="Eventos em Aberto" value={kpis.openEvents} trend="down" icon={ShieldAlert} color="amber" />
-                <KPICard title="Ticket Médio" value={`R$ ${kpis.avgTicket.toLocaleString('pt-BR', {maximumFractionDigits: 0})}`} trend="up" icon={DollarSign} color="slate" />
+                <KPICard title="Total Compras" value={`R$ ${kpis?.totalPurchases.toLocaleString('pt-BR', {maximumFractionDigits: 0})}`} trend="up" icon={ShoppingBag} color="blue" />
+                <KPICard title="Economia Estimada" value={`R$ ${kpis?.savings.toLocaleString('pt-BR', {maximumFractionDigits: 0})}`} trend="up" icon={TrendingDown} color="green" />
+                <KPICard title="Eventos em Aberto" value={kpis?.openEvents} trend="down" icon={ShieldAlert} color="amber" />
+                <KPICard title="Ticket Médio" value={`R$ ${kpis?.avgTicket.toLocaleString('pt-BR', {maximumFractionDigits: 0})}`} trend="up" icon={DollarSign} color="slate" />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -277,53 +279,6 @@ const Dashboard: React.FC = () => {
                         <span className="font-bold text-slate-800">{item.value}</span>
                     </div>
                     ))}
-                </div>
-                </div>
-            </div>
-
-            {/* Quick Actions & Pending */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className="font-bold text-slate-800">Aprovações Pendentes (OC)</h3>
-                </div>
-                <div className="space-y-4">
-                    {pendingOrders.length === 0 ? (
-                        <div className="p-8 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                            <CheckCircle size={24} className="mx-auto mb-2 text-slate-300"/>
-                            <p className="text-xs font-bold uppercase">Nenhuma pendência</p>
-                        </div>
-                    ) : (
-                        pendingOrders.map((o) => (
-                        <div key={o.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors border border-transparent hover:border-slate-200 group">
-                            <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center border border-slate-200 text-blue-600">
-                                <ShoppingBag size={24} />
-                            </div>
-                            <div>
-                                <p className="font-bold text-slate-800">{o.code}</p>
-                                <p className="text-xs text-slate-500">Fornecedor ID: {o.supplierId}</p>
-                            </div>
-                            </div>
-                            <div className="text-right">
-                            <p className="font-bold text-slate-800">R$ {o.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-                            <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">Aguardando</span>
-                            </div>
-                        </div>
-                        ))
-                    )}
-                </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                <h3 className="font-bold text-slate-800 mb-6">Análise Rápida de Fornecedores</h3>
-                <div className="space-y-4">
-                    <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center text-center">
-                        <div>
-                            <Package size={24} className="mx-auto text-slate-300 mb-2"/>
-                            <p className="text-xs text-slate-500">Sem alertas de fornecedores no momento.</p>
-                        </div>
-                    </div>
                 </div>
                 </div>
             </div>
