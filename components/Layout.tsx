@@ -100,6 +100,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { id: 3, title: 'Entrega Realizada', desc: 'Peças da OC-2024-003 recebidas na oficina.', time: '1d', icon: CheckCircle2, color: 'green', read: true },
   ]);
 
+  const unreadCount = notifications.filter(n => !n.read).length;
+
   const addToast = (type: 'success' | 'error' | 'warning', title: string, message: string) => {
     const id = Date.now();
     setToasts(prev => [...prev, { id, type, title, message }]);
@@ -114,6 +116,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const clearAllNotifications = () => {
     setNotifications([]);
+    addToast('success', 'Limpeza Concluída', 'Todas as notificações foram removidas.');
   };
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -157,6 +160,19 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   return (
     <div className="flex min-h-screen bg-slate-50 print:bg-white">
+      {/* Styles for Bell Animation */}
+      <style>{`
+        @keyframes bell-ring {
+          0%, 100% { transform: rotate(0deg); }
+          20%, 60% { transform: rotate(15deg); }
+          40%, 80% { transform: rotate(-15deg); }
+        }
+        .animate-bell-ring {
+          animation: bell-ring 2s infinite ease-in-out;
+          transform-origin: top center;
+        }
+      `}</style>
+
       {/* Toast Container */}
       <div className="fixed top-6 right-6 z-[120] flex flex-col gap-3 pointer-events-none">
         {toasts.map(toast => (
@@ -255,7 +271,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       </aside>
 
       <main className="flex-1 ml-64 p-8 relative print:ml-0 print:p-0 print:w-full">
-        {/* Header e restante do layout permanecem iguais... */}
+        {/* Header com Sino Proeminente */}
         <header className="flex justify-between items-center mb-8 print:hidden">
           <div>
             <h2 className="text-2xl font-bold text-slate-800">
@@ -275,14 +291,29 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <Sparkles size={16} /> IA Visionária
             </button>
 
+            {/* NOTIFICATION BELL AREA */}
             <div className="relative">
               <button 
                   onClick={() => setShowNotifications(!showNotifications)}
-                  className={`p-3 rounded-2xl transition-all relative group ${showNotifications ? 'bg-slate-800 text-white shadow-lg shadow-blue-900/20' : 'bg-white text-slate-400 hover:text-blue-600 border border-slate-200 shadow-sm'}`}
+                  className={`p-3 rounded-2xl transition-all relative group duration-300 ${
+                    showNotifications 
+                      ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/30 scale-110' 
+                      : unreadCount > 0
+                        ? 'bg-white text-blue-600 shadow-lg shadow-blue-200 border border-blue-100 hover:bg-blue-50'
+                        : 'bg-white text-slate-400 hover:text-slate-600 border border-slate-200 shadow-sm'
+                  }`}
                 >
-                  <Bell size={22} />
-                  {notifications.filter(n => !n.read).length > 0 && (
-                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-white flex items-center justify-center text-[8px] font-bold text-white animate-pulse"></span>
+                  <div className={unreadCount > 0 && !showNotifications ? 'animate-bell-ring' : ''}>
+                    <Bell size={24} strokeWidth={showNotifications || unreadCount > 0 ? 2.5 : 2} />
+                  </div>
+                  
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 w-5 h-5 flex items-center justify-center">
+                        <span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75 animate-ping"></span>
+                        <span className="relative inline-flex rounded-full h-5 w-5 bg-red-600 border-2 border-white items-center justify-center text-[9px] font-bold text-white shadow-sm">
+                            {unreadCount > 9 ? '9+' : unreadCount}
+                        </span>
+                    </span>
                   )}
               </button>
 
@@ -290,36 +321,44 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               {showNotifications && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)}></div>
-                  <div className="absolute right-0 top-full mt-4 w-96 bg-white rounded-[32px] shadow-2xl border border-slate-100 overflow-hidden z-50 animate-in fade-in slide-in-from-top-4 origin-top-right">
-                     <div className="p-6 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
-                        <div className="flex items-center gap-2">
-                           <div className="bg-white p-2 rounded-xl shadow-sm"><Bell size={16} className="text-blue-600"/></div>
-                           <h3 className="font-bold text-slate-800 text-sm">Central de Avisos</h3>
+                  <div className="absolute right-0 top-full mt-4 w-96 bg-white/95 backdrop-blur-xl rounded-[32px] shadow-2xl border border-white/50 overflow-hidden z-50 animate-in fade-in slide-in-from-top-4 origin-top-right ring-1 ring-black/5">
+                     <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/80">
+                        <div className="flex items-center gap-3">
+                           <div className="bg-blue-100 p-2 rounded-xl text-blue-700">
+                                <Bell size={18} />
+                           </div>
+                           <div>
+                               <h3 className="font-bold text-slate-800 text-sm">Notificações</h3>
+                               <p className="text-[10px] text-slate-500 font-medium">{unreadCount} pendentes</p>
+                           </div>
                         </div>
                         {notifications.length > 0 && (
-                          <button onClick={clearAllNotifications} className="text-[10px] font-black uppercase text-slate-400 hover:text-blue-600 px-2 py-1 rounded transition-colors">
-                            Limpar Tudo
+                          <button 
+                            onClick={clearAllNotifications} 
+                            className="text-[10px] font-black uppercase text-slate-400 hover:text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-all flex items-center gap-1"
+                          >
+                            <Trash2 size={12} /> Limpar Tudo
                           </button>
                         )}
                      </div>
-                     <div className="max-h-[350px] overflow-y-auto p-2">
+                     <div className="max-h-[400px] overflow-y-auto p-2 custom-scrollbar">
                         {notifications.length === 0 ? (
-                          <div className="p-10 text-center">
+                          <div className="p-12 text-center">
                              <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
                                 <CheckCheck size={32} />
                              </div>
-                             <p className="text-sm font-bold text-slate-600">Tudo em dia!</p>
-                             <p className="text-xs text-slate-400 mt-1">Você não possui novas notificações.</p>
+                             <p className="text-sm font-bold text-slate-600">Tudo limpo!</p>
+                             <p className="text-xs text-slate-400 mt-1">Você está atualizado.</p>
                           </div>
                         ) : (
                           notifications.map((n) => (
-                            <div key={n.id} className="p-4 mb-1 rounded-2xl hover:bg-slate-50 transition-all flex gap-4 group relative cursor-pointer border border-transparent hover:border-slate-100">
-                               <div className={`shrink-0 w-12 h-12 rounded-2xl bg-${n.color}-50 text-${n.color}-600 flex items-center justify-center shadow-sm`}>
-                                  <n.icon size={20} />
+                            <div key={n.id} className="p-4 mb-1 rounded-2xl hover:bg-blue-50/50 transition-all flex gap-4 group relative cursor-pointer border border-transparent hover:border-blue-100">
+                               <div className={`shrink-0 w-10 h-10 rounded-xl bg-${n.color}-50 text-${n.color}-600 flex items-center justify-center shadow-sm`}>
+                                  <n.icon size={18} />
                                </div>
                                <div className="flex-1 min-w-0 pr-6">
                                   <div className="flex justify-between items-start mb-1">
-                                     <p className="font-bold text-slate-800 text-xs truncate">{n.title}</p>
+                                     <p className={`font-bold text-xs truncate ${!n.read ? 'text-slate-900' : 'text-slate-600'}`}>{n.title}</p>
                                      <span className="text-[9px] font-bold text-slate-400 whitespace-nowrap bg-slate-100 px-1.5 py-0.5 rounded">{n.time}</span>
                                   </div>
                                   <p className="text-[11px] text-slate-500 leading-snug line-clamp-2">{n.desc}</p>
@@ -327,17 +366,20 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                                <button 
                                   onClick={(e) => { e.stopPropagation(); removeNotification(n.id); }}
                                   className="absolute right-2 top-2 p-1.5 text-slate-300 hover:text-red-500 hover:bg-white rounded-lg opacity-0 group-hover:opacity-100 transition-all shadow-sm"
-                                  title="Arquivar"
+                                  title="Remover"
                                >
                                   <X size={14} />
                                </button>
+                               {!n.read && (
+                                   <span className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
+                               )}
                             </div>
                           ))
                         )}
                      </div>
-                     <div className="p-3 bg-slate-50 border-t border-slate-100 text-center">
-                        <Link to="/notificacoes" onClick={() => setShowNotifications(false)} className="text-[10px] font-black uppercase text-blue-600 hover:text-blue-700 transition-colors flex items-center justify-center gap-2">
-                           Ver Histórico Completo
+                     <div className="p-3 bg-slate-50/80 border-t border-slate-100 text-center backdrop-blur-md">
+                        <Link to="/notificacoes" onClick={() => setShowNotifications(false)} className="text-[10px] font-black uppercase text-blue-600 hover:text-blue-700 transition-colors flex items-center justify-center gap-2 py-1">
+                           Ver Histórico Completo <ChevronDown size={12}/>
                         </Link>
                      </div>
                   </div>
