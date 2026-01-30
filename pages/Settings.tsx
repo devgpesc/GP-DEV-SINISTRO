@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Save, CheckCircle, Database, Bell, Shield, Globe, Mail, User, Building, Users, MoreVertical, Edit2, Plus, Loader2, X, AlertTriangle, Copy, Check, Send, Info, Key, Server, Cpu, ToggleLeft, ToggleRight, Zap, Brain, MessageSquare, UserPlus, Link as LinkIcon, Trash2, ClipboardList, Clock, RefreshCw } from 'lucide-react';
+import { Settings as SettingsIcon, Save, CheckCircle, Database, Bell, Shield, Globe, Mail, User, Building, Users, MoreVertical, Edit2, Plus, Loader2, X, AlertTriangle, Copy, Check, Send, Info, Key, Server, Cpu, ToggleLeft, ToggleRight, Zap, Brain, MessageSquare, UserPlus, Link as LinkIcon, Trash2, ClipboardList, Clock, RefreshCw, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { useToast } from '../context/ToastContext';
 import { auditService } from '../services/auditService';
@@ -20,10 +20,11 @@ const SYSTEM_FEATURES = [
 const Settings: React.FC = () => {
   const { addToast } = useToast();
   const { profile } = useAuth();
-  const [activeTab, setActiveTab] = useState('ai_config'); // Default para a aba problemática
+  const [activeTab, setActiveTab] = useState('ai_config');
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   
   // Company Info State
   const [companyInfo, setCompanyInfo] = useState({
@@ -87,34 +88,43 @@ const Settings: React.FC = () => {
 
   useEffect(() => {
     if (inviteModalOpen && !generatedLink) {
-        // Reset link on open if empty
         setGeneratedLink(`${window.location.origin}/register`);
         loadInvitations();
     }
   }, [inviteModalOpen]);
 
+  const toggleShowKey = (keyName: string) => {
+      setShowKeys(prev => ({ ...prev, [keyName]: !prev[keyName] }));
+  };
+
   const loadSettings = async () => {
     setLoading(true);
-    const { data } = await supabase.from('saas_settings').select('*').limit(1).maybeSingle();
-    if (data) {
-        setCompanyInfo({
-            company_name: data.company_name || 'AutoClaims Pro',
-            cnpj: data.cnpj || '',
-            address: data.address || '',
-            email: data.email || '',
-            phone: data.phone || '',
-            logo_url: data.logo_url || '',
-            apibrasil_token: data.apibrasil_token || '',
-            detran_key: data.detran_key || '',
-            ai_provider: data.ai_provider || 'google',
-            ai_model: data.ai_model || 'gemini-3-pro-preview',
-            openai_key: data.openai_key || '',
-            gemini_key: data.gemini_key || '',
-            anthropic_key: data.anthropic_key || '',
-            groq_key: data.groq_key || ''
-        });
+    try {
+        const { data } = await supabase.from('saas_settings').select('*').limit(1).maybeSingle();
+        if (data) {
+            setCompanyInfo({
+                company_name: data.company_name || 'AutoClaims Pro',
+                cnpj: data.cnpj || '',
+                address: data.address || '',
+                email: data.email || '',
+                phone: data.phone || '',
+                logo_url: data.logo_url || '',
+                apibrasil_token: data.apibrasil_token || '',
+                detran_key: data.detran_key || '',
+                ai_provider: data.ai_provider || 'google',
+                ai_model: data.ai_model || 'gemini-3-pro-preview',
+                openai_key: data.openai_key || '',
+                gemini_key: data.gemini_key || '',
+                anthropic_key: data.anthropic_key || '',
+                groq_key: data.groq_key || ''
+            });
+        }
+    } catch (e) {
+        console.error("Erro ao carregar settings", e);
+        addToast('error', 'Erro', 'Falha ao carregar configurações.');
+    } finally {
+        setLoading(false);
     }
-    setLoading(false);
   };
 
   const loadUsers = async () => {
@@ -148,25 +158,39 @@ const Settings: React.FC = () => {
   const handleSaveAll = async () => {
     setSaving(true);
     
-    // Payload seguro
+    // Payload seguro com chaves trimadas para evitar erros de espaço
     const payload = {
         id: 1, 
         ...companyInfo,
+        openai_key: companyInfo.openai_key?.trim(),
+        gemini_key: companyInfo.gemini_key?.trim(),
+        anthropic_key: companyInfo.anthropic_key?.trim(),
+        groq_key: companyInfo.groq_key?.trim(),
         updated_at: new Date().toISOString()
     };
 
-    const { error } = await supabase.from('saas_settings').upsert(payload);
+    try {
+        const { error } = await supabase.from('saas_settings').upsert(payload);
 
-    if (!error) {
+        if (error) throw error;
+
         await auditService.log('Update Settings', 'Settings', 'Global', { provider: companyInfo.ai_provider });
         setSaved(true);
-        addToast('success', 'Configurações Salvas', `O provedor ${companyInfo.ai_provider.toUpperCase()} foi definido como ativo.`);
+        addToast('success', 'Configurações Salvas', `O provedor ${companyInfo.ai_provider.toUpperCase()} foi atualizado.`);
         setTimeout(() => setSaved(false), 3000);
-    } else {
-        console.error(error);
-        addToast('error', 'Erro ao Salvar', 'Execute a Migration no Supabase para corrigir o esquema da tabela saas_settings.');
+        
+    } catch (error: any) {
+        console.error("Erro ao salvar:", error);
+        
+        // Tratamento específico se a tabela não tiver colunas (Migration faltando)
+        if (error.message?.includes('column') && error.message?.includes('does not exist')) {
+            addToast('error', 'Erro de Banco de Dados', 'A tabela de configurações está desatualizada. Execute a migration SQL no Supabase.');
+        } else {
+            addToast('error', 'Erro ao Salvar', error.message || 'Falha desconhecida. Tente novamente.');
+        }
+    } finally {
+        setSaving(false); // Garante que o loading pare
     }
-    setSaving(false);
   };
 
   const handleEditUser = (user: any) => {
@@ -350,7 +374,7 @@ const Settings: React.FC = () => {
                   </div>
               )}
 
-              {/* ABA DE INTELIGÊNCIA ARTIFICIAL (CORRIGIDA) */}
+              {/* ABA DE INTELIGÊNCIA ARTIFICIAL (CORRIGIDA E MELHORADA) */}
               {activeTab === 'ai_config' && (
                   <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
                      <div className="flex items-center gap-3 pb-6 border-b border-slate-50">
@@ -384,54 +408,86 @@ const Settings: React.FC = () => {
                         <div className="grid grid-cols-1 gap-6">
                             
                             {/* GOOGLE KEY */}
-                            <div className={`transition-all duration-300 ${companyInfo.ai_provider === 'google' ? 'opacity-100' : 'opacity-60 grayscale'}`}>
-                                <label className="block text-[10px] font-bold text-slate-500 mb-2 flex items-center gap-2">
+                            <div className={`transition-all duration-300 ${companyInfo.ai_provider === 'google' ? 'opacity-100 ring-2 ring-indigo-500/20 rounded-2xl p-2 bg-white' : 'opacity-60 grayscale'}`}>
+                                <label className="block text-[10px] font-bold text-slate-500 mb-2 flex items-center gap-2 px-2">
                                     <Zap size={12} className="text-blue-500"/> Google Gemini API Key
                                     {companyInfo.ai_provider === 'google' && <span className="text-[9px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-black uppercase">Ativo</span>}
                                 </label>
                                 <div className="relative">
                                     <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
-                                    <input type="text" className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20" 
-                                    value={companyInfo.gemini_key} onChange={e => setCompanyInfo({...companyInfo, gemini_key: e.target.value})} placeholder="sk-..." />
+                                    <input 
+                                        type={showKeys['google'] ? "text" : "password"} 
+                                        className="w-full pl-12 pr-12 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20" 
+                                        value={companyInfo.gemini_key} 
+                                        onChange={e => setCompanyInfo({...companyInfo, gemini_key: e.target.value})} 
+                                        placeholder="sk-..." 
+                                    />
+                                    <button type="button" onClick={() => toggleShowKey('google')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-600">
+                                        {showKeys['google'] ? <EyeOff size={16}/> : <Eye size={16}/>}
+                                    </button>
                                 </div>
                             </div>
 
                             {/* OPENAI KEY */}
-                            <div className={`transition-all duration-300 ${companyInfo.ai_provider === 'openai' ? 'opacity-100' : 'opacity-60 grayscale'}`}>
-                                <label className="block text-[10px] font-bold text-slate-500 mb-2 flex items-center gap-2">
+                            <div className={`transition-all duration-300 ${companyInfo.ai_provider === 'openai' ? 'opacity-100 ring-2 ring-green-500/20 rounded-2xl p-2 bg-white' : 'opacity-60 grayscale'}`}>
+                                <label className="block text-[10px] font-bold text-slate-500 mb-2 flex items-center gap-2 px-2">
                                     <Zap size={12} className="text-green-500"/> OpenAI API Key (GPT-4)
                                     {companyInfo.ai_provider === 'openai' && <span className="text-[9px] bg-green-100 text-green-700 px-2 py-0.5 rounded font-black uppercase">Ativo</span>}
                                 </label>
                                 <div className="relative">
                                     <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
-                                    <input type="text" className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20" 
-                                    value={companyInfo.openai_key} onChange={e => setCompanyInfo({...companyInfo, openai_key: e.target.value})} placeholder="sk-proj-..." />
+                                    <input 
+                                        type={showKeys['openai'] ? "text" : "password"} 
+                                        className="w-full pl-12 pr-12 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20" 
+                                        value={companyInfo.openai_key} 
+                                        onChange={e => setCompanyInfo({...companyInfo, openai_key: e.target.value})} 
+                                        placeholder="sk-proj-..." 
+                                    />
+                                    <button type="button" onClick={() => toggleShowKey('openai')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-600">
+                                        {showKeys['openai'] ? <EyeOff size={16}/> : <Eye size={16}/>}
+                                    </button>
                                 </div>
                             </div>
 
                             {/* ANTHROPIC KEY */}
-                            <div className={`transition-all duration-300 ${companyInfo.ai_provider === 'anthropic' ? 'opacity-100' : 'opacity-60 grayscale'}`}>
-                                <label className="block text-[10px] font-bold text-slate-500 mb-2 flex items-center gap-2">
+                            <div className={`transition-all duration-300 ${companyInfo.ai_provider === 'anthropic' ? 'opacity-100 ring-2 ring-amber-500/20 rounded-2xl p-2 bg-white' : 'opacity-60 grayscale'}`}>
+                                <label className="block text-[10px] font-bold text-slate-500 mb-2 flex items-center gap-2 px-2">
                                     <Zap size={12} className="text-amber-500"/> Anthropic API Key (Claude 3)
                                     {companyInfo.ai_provider === 'anthropic' && <span className="text-[9px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-black uppercase">Ativo</span>}
                                 </label>
                                 <div className="relative">
                                     <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
-                                    <input type="text" className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20" 
-                                    value={companyInfo.anthropic_key} onChange={e => setCompanyInfo({...companyInfo, anthropic_key: e.target.value})} placeholder="sk-ant-..." />
+                                    <input 
+                                        type={showKeys['anthropic'] ? "text" : "password"} 
+                                        className="w-full pl-12 pr-12 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20" 
+                                        value={companyInfo.anthropic_key} 
+                                        onChange={e => setCompanyInfo({...companyInfo, anthropic_key: e.target.value})} 
+                                        placeholder="sk-ant-..." 
+                                    />
+                                    <button type="button" onClick={() => toggleShowKey('anthropic')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-600">
+                                        {showKeys['anthropic'] ? <EyeOff size={16}/> : <Eye size={16}/>}
+                                    </button>
                                 </div>
                             </div>
 
                             {/* GROQ KEY */}
-                            <div className={`transition-all duration-300 ${companyInfo.ai_provider === 'groq' ? 'opacity-100' : 'opacity-60 grayscale'}`}>
-                                <label className="block text-[10px] font-bold text-slate-500 mb-2 flex items-center gap-2">
+                            <div className={`transition-all duration-300 ${companyInfo.ai_provider === 'groq' ? 'opacity-100 ring-2 ring-red-500/20 rounded-2xl p-2 bg-white' : 'opacity-60 grayscale'}`}>
+                                <label className="block text-[10px] font-bold text-slate-500 mb-2 flex items-center gap-2 px-2">
                                     <Zap size={12} className="text-red-500"/> Groq API Key (Llama 3)
                                     {companyInfo.ai_provider === 'groq' && <span className="text-[9px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-black uppercase">Ativo</span>}
                                 </label>
                                 <div className="relative">
                                     <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
-                                    <input type="text" className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20" 
-                                    value={companyInfo.groq_key} onChange={e => setCompanyInfo({...companyInfo, groq_key: e.target.value})} placeholder="gsk_..." />
+                                    <input 
+                                        type={showKeys['groq'] ? "text" : "password"} 
+                                        className="w-full pl-12 pr-12 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20" 
+                                        value={companyInfo.groq_key} 
+                                        onChange={e => setCompanyInfo({...companyInfo, groq_key: e.target.value})} 
+                                        placeholder="gsk_..." 
+                                    />
+                                    <button type="button" onClick={() => toggleShowKey('groq')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-600">
+                                        {showKeys['groq'] ? <EyeOff size={16}/> : <Eye size={16}/>}
+                                    </button>
                                 </div>
                             </div>
                         </div>
