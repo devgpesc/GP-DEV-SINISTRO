@@ -1,6 +1,6 @@
+
 import React from 'react';
-import * as ReactRouterDOM from 'react-router-dom';
-const { BrowserRouter: Router, Routes, Route, Navigate } = ReactRouterDOM;
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext.tsx';
 import { ToastProvider } from './context/ToastContext.tsx';
 import { PrivateRoute } from './components/PrivateRoute.tsx';

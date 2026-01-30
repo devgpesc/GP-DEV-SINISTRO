@@ -1,6 +1,6 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
-import * as ReactRouterDOM from 'react-router-dom';
-const { useNavigate } = ReactRouterDOM;
+import { useNavigate } from 'react-router-dom';
 import { 
   CheckCircle2, TrendingDown, ShoppingCart, Trophy, DollarSign, ArrowRight, 
   Loader2, AlertTriangle, RefreshCw, XCircle, Edit2, Save, X, MessageSquare, 

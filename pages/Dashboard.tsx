@@ -12,8 +12,7 @@ import {
 import { supabase } from '../services/supabaseClient';
 import { PurchaseOrder, Event } from '../types';
 import { useAuth } from '../context/AuthContext';
-import * as ReactRouterDOM from 'react-router-dom';
-const { Link } = ReactRouterDOM;
+import { Link } from 'react-router-dom';
 
 const KPICard = ({ title, value, change, trend, icon: Icon, color }: any) => (
   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
