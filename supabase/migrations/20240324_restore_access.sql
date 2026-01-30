@@ -1,10 +1,22 @@
 
--- MIGRATION: RESTAURAR ACESSO SUPER ADMIN
+-- MIGRATION: RESTAURAR ACESSO SUPER ADMIN (CORREÇÃO DE CONSTRAINT)
 -- Data: 2024-03-24
 
 DO $$
 BEGIN
-    -- 1. Forçar atualização do perfil do usuário específico
+    -- 1. CORREÇÃO DA CONSTRAINT "profiles_role_check"
+    -- O erro 23514 ocorre porque a tabela tem uma validação que não aceita 'super_admin'.
+    -- Precisamos recriar essa validação aceitando o novo cargo.
+
+    -- Remove a restrição antiga se existir
+    ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS "profiles_role_check";
+
+    -- Adiciona a nova restrição incluindo 'super_admin'
+    ALTER TABLE public.profiles 
+    ADD CONSTRAINT "profiles_role_check" 
+    CHECK (role IN ('super_admin', 'Admin', 'Gerente', 'Usuário'));
+
+    -- 2. Forçar atualização do perfil do usuário específico
     UPDATE public.profiles
     SET 
         role = 'super_admin',
@@ -19,8 +31,7 @@ BEGIN
         updated_at = now()
     WHERE email = 'devgpesc@gmail.com';
 
-    -- 2. Garantir que a política de RLS permita que o Super Admin veja tudo
-    -- Isso previne que a tela fique carregando infinitamente por falta de permissão de leitura
+    -- 3. Garantir que a política de RLS permita que o Super Admin veja tudo
     DROP POLICY IF EXISTS "Admins can do everything" ON public.profiles;
     
     CREATE POLICY "Admins can do everything" ON public.profiles
