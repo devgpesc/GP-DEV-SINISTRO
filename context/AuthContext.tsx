@@ -127,6 +127,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const currentProfile = profileRef.current;
                 
                 // Atualiza perfil se necessário (se não existe ou se o ID mudou)
+                // Se a role mudou no banco, forçamos um refresh
                 if (!currentProfile || currentProfile.id !== newSession.user.id) {
                     const p = await fetchProfile(
                         newSession.user.id, 

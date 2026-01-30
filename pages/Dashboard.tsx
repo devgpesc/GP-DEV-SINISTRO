@@ -55,10 +55,15 @@ const Dashboard: React.FC = () => {
 
   const loadDashboardData = async () => {
     setLoading(true);
+    
+    // SAFETY TIMEOUT: Garante que o loading suma após 8 segundos mesmo se o banco travar
     if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
     loadingTimeoutRef.current = setTimeout(() => {
-        setLoading((prev) => prev ? false : prev);
-    }, 10000);
+        setLoading((prev) => {
+            if (prev) console.warn("Dashboard loading timeout forced.");
+            return false;
+        });
+    }, 8000);
 
     try {
         // Se for usuário comum, carregamos menos dados (apenas eventos para contagem)
@@ -85,7 +90,7 @@ const Dashboard: React.FC = () => {
         loadDashboardData();
     }
     return () => { if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current); };
-  }, [profile?.id, profile?.role]); // Depend on primitives to prevent loops
+  }, [profile?.id, profile?.role]); // Dependências primitivas para evitar loop
 
   // --- KPI CALCULATIONS (Executive Only) ---
   const kpis = useMemo(() => {
