@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   Plus, Search, Eye, X, AlertCircle, 
@@ -141,7 +140,7 @@ const Events: React.FC = () => {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      const newAttachments = Array.from(files).map(file => ({
+      const newAttachments = Array.from(files).map((file: File) => ({
         id: Math.random().toString(36).substr(2, 9),
         name: file.name,
         type: file.type,

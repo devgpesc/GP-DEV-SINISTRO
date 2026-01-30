@@ -5,7 +5,7 @@ import {
   LayoutDashboard, FileText, ShoppingCart, Users, Truck, 
   BarChart3, Settings, Package, Car, Bell, Search, UserCircle, X, ShoppingBag, Clock, Trash2, CheckCheck,
   Globe, ShieldCheck, Wifi, WifiOff, AlertTriangle, CheckCircle2, UserCheck, Mail, Phone, MapPin, Key,
-  Camera, Save, Loader2, Edit3, AlertCircle, LogOut, ChevronDown, Zap, Sparkles, Info
+  Camera, Save, Loader2, Edit3, AlertCircle, LogOut, ChevronDown, Zap, Sparkles, Info, Menu
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { isSupabaseConfigured, supabase } from '../services/supabaseClient';
@@ -33,9 +33,10 @@ interface NotificationItem {
     link?: string;
 }
 
-const NavItem = ({ to, icon: Icon, label, active, badge }: { to: string, icon: any, label: string, active: boolean, badge?: string }) => (
+const NavItem = ({ to, icon: Icon, label, active, badge, onClick }: { to: string, icon: any, label: string, active: boolean, badge?: string, onClick?: () => void }) => (
   <Link 
     to={to} 
+    onClick={onClick}
     className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors relative group ${
       active 
         ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
@@ -58,6 +59,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [isAiChatOpen, setIsAiChatOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   // Company Logo
   const [companyLogo, setCompanyLogo] = useState('');
@@ -110,20 +112,15 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   useEffect(() => {
       if (!user) return;
       loadNotifications();
-      
-      // Opcional: Polling a cada 60s
       const interval = setInterval(loadNotifications, 60000);
       return () => clearInterval(interval);
-  }, [user, profile]); // Recarrega se o perfil mudar (permissões)
+  }, [user, profile]);
 
   const loadNotifications = async () => {
       setLoadingNotifications(true);
       const newNotifications: NotificationItem[] = [];
 
       try {
-          // 1. Verificar Alertas de Sistema (Dinâmicos)
-          
-          // A) Ordens de Compra Pendentes (Se tiver permissão de aprovar)
           if (canApprove) {
               const { count } = await supabase.from('purchase_orders')
                   .select('*', { count: 'exact', head: true })
@@ -143,7 +140,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               }
           }
 
-          // B) Eventos Atrasados (Exemplo SLA: > 2 dias em Cotação)
           const twoDaysAgo = new Date();
           twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
           
@@ -165,7 +161,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               });
           }
 
-          // 2. Buscar Notificações Persistidas do Banco
           const { data: dbNotifs } = await supabase.from('notifications')
               .select('*')
               .eq('user_id', user?.id)
@@ -198,18 +193,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   };
 
   const markAsRead = async (id: string | number) => {
-      // Se for notificação de sistema (string fixa), apenas remove da visualização local
-      if (typeof id === 'string' && id.startsWith('sys-')) {
-          // Não faz nada, pois é um estado do sistema. O usuário deve resolver a pendência (ex: aprovar a compra) para sumir.
-          // Opcional: Redirecionar
-          const notif = notifications.find(n => n.id === id);
-          if (notif?.link) {
-             // Navegação seria ideal aqui, mas Link wrapper resolve na UI
-          }
-          return;
-      }
+      if (typeof id === 'string' && id.startsWith('sys-')) return;
 
-      // Se for do banco, atualiza
       if (typeof id === 'string') {
           await supabase.from('notifications').update({ read: true }).eq('id', id);
           setNotifications(prev => prev.filter(n => n.id !== id));
@@ -217,12 +202,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   };
 
   const clearAllNotifications = async () => {
-      // Marca todas as do banco como lidas
       const dbIds = notifications.filter(n => typeof n.id === 'string' && !n.id.startsWith('sys-')).map(n => n.id);
       if (dbIds.length > 0) {
           await supabase.from('notifications').update({ read: true }).in('id', dbIds);
       }
-      // Recarrega (as de sistema continuarão lá se a pendência persistir)
       loadNotifications();
       addToast('success', 'Atualizado', 'Notificações arquivadas.');
   };
@@ -272,8 +255,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     }
   };
 
+  // Fecha o menu mobile ao clicar em um link
+  const closeMobileMenu = () => setIsMobileMenuOpen(false);
+
   return (
-    <div className="flex min-h-screen bg-slate-50 print:bg-white">
+    <div className="flex min-h-screen bg-slate-50 print:bg-white overflow-x-hidden">
       <style>{`
         @keyframes bell-ring {
           0%, 100% { transform: rotate(0deg); }
@@ -305,59 +291,77 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         ))}
       </div>
 
-      <aside className="w-64 bg-slate-900 text-white flex flex-col fixed h-full z-20 print:hidden">
+      {/* Mobile Menu Overlay */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-30 md:hidden animate-in fade-in"
+          onClick={() => setIsMobileMenuOpen(false)}
+        ></div>
+      )}
+
+      {/* Sidebar - Responsive */}
+      <aside className={`
+        fixed top-0 left-0 h-full w-64 bg-slate-900 text-white flex flex-col z-40 transition-transform duration-300 ease-in-out
+        ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 print:hidden
+      `}>
         <div className="p-6">
-          <div className="flex items-center gap-2 mb-8">
-            {companyLogo ? (
-                <img src={companyLogo} className="h-8 w-auto bg-white/10 rounded p-1 object-contain" alt="Logo" />
-            ) : (
-                <div className="bg-blue-600 p-2 rounded-lg"><Car className="text-white" size={24} /></div>
-            )}
-            <h1 className="text-xl font-bold tracking-tight">AutoClaims<span className="text-blue-500">Pro</span></h1>
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-2">
+                {companyLogo ? (
+                    <img src={companyLogo} className="h-8 w-auto bg-white/10 rounded p-1 object-contain" alt="Logo" />
+                ) : (
+                    <div className="bg-blue-600 p-2 rounded-lg"><Car className="text-white" size={24} /></div>
+                )}
+                <h1 className="text-xl font-bold tracking-tight">AutoClaims<span className="text-blue-500">Pro</span></h1>
+            </div>
+            {/* Botão fechar no mobile */}
+            <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-white">
+                <X size={24}/>
+            </button>
           </div>
           
-          <nav className="space-y-1">
+          <nav className="space-y-1 overflow-y-auto max-h-[calc(100vh-180px)] custom-scrollbar">
             {isSuperAdmin && (
               <div className="mb-6 pb-6 border-b border-slate-800">
                 <p className="px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Administração Global</p>
-                <NavItem to="/saas-admin" icon={Globe} label="Gestão SaaS" active={location.pathname === '/saas-admin'} badge="Super" />
+                <NavItem to="/saas-admin" icon={Globe} label="Gestão SaaS" active={location.pathname === '/saas-admin'} badge="Super" onClick={closeMobileMenu} />
               </div>
             )}
 
             <p className="px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Operacional</p>
-            <NavItem to="/" icon={LayoutDashboard} label="Dashboard" active={location.pathname === '/'} />
-            <NavItem to="/eventos" icon={FileText} label="Eventos" active={location.pathname === '/eventos'} />
+            <NavItem to="/" icon={LayoutDashboard} label="Dashboard" active={location.pathname === '/'} onClick={closeMobileMenu} />
+            <NavItem to="/eventos" icon={FileText} label="Eventos" active={location.pathname === '/eventos'} onClick={closeMobileMenu} />
             
             {(canViewFinancial || canApprove) && (
                 <>
-                    <NavItem to="/cotacoes" icon={Search} label="Cotações" active={location.pathname === '/cotacoes'} />
-                    <NavItem to="/compras" icon={ShoppingCart} label="Compras" active={location.pathname === '/compras'} />
-                    <NavItem to="/entregas" icon={Truck} label="Entregas" active={location.pathname === '/entregas'} />
+                    <NavItem to="/cotacoes" icon={Search} label="Cotações" active={location.pathname === '/cotacoes'} onClick={closeMobileMenu} />
+                    <NavItem to="/compras" icon={ShoppingCart} label="Compras" active={location.pathname === '/compras'} onClick={closeMobileMenu} />
+                    <NavItem to="/entregas" icon={Truck} label="Entregas" active={location.pathname === '/entregas'} onClick={closeMobileMenu} />
                 </>
             )}
             
             {isManagerOrAdmin && (
                 <>
                     <p className="px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 mt-6">Gestão</p>
-                    <NavItem to="/associados" icon={UserCheck} label="Associados" active={location.pathname === '/associados'} />
-                    <NavItem to="/fornecedores" icon={Users} label="Fornecedores" active={location.pathname === '/fornecedores'} />
-                    <NavItem to="/veiculos" icon={Car} label="Veículos" active={location.pathname === '/veiculos'} />
-                    <NavItem to="/catalogo" icon={Package} label="Catálogo" active={location.pathname === '/catalogo'} />
+                    <NavItem to="/associados" icon={UserCheck} label="Associados" active={location.pathname === '/associados'} onClick={closeMobileMenu} />
+                    <NavItem to="/fornecedores" icon={Users} label="Fornecedores" active={location.pathname === '/fornecedores'} onClick={closeMobileMenu} />
+                    <NavItem to="/veiculos" icon={Car} label="Veículos" active={location.pathname === '/veiculos'} onClick={closeMobileMenu} />
+                    <NavItem to="/catalogo" icon={Package} label="Catálogo" active={location.pathname === '/catalogo'} onClick={closeMobileMenu} />
                 </>
             )}
 
             {(canViewReports || isManagerOrAdmin) && (
-                <NavItem to="/relatorios" icon={BarChart3} label="Relatórios" active={location.pathname === '/relatorios'} />
+                <NavItem to="/relatorios" icon={BarChart3} label="Relatórios" active={location.pathname === '/relatorios'} onClick={closeMobileMenu} />
             )}
 
             {(isSuperAdmin || profile?.role === 'Admin') && (
-                <NavItem to="/configuracoes" icon={Settings} label="Configurações" active={location.pathname === '/configuracoes'} />
+                <NavItem to="/configuracoes" icon={Settings} label="Configurações" active={location.pathname === '/configuracoes'} onClick={closeMobileMenu} />
             )}
           </nav>
         </div>
         
         <div className="mt-auto p-4 border-t border-slate-800">
-          <div className="flex items-center gap-3 px-2 py-3 cursor-pointer hover:bg-slate-800 rounded-lg transition-colors" onClick={() => setShowProfileModal(true)}>
+          <div className="flex items-center gap-3 px-2 py-3 cursor-pointer hover:bg-slate-800 rounded-lg transition-colors" onClick={() => { setShowProfileModal(true); closeMobileMenu(); }}>
             {profile?.avatar_url ? (
                 <img src={profile.avatar_url} className="w-10 h-10 rounded-full border-2 border-slate-700 object-cover" alt="Avatar" />
             ) : (
@@ -381,9 +385,33 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </div>
       </aside>
 
-      <main className="flex-1 ml-64 p-8 relative print:ml-0 print:p-0 print:w-full">
-        <header className="flex justify-between items-center mb-8 print:hidden">
-          <div>
+      {/* Main Content */}
+      <main className="flex-1 md:ml-64 p-4 md:p-8 relative print:ml-0 print:p-0 print:w-full min-w-0 w-full">
+        {/* Mobile Header Toggle */}
+        <div className="md:hidden flex justify-between items-center mb-6 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+            <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-slate-600 hover:bg-slate-50 rounded-xl">
+                <Menu size={24}/>
+            </button>
+            <div className="flex items-center gap-2">
+                {companyLogo ? (
+                    <img src={companyLogo} className="h-6 w-auto" alt="Logo" />
+                ) : (
+                    <span className="font-bold text-slate-800">AutoClaims</span>
+                )}
+            </div>
+            
+            {/* Mobile Notification Bell */}
+            <button 
+              onClick={() => setShowNotifications(!showNotifications)}
+              className="relative p-2 text-slate-600 hover:bg-slate-50 rounded-xl"
+            >
+                <Bell size={20}/>
+                {unreadCount > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full"></span>}
+            </button>
+        </div>
+
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 print:hidden">
+          <div className="hidden md:block">
             <h2 className="text-2xl font-bold text-slate-800">
                 {isSuperAdmin ? 'Painel Mestre' : 'Visão Operacional'}
             </h2>
@@ -391,7 +419,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 {isSuperAdmin ? 'Controle total de todas as instâncias do sistema.' : 'Operações e Inteligência em tempo real.'}
             </p>
           </div>
-          <div className="flex items-center gap-4 relative">
+          
+          {/* Desktop Actions */}
+          <div className="hidden md:flex items-center gap-4 relative">
             <button 
                 onClick={() => setIsAiChatOpen(true)}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-600/30 flex items-center gap-2 transition-all hover:scale-105 active:scale-95"
@@ -501,7 +531,16 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               )}
             </div>
           </div>
+          
+          {/* Mobile AI Button (Float) */}
+          <button 
+              onClick={() => setIsAiChatOpen(true)}
+              className="md:hidden fixed bottom-6 right-6 z-[90] bg-indigo-600 text-white w-12 h-12 rounded-full shadow-xl flex items-center justify-center animate-in zoom-in"
+          >
+              <Sparkles size={20} />
+          </button>
         </header>
+        
         {children}
       </main>
 

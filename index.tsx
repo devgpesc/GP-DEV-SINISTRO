@@ -1,4 +1,3 @@
-
 import React, { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -20,15 +19,10 @@ interface ErrorBoundaryState {
   error?: Error;
 }
 
-// Explicitly inheriting from React.Component and using a constructor to resolve 'Property props does not exist' error.
+// Explicitly inheriting from React.Component
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Explicitly defining state to resolve TypeScript errors
-  public state: ErrorBoundaryState;
-
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = { hasError: false };
-  }
+  // Explicitly defining state to resolve TypeScript errors and initializing directly
+  public state: ErrorBoundaryState = { hasError: false };
 
   static getDerivedStateFromError(error: Error) { 
     return { hasError: true, error }; 
