@@ -20,7 +20,7 @@ const SYSTEM_FEATURES = [
 const Settings: React.FC = () => {
   const { addToast } = useToast();
   const { profile } = useAuth();
-  const [activeTab, setActiveTab] = useState('general');
+  const [activeTab, setActiveTab] = useState('ai_config'); // Default para a aba problemática
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -147,20 +147,24 @@ const Settings: React.FC = () => {
 
   const handleSaveAll = async () => {
     setSaving(true);
-    const { error } = await supabase.from('saas_settings').upsert({
+    
+    // Payload seguro
+    const payload = {
         id: 1, 
         ...companyInfo,
         updated_at: new Date().toISOString()
-    });
+    };
+
+    const { error } = await supabase.from('saas_settings').upsert(payload);
 
     if (!error) {
-        await auditService.log('Update Settings', 'Settings', 'Global', companyInfo);
+        await auditService.log('Update Settings', 'Settings', 'Global', { provider: companyInfo.ai_provider });
         setSaved(true);
-        addToast('success', 'Configurações Salvas', 'As alterações globais foram aplicadas com sucesso.');
+        addToast('success', 'Configurações Salvas', `O provedor ${companyInfo.ai_provider.toUpperCase()} foi definido como ativo.`);
         setTimeout(() => setSaved(false), 3000);
     } else {
         console.error(error);
-        addToast('error', 'Erro ao Salvar', error.message || 'Falha na comunicação com o servidor.');
+        addToast('error', 'Erro ao Salvar', 'Execute a Migration no Supabase para corrigir o esquema da tabela saas_settings.');
     }
     setSaving(false);
   };
@@ -261,10 +265,10 @@ const Settings: React.FC = () => {
   };
 
   const tabs = [
+    { id: 'ai_config', label: 'Inteligência Artificial', icon: Brain }, // Prioridade
     { id: 'general', label: 'Geral', icon: Building },
     { id: 'users', label: 'Equipe e Permissões', icon: Users },
     ...(profile?.role === 'Admin' || profile?.role === 'super_admin' ? [{ id: 'audit', label: 'Auditoria', icon: ClipboardList }] : []),
-    { id: 'ai_config', label: 'Inteligência Artificial', icon: Brain }, // Novo tab
     { id: 'integrations', label: 'Outras Integrações', icon: Globe },
   ];
 
@@ -346,57 +350,87 @@ const Settings: React.FC = () => {
                   </div>
               )}
 
-              {/* ABA DE INTELIGÊNCIA ARTIFICIAL (NOVA) */}
+              {/* ABA DE INTELIGÊNCIA ARTIFICIAL (CORRIGIDA) */}
               {activeTab === 'ai_config' && (
                   <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
                      <div className="flex items-center gap-3 pb-6 border-b border-slate-50">
                         <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl"><Brain size={24}/></div>
                         <div>
                            <h3 className="text-lg font-black text-slate-800">Cérebro da Empresa (LLM)</h3>
-                           <p className="text-xs text-slate-400 font-medium">Configure as chaves de API para os modelos de inteligência.</p>
+                           <p className="text-xs text-slate-400 font-medium">Selecione o provedor e insira a chave para ativar o chat.</p>
                         </div>
                      </div>
 
                      <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
-                        <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">Provedor Padrão</label>
-                        <div className="flex flex-wrap gap-2 mb-6">
+                        <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">1. Provedor Ativo (Selecione)</label>
+                        <div className="flex flex-wrap gap-3 mb-8">
                             {['google', 'openai', 'anthropic', 'groq'].map(p => (
-                                <button key={p} onClick={() => setCompanyInfo({...companyInfo, ai_provider: p})} className={`flex-1 min-w-[80px] py-3 rounded-xl text-xs font-black uppercase transition-all ${companyInfo.ai_provider === p ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-500 shadow-sm'}`}>
+                                <button 
+                                    key={p} 
+                                    onClick={() => setCompanyInfo({...companyInfo, ai_provider: p})} 
+                                    className={`flex-1 min-w-[100px] py-4 rounded-2xl text-xs font-black uppercase transition-all flex items-center justify-center gap-2 border-2 ${
+                                        companyInfo.ai_provider === p 
+                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-xl shadow-indigo-600/20' 
+                                        : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300 hover:bg-slate-100'
+                                    }`}
+                                >
+                                    {companyInfo.ai_provider === p && <CheckCircle size={14}/>}
                                     {p}
                                 </button>
                             ))}
                         </div>
 
+                        <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">2. Chaves de Acesso</label>
                         <div className="grid grid-cols-1 gap-6">
-                            <div>
-                                <label className="block text-[10px] font-bold text-slate-500 mb-2 flex items-center gap-2"><Zap size={12} className="text-blue-500"/> Google Gemini API Key</label>
+                            
+                            {/* GOOGLE KEY */}
+                            <div className={`transition-all duration-300 ${companyInfo.ai_provider === 'google' ? 'opacity-100' : 'opacity-60 grayscale'}`}>
+                                <label className="block text-[10px] font-bold text-slate-500 mb-2 flex items-center gap-2">
+                                    <Zap size={12} className="text-blue-500"/> Google Gemini API Key
+                                    {companyInfo.ai_provider === 'google' && <span className="text-[9px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-black uppercase">Ativo</span>}
+                                </label>
                                 <div className="relative">
-                                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
-                                    <input type="password" className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500/20" 
+                                    <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
+                                    <input type="text" className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20" 
                                     value={companyInfo.gemini_key} onChange={e => setCompanyInfo({...companyInfo, gemini_key: e.target.value})} placeholder="sk-..." />
                                 </div>
                             </div>
-                            <div>
-                                <label className="block text-[10px] font-bold text-slate-500 mb-2 flex items-center gap-2"><Zap size={12} className="text-green-500"/> OpenAI API Key (GPT-4)</label>
+
+                            {/* OPENAI KEY */}
+                            <div className={`transition-all duration-300 ${companyInfo.ai_provider === 'openai' ? 'opacity-100' : 'opacity-60 grayscale'}`}>
+                                <label className="block text-[10px] font-bold text-slate-500 mb-2 flex items-center gap-2">
+                                    <Zap size={12} className="text-green-500"/> OpenAI API Key (GPT-4)
+                                    {companyInfo.ai_provider === 'openai' && <span className="text-[9px] bg-green-100 text-green-700 px-2 py-0.5 rounded font-black uppercase">Ativo</span>}
+                                </label>
                                 <div className="relative">
-                                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
-                                    <input type="password" className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500/20" 
-                                    value={companyInfo.openai_key} onChange={e => setCompanyInfo({...companyInfo, openai_key: e.target.value})} placeholder="sk-..." />
+                                    <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
+                                    <input type="text" className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20" 
+                                    value={companyInfo.openai_key} onChange={e => setCompanyInfo({...companyInfo, openai_key: e.target.value})} placeholder="sk-proj-..." />
                                 </div>
                             </div>
-                            <div>
-                                <label className="block text-[10px] font-bold text-slate-500 mb-2 flex items-center gap-2"><Zap size={12} className="text-amber-500"/> Anthropic API Key (Claude 3)</label>
+
+                            {/* ANTHROPIC KEY */}
+                            <div className={`transition-all duration-300 ${companyInfo.ai_provider === 'anthropic' ? 'opacity-100' : 'opacity-60 grayscale'}`}>
+                                <label className="block text-[10px] font-bold text-slate-500 mb-2 flex items-center gap-2">
+                                    <Zap size={12} className="text-amber-500"/> Anthropic API Key (Claude 3)
+                                    {companyInfo.ai_provider === 'anthropic' && <span className="text-[9px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-black uppercase">Ativo</span>}
+                                </label>
                                 <div className="relative">
-                                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
-                                    <input type="password" className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500/20" 
+                                    <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
+                                    <input type="text" className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20" 
                                     value={companyInfo.anthropic_key} onChange={e => setCompanyInfo({...companyInfo, anthropic_key: e.target.value})} placeholder="sk-ant-..." />
                                 </div>
                             </div>
-                            <div>
-                                <label className="block text-[10px] font-bold text-slate-500 mb-2 flex items-center gap-2"><Zap size={12} className="text-red-500"/> Groq API Key (Llama 3 - Rápido)</label>
+
+                            {/* GROQ KEY */}
+                            <div className={`transition-all duration-300 ${companyInfo.ai_provider === 'groq' ? 'opacity-100' : 'opacity-60 grayscale'}`}>
+                                <label className="block text-[10px] font-bold text-slate-500 mb-2 flex items-center gap-2">
+                                    <Zap size={12} className="text-red-500"/> Groq API Key (Llama 3)
+                                    {companyInfo.ai_provider === 'groq' && <span className="text-[9px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-black uppercase">Ativo</span>}
+                                </label>
                                 <div className="relative">
-                                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
-                                    <input type="password" className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500/20" 
+                                    <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
+                                    <input type="text" className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20" 
                                     value={companyInfo.groq_key} onChange={e => setCompanyInfo({...companyInfo, groq_key: e.target.value})} placeholder="gsk_..." />
                                 </div>
                             </div>

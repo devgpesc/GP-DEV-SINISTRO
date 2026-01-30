@@ -50,7 +50,7 @@ export const aiService = {
         const apiKey = config.keys.google;
         
         if (!apiKey) {
-            return "⚠️ Chave de API do Google não configurada. Acesse Configurações > Inteligência Artificial e insira sua chave.";
+            return "⚠️ Chave de API do Google não configurada. Acesse Configurações > IA e insira sua chave.";
         }
 
         const ai = new GoogleGenAI({ apiKey });
@@ -68,12 +68,34 @@ export const aiService = {
         return response.text || "Sem resposta da IA.";
       } 
       
-      // Fallback para outros providers (Mock funcional)
-      if (config.provider === 'openai' && config.keys.openai) {
-         return "Integração OpenAI configurada. (Simulação: Análise estratégica gerada com sucesso via GPT-4)";
+      // Fallback para OpenAI (Simples fetch para não depender de SDK extra)
+      if (config.provider === 'openai') {
+         const apiKey = config.keys.openai;
+         if (!apiKey) return "⚠️ Chave OpenAI não configurada. Acesse Configurações > IA.";
+
+         try {
+             const res = await fetch('https://api.openai.com/v1/chat/completions', {
+                 method: 'POST',
+                 headers: {
+                     'Content-Type': 'application/json',
+                     'Authorization': `Bearer ${apiKey}`
+                 },
+                 body: JSON.stringify({
+                     model: "gpt-4-turbo",
+                     messages: [
+                         { role: "system", content: systemPrompt },
+                         { role: "user", content: `Dados: ${JSON.stringify(options.data)}. Contexto: ${options.context || ''}` }
+                     ]
+                 })
+             });
+             const json = await res.json();
+             return json.choices?.[0]?.message?.content || "Erro ao processar com OpenAI.";
+         } catch (e: any) {
+             return `Erro OpenAI: ${e.message}`;
+         }
       }
 
-      return `O provedor ${config.provider} foi selecionado, mas a chave de API não foi encontrada nas configurações.`;
+      return `O provedor ${config.provider} foi selecionado, mas ainda não está totalmente implementado para relatórios.`;
 
     } catch (error: any) {
       console.error("AI Service Error:", error);
@@ -102,9 +124,10 @@ export const aiService = {
     `;
 
     try {
+        // --- GOOGLE GEMINI ---
         if (config.provider === 'google') {
             const apiKey = config.keys.google;
-            if (!apiKey) return "⚠️ Configure sua API Key em Configurações > IA.";
+            if (!apiKey) return "⚠️ Configure sua API Key do Google em Configurações > IA.";
 
             const ai = new GoogleGenAI({ apiKey });
             const response = await ai.models.generateContent({
@@ -112,12 +135,42 @@ export const aiService = {
                 contents: userMessage,
                 config: {
                     systemInstruction: chatSystemPrompt,
-                    temperature: 0.6, // Mais preciso
+                    temperature: 0.6,
                 }
             });
             return response.text || "Não entendi.";
         }
-        return "Provedor de IA não suportado no chat ainda.";
+
+        // --- OPENAI (GPT-4) ---
+        if (config.provider === 'openai') {
+            const apiKey = config.keys.openai;
+            if (!apiKey) return "⚠️ Configure sua API Key da OpenAI em Configurações > IA.";
+
+            const res = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    model: "gpt-4-turbo",
+                    messages: [
+                        { role: "system", content: chatSystemPrompt },
+                        { role: "user", content: userMessage }
+                    ],
+                    temperature: 0.6
+                })
+            });
+
+            const json = await res.json();
+            if (json.error) {
+                return `Erro OpenAI: ${json.error.message}`;
+            }
+            return json.choices?.[0]?.message?.content || "Sem resposta da OpenAI.";
+        }
+
+        return `Provedor ${config.provider} selecionado, mas não suportado no chat ainda.`;
+
     } catch (error: any) {
         return this.handleError(error);
     }
@@ -125,7 +178,7 @@ export const aiService = {
 
   handleError(error: any): string {
       if (error.message?.includes('429') || error.message?.includes('quota') || error.message?.includes('RESOURCE_EXHAUSTED')) {
-          return "⚠️ Limite de uso da IA excedido (Erro 429). \n\nO plano gratuito do Google Gemini atingiu o limite. Configure sua chave paga em 'Configurações > Inteligência Artificial'.";
+          return "⚠️ Limite de uso da IA excedido (Erro 429). \n\nO plano gratuito atingiu o limite ou sua conta está sem créditos. Verifique sua chave API.";
       }
       return `Erro na IA: ${error.message}`;
   },
