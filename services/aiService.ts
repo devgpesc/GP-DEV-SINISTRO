@@ -77,14 +77,57 @@ export const aiService = {
 
     } catch (error: any) {
       console.error("AI Service Error:", error);
-      
-      // Tratamento amigável para erro de cota (429)
-      if (error.message?.includes('429') || error.message?.includes('quota') || error.message?.includes('RESOURCE_EXHAUSTED')) {
-          return "⚠️ Limite de uso da IA excedido (Erro 429). \n\nO plano gratuito do Google Gemini atingiu o limite de requisições. Para continuar usando a IA Visionária sem interrupções, por favor acesse 'Configurações > Inteligência Artificial' e insira sua própria Chave de API (Google Gemini API Key).";
-      }
-
-      return `Erro na análise de IA: ${error.message}`;
+      return this.handleError(error);
     }
+  },
+
+  // Novo método para o Chat Assistente
+  async chatWithContext(userMessage: string, contextData: any): Promise<string> {
+    const config = await this.getConfig();
+    
+    // Prompt do Sistema para o Chat
+    const chatSystemPrompt = `
+      Você é o 'Cérebro Operacional' do AutoClaims Pro, um sistema de gestão de sinistros e compras.
+      
+      CONTEXTO ATUAL DO SISTEMA (DADOS REAIS):
+      ${JSON.stringify(contextData, null, 2)}
+      
+      SUA MISSÃO:
+      1. Atuar como um consultor sênior (CFO/COO).
+      2. Responder perguntas sobre os dados acima (financeiro, operacional, compras).
+      3. Sugerir otimizações se notar gargalos (ex: muitos eventos parados, custos altos).
+      4. Ser direto, profissional e usar formatação Markdown (negrito, listas).
+      
+      Se o usuário perguntar algo fora do contexto dos dados, responda com base em melhores práticas de gestão de frotas e sinistros.
+    `;
+
+    try {
+        if (config.provider === 'google') {
+            const apiKey = config.keys.google;
+            if (!apiKey) return "⚠️ Configure sua API Key em Configurações > IA.";
+
+            const ai = new GoogleGenAI({ apiKey });
+            const response = await ai.models.generateContent({
+                model: 'gemini-3-pro-preview',
+                contents: userMessage,
+                config: {
+                    systemInstruction: chatSystemPrompt,
+                    temperature: 0.6, // Mais preciso
+                }
+            });
+            return response.text || "Não entendi.";
+        }
+        return "Provedor de IA não suportado no chat ainda.";
+    } catch (error: any) {
+        return this.handleError(error);
+    }
+  },
+
+  handleError(error: any): string {
+      if (error.message?.includes('429') || error.message?.includes('quota') || error.message?.includes('RESOURCE_EXHAUSTED')) {
+          return "⚠️ Limite de uso da IA excedido (Erro 429). \n\nO plano gratuito do Google Gemini atingiu o limite. Configure sua chave paga em 'Configurações > Inteligência Artificial'.";
+      }
+      return `Erro na IA: ${error.message}`;
   },
 
   getSystemPrompt(type: string): string {

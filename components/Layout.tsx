@@ -6,10 +6,11 @@ import {
   LayoutDashboard, FileText, ShoppingCart, Users, Truck, 
   BarChart3, Settings, Package, Car, Bell, Search, UserCircle, X, ShoppingBag, Clock, Trash2, CheckCheck,
   Globe, ShieldCheck, Wifi, WifiOff, AlertTriangle, CheckCircle2, UserCheck, Mail, Phone, MapPin, Key,
-  Camera, Save, Loader2, Edit3, AlertCircle, LogOut, ChevronDown, Zap
+  Camera, Save, Loader2, Edit3, AlertCircle, LogOut, ChevronDown, Zap, Sparkles
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { isSupabaseConfigured, supabase } from '../services/supabaseClient';
+import AIChatWindow from './AIChatWindow';
 
 interface LayoutProps {
   children?: React.ReactNode;
@@ -46,6 +47,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const { user, profile, isSuperAdmin, signOut, updateProfile, checkPermission } = useAuth();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [isAiChatOpen, setIsAiChatOpen] = useState(false);
   
   // Company Logo
   const [companyLogo, setCompanyLogo] = useState('');
@@ -264,6 +266,15 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </p>
           </div>
           <div className="flex items-center gap-4 relative">
+            
+            {/* BOTÃO CHAT IA */}
+            <button 
+                onClick={() => setIsAiChatOpen(true)}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-600/30 flex items-center gap-2 transition-all hover:scale-105 active:scale-95"
+            >
+                <Sparkles size={16} /> IA Visionária
+            </button>
+
             <div className="relative">
               <button 
                   onClick={() => setShowNotifications(!showNotifications)}
@@ -337,6 +348,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </header>
         {children}
       </main>
+
+      {/* COMPONENTE DE CHAT IA */}
+      <AIChatWindow isOpen={isAiChatOpen} onClose={() => setIsAiChatOpen(false)} />
 
       {/* Modal de Configuração de Perfil */}
       {showProfileModal && (
