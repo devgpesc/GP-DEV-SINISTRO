@@ -68,7 +68,7 @@ export const aiService = {
         return response.text || "Sem resposta da IA.";
       } 
       
-      // Fallback para OpenAI (Simples fetch para não depender de SDK extra)
+      // Fallback para OpenAI
       if (config.provider === 'openai') {
          const apiKey = config.keys.openai;
          if (!apiKey) return "⚠️ Chave OpenAI não configurada. Acesse Configurações > IA.";
@@ -81,17 +81,24 @@ export const aiService = {
                      'Authorization': `Bearer ${apiKey}`
                  },
                  body: JSON.stringify({
-                     model: "gpt-4-turbo",
+                     model: "gpt-4o-mini", // Modelo mais rápido e compatível
                      messages: [
                          { role: "system", content: systemPrompt },
                          { role: "user", content: `Dados: ${JSON.stringify(options.data)}. Contexto: ${options.context || ''}` }
                      ]
                  })
              });
+             
+             if (!res.ok) {
+                 const errJson = await res.json().catch(() => ({}));
+                 throw new Error(errJson.error?.message || `Erro HTTP ${res.status}`);
+             }
+
              const json = await res.json();
              return json.choices?.[0]?.message?.content || "Erro ao processar com OpenAI.";
          } catch (e: any) {
-             return `Erro OpenAI: ${e.message}`;
+             console.error("OpenAI Error:", e);
+             return this.handleError(e);
          }
       }
 
@@ -141,7 +148,7 @@ export const aiService = {
             return response.text || "Não entendi.";
         }
 
-        // --- OPENAI (GPT-4) ---
+        // --- OPENAI (GPT-4o-mini) ---
         if (config.provider === 'openai') {
             const apiKey = config.keys.openai;
             if (!apiKey) return "⚠️ Configure sua API Key da OpenAI em Configurações > IA.";
@@ -153,7 +160,7 @@ export const aiService = {
                     'Authorization': `Bearer ${apiKey}`
                 },
                 body: JSON.stringify({
-                    model: "gpt-4-turbo",
+                    model: "gpt-4o-mini", // Alterado para gpt-4o-mini (mais compatível com novas chaves)
                     messages: [
                         { role: "system", content: chatSystemPrompt },
                         { role: "user", content: userMessage }
@@ -162,10 +169,12 @@ export const aiService = {
                 })
             });
 
-            const json = await res.json();
-            if (json.error) {
-                return `Erro OpenAI: ${json.error.message}`;
+            if (!res.ok) {
+                const errJson = await res.json().catch(() => ({}));
+                throw new Error(errJson.error?.message || `Erro HTTP ${res.status}`);
             }
+
+            const json = await res.json();
             return json.choices?.[0]?.message?.content || "Sem resposta da OpenAI.";
         }
 
@@ -177,9 +186,18 @@ export const aiService = {
   },
 
   handleError(error: any): string {
-      if (error.message?.includes('429') || error.message?.includes('quota') || error.message?.includes('RESOURCE_EXHAUSTED')) {
-          return "⚠️ Limite de uso da IA excedido (Erro 429). \n\nO plano gratuito atingiu o limite ou sua conta está sem créditos. Verifique sua chave API.";
+      const msg = error.message?.toLowerCase() || '';
+      
+      if (msg.includes('429') || msg.includes('quota') || msg.includes('insufficient_quota')) {
+          return "⚠️ Limite de cota excedido (Erro 429). \n\nSua conta OpenAI está sem créditos ou atingiu o limite. Verifique o faturamento em platform.openai.com.";
       }
+      if (msg.includes('401') || msg.includes('invalid api key')) {
+          return "⚠️ Chave API Inválida (Erro 401). \n\nVerifique se a chave foi copiada corretamente em Configurações > IA.";
+      }
+      if (msg.includes('fetch') || msg.includes('network') || msg.includes('failed to fetch')) {
+          return "⚠️ Erro de Conexão (CORS/Network). \n\nA OpenAI bloqueou a chamada direta do navegador. \n\nSolução: Utilize a integração via backend ou verifique se sua rede permite acesso a api.openai.com.";
+      }
+      
       return `Erro na IA: ${error.message}`;
   },
 

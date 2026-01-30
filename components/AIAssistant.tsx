@@ -1,9 +1,11 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, Send, X, Bot, User, ChevronDown, ChevronUp } from 'lucide-react';
-import { getAIInsight } from '../services/geminiService';
+import { Sparkles, Send, X, Bot, User, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { aiService } from '../services/aiService';
+import { useAuth } from '../context/AuthContext';
 
 const AIAssistant: React.FC = () => {
+  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [query, setQuery] = useState('');
@@ -22,17 +24,30 @@ const AIAssistant: React.FC = () => {
   }, [messages]);
 
   const handleSend = async () => {
-    if (!query.trim()) return;
+    if (!query.trim() || isLoading) return;
 
     const userMsg = query;
     setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
     setQuery('');
     setIsLoading(true);
 
-    const insight = await getAIInsight(userMsg, { system_status: 'operational', active_events: 12 });
-    
-    setMessages(prev => [...prev, { role: 'ai', text: insight || 'Não consegui analisar isso agora.' }]);
-    setIsLoading(false);
+    try {
+        // Dados de contexto simplificados para a análise rápida
+        const contextSnapshot = {
+            usuario: user?.email,
+            data: new Date().toLocaleDateString(),
+            origem: 'Chat Flutuante Rápido'
+        };
+
+        // Usa o serviço unificado que lê as configurações do banco (OpenAI/Google)
+        const response = await aiService.chatWithContext(userMsg, contextSnapshot);
+        
+        setMessages(prev => [...prev, { role: 'ai', text: response }]);
+    } catch (error: any) {
+        setMessages(prev => [...prev, { role: 'ai', text: `Erro: ${error.message || 'Falha na comunicação com a IA.'}` }]);
+    } finally {
+        setIsLoading(false);
+    }
   };
 
   if (!isOpen) {
@@ -40,6 +55,7 @@ const AIAssistant: React.FC = () => {
       <button 
         onClick={() => setIsOpen(true)}
         className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 rounded-full shadow-2xl flex items-center justify-center text-white hover:bg-blue-700 transition-all z-50 hover:scale-110 print:hidden"
+        title="IA Assistente"
       >
         <Sparkles size={24} />
       </button>
@@ -77,16 +93,15 @@ const AIAssistant: React.FC = () => {
                     {m.role === 'ai' ? <Bot size={14} className="text-blue-500" /> : <User size={14} />}
                     <span className="text-[10px] font-bold uppercase">{m.role === 'ai' ? 'Sistema AI' : 'Você'}</span>
                   </div>
-                  <p className="whitespace-pre-wrap">{m.text}</p>
+                  <p className="whitespace-pre-wrap leading-relaxed">{m.text}</p>
                 </div>
               </div>
             ))}
             {isLoading && (
               <div className="flex justify-start">
                 <div className="bg-white p-3 rounded-2xl border border-slate-200 animate-pulse flex items-center gap-2">
-                  <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                  <div className="w-2 h-2 bg-blue-400 rounded-full delay-75"></div>
-                  <div className="w-2 h-2 bg-blue-400 rounded-full delay-150"></div>
+                  <Loader2 size={16} className="animate-spin text-blue-600"/>
+                  <span className="text-xs text-slate-400 font-bold">Digitando...</span>
                 </div>
               </div>
             )}
@@ -101,7 +116,8 @@ const AIAssistant: React.FC = () => {
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                 placeholder="Pergunte sobre custos, prazos..."
-                className="flex-1 bg-slate-100 border-none rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                className="flex-1 bg-slate-100 border-none rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                autoFocus
               />
               <button 
                 onClick={handleSend}
