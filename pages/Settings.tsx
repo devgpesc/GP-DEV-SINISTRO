@@ -248,6 +248,11 @@ const Settings: React.FC = () => {
   };
 
   const generateInviteLink = async () => {
+      if (!profile) {
+          addToast('error', 'Sessão inválida', 'Não foi possível identificar o usuário atual.');
+          return;
+      }
+
       const baseUrl = `${window.location.origin}/register`;
       const params = new URLSearchParams();
       if (inviteData.email) params.append('email', inviteData.email);
@@ -261,7 +266,7 @@ const Settings: React.FC = () => {
               email: inviteData.email,
               name: inviteData.name,
               token: link, 
-              created_by: profile.id
+              created_by: profile.id 
           }]);
           
           if (!error) {

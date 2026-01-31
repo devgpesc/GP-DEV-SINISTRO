@@ -8,7 +8,7 @@ import { SaasTenant, OrganizationMember } from '../types';
 
 const TENANT_STORAGE_KEY = 'sb-autoclaims-tenant-id';
 
-// Interface flexível para o perfil do usuário, compatível com legado e futuro
+// Interface flexível para o perfil do usuário
 interface UserProfile {
   id: string;
   email?: string;
@@ -16,10 +16,9 @@ interface UserProfile {
   avatar_url?: string;
   role?: string;
   permissions?: Record<string, boolean>;
-  [key: string]: any; // Permite campos extras sem quebrar tipagem estrita
+  [key: string]: any;
 }
 
-// Extensão do tipo OrganizationMember para incluir os dados da empresa (Join)
 interface EnrichedMembership extends OrganizationMember {
   saas_tenants: SaasTenant;
 }
@@ -28,8 +27,8 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   profile: UserProfile | null;
-  memberships: EnrichedMembership[]; // Lista de todas as empresas do usuário
-  currentTenant: SaasTenant | null;  // Empresa atualmente selecionada
+  memberships: EnrichedMembership[];
+  currentTenant: SaasTenant | null;
   loading: boolean;
   signOut: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
@@ -45,27 +44,31 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // --- PROVIDER ---
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Auth State
+  // Estados de Autenticação
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   
-  // Multi-tenant State
+  // Estados Multi-tenant
   const [memberships, setMemberships] = useState<EnrichedMembership[]>([]);
   const [currentTenant, setCurrentTenant] = useState<SaasTenant | null>(null);
   
-  // UI State
+  // Estado de UI (Inicia true para bloquear render até check inicial)
   const [loading, setLoading] = useState(true);
 
-  // Refs para controle de fluxo e evitar loops
+  // Refs para controle de fluxo assíncrono (evita updates em componentes desmontados)
+  const mounted = useRef(true);
+  
+  // Ref para evitar loops de reload se o profile mudar
   const profileRef = useRef(profile);
   useEffect(() => { profileRef.current = profile; }, [profile]);
 
-  // --- CORE LOGIC: CARREGAMENTO DE DADOS ---
-
+  // --- CORE: CARREGAMENTO DE DADOS (Blindado contra falhas) ---
   const loadContextData = useCallback(async (userId: string, userEmail?: string, userMeta?: any) => {
     try {
-      // 1. Busca Perfil Global (com fallback robusto)
+      if (!mounted.current) return;
+
+      // 1. Busca Perfil (com tratamento de erro silencioso)
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('*')
@@ -73,137 +76,172 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .maybeSingle();
 
       if (profileError) {
-        console.warn('[Auth] Aviso ao buscar perfil (usando fallback):', profileError.message);
+        console.warn('[Auth] Perfil não encontrado ou erro RLS:', profileError.message);
       }
 
-      // Garante um objeto de perfil mesmo se o banco falhar ou estiver vazio (delay de trigger)
+      // Garante objeto de perfil mesmo se falhar (Fallback)
       const finalProfile: UserProfile = profileData || {
         id: userId,
         email: userEmail,
-        role: 'Usuário',
+        role: 'Usuário', // Default seguro
         full_name: userMeta?.full_name || userMeta?.name || 'Usuário',
         avatar_url: userMeta?.avatar_url,
         permissions: {},
-        created_at: new Date().toISOString() // Mock date
+        created_at: new Date().toISOString()
       };
       
-      setProfile(finalProfile);
+      if (mounted.current) setProfile(finalProfile);
 
-      // 2. Busca Memberships (Vínculos com Empresas)
+      // 2. Busca Tenants (Memberships)
       const { data: membersData, error: membersError } = await supabase
         .from('organization_members')
         .select('*, saas_tenants(*)')
         .eq('user_id', userId);
 
-      if (membersError) throw membersError;
-
-      // Filtra memberships válidos (garante que saas_tenants não é null por integridade)
+      // Filtra memberships válidos (onde o join funcionou)
       const validMemberships = (membersData as any[])?.filter(m => m.saas_tenants) || [];
-      setMemberships(validMemberships);
+      
+      if (mounted.current) setMemberships(validMemberships);
 
-      // 3. Lógica de Seleção do Tenant Ativo
+      // 3. Lógica de Seleção do Tenant (Persistência vs Fallback)
       let selectedTenant: SaasTenant | null = null;
 
       if (validMemberships.length > 0) {
         const storedTenantId = localStorage.getItem(TENANT_STORAGE_KEY);
         
-        // Tenta encontrar o tenant salvo no storage dentro dos memberships permitidos
+        // Tenta restaurar tenant salvo
         const targetMembership = validMemberships.find(m => m.tenant_id === storedTenantId);
         
         if (targetMembership) {
           selectedTenant = targetMembership.saas_tenants;
         } else {
-          // Fallback: Seleciona o primeiro da lista
+          // Se não houver salvo ou for inválido, pega o primeiro
           selectedTenant = validMemberships[0].saas_tenants;
         }
         
-        // Persiste a escolha (ou a revalidação)
+        // Atualiza storage com a decisão final
         if (selectedTenant) {
             localStorage.setItem(TENANT_STORAGE_KEY, selectedTenant.id);
         }
       } else {
-        // Usuário sem empresa (fluxo de onboarding ou convite pendente)
+        // Usuário sem empresa
         localStorage.removeItem(TENANT_STORAGE_KEY);
       }
 
-      setCurrentTenant(selectedTenant);
+      if (mounted.current) setCurrentTenant(selectedTenant);
 
     } catch (err) {
-      console.error('[Auth] Falha crítica ao carregar contexto:', err);
-      // Não quebramos a app, mas o usuário ficará com perfil limitado/fallback
+      console.error('[Auth] Erro crítico ao carregar contexto:', err);
+      // Não damos throw para não quebrar a Promise.all do initialize
     }
   }, []);
 
-  // --- AUTH LIFECYCLE ---
-
+  // --- LIFECYCLE DE INICIALIZAÇÃO (Com Safety Valve) ---
   useEffect(() => {
-    let mounted = true;
+    mounted.current = true;
+    let authListener: any = null;
 
-    const initialize = async () => {
+    // Função de inicialização isolada
+    const initializeAuth = async () => {
       try {
+        // 1. Obtém sessão inicial
         const { data: { session: initialSession }, error } = await supabase.auth.getSession();
-        if (error) throw error;
+        
+        if (error) {
+            console.warn('[Auth] Erro ao recuperar sessão:', error.message);
+            throw error; // Vai para o catch, limpa estado e libera loading
+        }
 
-        if (initialSession?.user && mounted) {
-          setSession(initialSession);
-          setUser(initialSession.user);
-          await loadContextData(
-            initialSession.user.id, 
-            initialSession.user.email, 
-            initialSession.user.user_metadata
-          );
+        if (initialSession?.user) {
+          if (mounted.current) {
+            setSession(initialSession);
+            setUser(initialSession.user);
+            // Carrega dados vitais
+            await loadContextData(
+              initialSession.user.id, 
+              initialSession.user.email, 
+              initialSession.user.user_metadata
+            );
+          }
+        } else {
+          // Sem sessão válida (Logout explícito ou token expirado irremediavelmente)
+          if (mounted.current) {
+             setSession(null);
+             setUser(null);
+             setProfile(null);
+             setMemberships([]);
+             setCurrentTenant(null);
+          }
         }
       } catch (err) {
-        console.error('[Auth] Erro na inicialização:', err);
+        console.error('[Auth] Falha na inicialização:', err);
+        // Em caso de erro grave, garantimos logout para evitar estado zumbi
+        if (mounted.current) {
+            setSession(null);
+            setUser(null);
+        }
       } finally {
-        if (mounted) setLoading(false);
+        // CRÍTICO: Libera o loading SEMPRE, independente do que aconteceu acima
+        if (mounted.current) setLoading(false);
       }
     };
 
-    initialize();
+    // SAFETY VALVE: Timeout forçado de 6 segundos
+    // Se o Supabase travar (rede/socket), isso força a liberação da UI.
+    const safetyTimeout = setTimeout(() => {
+        if (loading && mounted.current) {
+            console.warn('[Auth] Timeout de segurança ativado. Forçando liberação de UI.');
+            setLoading(false);
+        }
+    }, 6000);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-      if (!mounted) return;
+    // Inicia processo
+    initializeAuth();
+
+    // Configura Listener para eventos futuros (Login, Logout, Refresh)
+    const { data: listenerData } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+      if (!mounted.current) return;
+
+      // Sincroniza sessão
+      setSession(newSession);
+      setUser(newSession?.user ?? null);
 
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        setSession(newSession);
-        setUser(newSession?.user ?? null);
-        
         if (newSession?.user) {
-          // Recarrega dados apenas se o usuário mudou ou se não temos perfil carregado (evita reload no refresh de token)
-          if (!profileRef.current || profileRef.current.id !== newSession.user.id) {
-             await loadContextData(
-               newSession.user.id, 
-               newSession.user.email, 
-               newSession.user.user_metadata
-             );
-          }
+           // Só recarrega dados se o usuário mudou (evita reload em refresh de token simples)
+           if (!profileRef.current || profileRef.current.id !== newSession.user.id) {
+               await loadContextData(
+                 newSession.user.id, 
+                 newSession.user.email, 
+                 newSession.user.user_metadata
+               );
+           }
         }
-        setLoading(false);
       } 
       else if (event === 'SIGNED_OUT') {
-        // Limpeza Total de Estado
-        setSession(null);
-        setUser(null);
+        // Limpeza atômica
         setProfile(null);
         setMemberships([]);
         setCurrentTenant(null);
         localStorage.removeItem(TENANT_STORAGE_KEY);
-        setLoading(false);
+        setLoading(false); // Garante que não fique preso
       }
     });
 
+    authListener = listenerData.subscription;
+
     return () => {
-      mounted = false;
-      subscription.unsubscribe();
+      mounted.current = false;
+      clearTimeout(safetyTimeout);
+      if (authListener) authListener.unsubscribe();
     };
   }, [loadContextData]);
 
-  // --- ACTIONS PÚBLICAS ---
+  // --- AÇÕES ---
 
   const signInWithGoogle = async () => {
     try {
-        setLoading(true);
+        setLoading(true); // UI Lock intencional durante redirect
         const { error } = await (supabase.auth as any).signInWithOAuth({
           provider: 'google',
           options: {
@@ -213,7 +251,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         if (error) throw error;
     } catch (error) {
-        setLoading(false);
+        setLoading(false); // Libera se falhar
         alert("Erro ao iniciar login com Google.");
     }
   };
@@ -222,7 +260,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
         setLoading(true);
         await supabase.auth.signOut();
-        // O estado será limpo pelo listener onAuthStateChange('SIGNED_OUT')
+        // O estado será limpo pelo listener SIGNED_OUT
     } catch (error) {
         console.error("Erro ao sair:", error);
         setLoading(false);
@@ -238,13 +276,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             updated_at: new Date().toISOString(),
             ...data
         };
-        // Remove undefined keys para não enviar null para o banco
         Object.keys(updates).forEach(key => updates[key] === undefined && delete updates[key]);
 
         const { error } = await supabase.from('profiles').upsert(updates);
         if (error) throw error;
         
-        // Atualização Otimista
         setProfile((prev: any) => ({ ...prev, ...updates }));
     } catch (error) {
         console.error("Erro perfil:", error);
@@ -254,9 +290,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const checkPermission = (feature: string) => {
       if (!profile) return false;
-      // Super Admin ou Admin Global tem acesso irrestrito por padrão
       if (profile.role === 'Admin' || profile.role === 'super_admin') return true;
-      // Verifica permissões granulares no JSONB do perfil
       return !!profile.permissions?.[feature];
   };
 
@@ -265,23 +299,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (target) {
           setCurrentTenant(target.saas_tenants);
           localStorage.setItem(TENANT_STORAGE_KEY, tenantId);
-          
-          // Opcional: Disparar evento customizado se outras partes da app precisarem reagir imediatamente
-          // window.dispatchEvent(new CustomEvent('tenantChanged', { detail: tenantId }));
-      } else {
-          console.warn("[Auth] Tentativa de troca para tenant inválido ou não autorizado:", tenantId);
+          window.location.reload(); // Reload forçado para garantir limpeza de cache de queries antigas
       }
   };
 
   const refreshContext = async () => {
       if (user) {
-          setLoading(true);
           await loadContextData(user.id, user.email, user.user_metadata);
-          setLoading(false);
       }
   };
-
-  // --- CONTEXT VALUE ---
 
   const value = {
     user,
