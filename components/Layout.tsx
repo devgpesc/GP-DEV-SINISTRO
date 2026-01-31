@@ -9,9 +9,11 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { isSupabaseConfigured, supabase } from '../services/supabaseClient';
+import { auditService } from '../services/auditService';
 import AIChatWindow from './AIChatWindow';
-import SupportWidget from './SupportWidget'; // Importado
+import SupportWidget from './SupportWidget';
 
+// ... (Interfaces remain same)
 interface LayoutProps {
   children?: React.ReactNode;
 }
@@ -62,13 +64,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [isAiChatOpen, setIsAiChatOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
-  // Company Logo - Carregado do banco ou padrão
+  // Company Logo
   const [companyLogo, setCompanyLogo] = useState('');
   
   // Profile Edit States
   const [editName, setEditName] = useState('');
   const [editAvatar, setEditAvatar] = useState('');
-  const [editRole, setEditRole] = useState('user');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -83,11 +84,17 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const role = profile?.role || 'Usuário';
   const isManagerOrAdmin = role === 'Gerente' || role === 'Admin' || role === 'super_admin';
   
-  // Permissões Específicas
   const canViewFinancial = isManagerOrAdmin || checkPermission('financial_view');
   const canApprove = isManagerOrAdmin || checkPermission('approve_purchases');
   const canManageTeam = isManagerOrAdmin || checkPermission('manage_users');
   const canViewReports = isManagerOrAdmin || checkPermission('view_reports');
+
+  // AUTOMATIC AUDIT LOGGING FOR NAVIGATION
+  useEffect(() => {
+      if (user) {
+          auditService.log('Navigate', 'Page', location.pathname, { path: location.pathname });
+      }
+  }, [location.pathname, user]);
 
   useEffect(() => {
     const fetchLogo = async () => {
@@ -105,11 +112,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (showProfileModal) {
         setEditName(profile?.full_name || user?.user_metadata?.full_name || '');
         setEditAvatar(profile?.avatar_url || user?.user_metadata?.avatar_url || '');
-        setEditRole(profile?.role || 'user');
     }
   }, [showProfileModal]);
 
-  // --- CARREGAMENTO DE NOTIFICAÇÕES REAIS ---
+  // ... (Notification loading logic remains the same)
   useEffect(() => {
       if (!user) return;
       loadNotifications();
@@ -304,6 +310,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         fixed top-0 left-0 h-full w-64 bg-slate-900 text-white flex flex-col z-40 transition-transform duration-300 ease-in-out
         ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 print:hidden
       `}>
+        {/* ... (Sidebar Content remains the same) ... */}
         <div className="p-6">
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-2">
@@ -393,7 +400,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
       {/* Main Content */}
       <main className="flex-1 md:ml-64 p-4 md:p-8 relative print:ml-0 print:p-0 print:w-full min-w-0 w-full">
-        {/* Mobile Header Toggle */}
+        {/* ... (Main Content Header remains the same) ... */}
         <div className="md:hidden flex justify-between items-center mb-6 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
             <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-slate-600 hover:bg-slate-50 rounded-xl">
                 <Menu size={24}/>
@@ -402,8 +409,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <img src="/logo-dark.png" className="h-6 w-auto" alt="EventPro" onError={(e) => { e.currentTarget.style.display='none'; e.currentTarget.nextElementSibling?.classList.remove('hidden'); }} />
                 <span className="font-black text-slate-800 hidden">EVENTPRO</span>
             </div>
-            
-            {/* Mobile Notification Bell */}
             <button 
               onClick={() => setShowNotifications(!showNotifications)}
               className="relative p-2 text-slate-600 hover:bg-slate-50 rounded-xl"
@@ -423,7 +428,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </p>
           </div>
           
-          {/* Desktop Actions */}
           <div className="hidden md:flex items-center gap-4 relative">
             <button 
                 onClick={() => setIsAiChatOpen(true)}
@@ -432,7 +436,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <Sparkles size={16} /> IA Visionária
             </button>
 
-            {/* NOTIFICATION BELL */}
             <div className="relative">
               <button 
                   onClick={() => setShowNotifications(!showNotifications)}
@@ -458,7 +461,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   )}
               </button>
 
-              {/* DROPDOWN NOTIFICATIONS */}
               {showNotifications && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)}></div>
@@ -535,7 +537,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </div>
           </div>
           
-          {/* Mobile AI Button (Float) */}
           <button 
               onClick={() => setIsAiChatOpen(true)}
               className="md:hidden fixed bottom-6 right-6 z-[90] bg-indigo-600 text-white w-12 h-12 rounded-full shadow-xl flex items-center justify-center animate-in zoom-in"
@@ -552,6 +553,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       {/* NOVO WIDGET DE SUPORTE */}
       <SupportWidget />
 
+      {/* Profile Modal */}
       {showProfileModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowProfileModal(false)}></div>

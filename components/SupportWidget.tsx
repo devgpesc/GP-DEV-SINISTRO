@@ -18,7 +18,7 @@ interface Attachment {
   base64?: string;
 }
 
-const MEMORY_KEY = 'esc_support_memory_v1';
+const MEMORY_KEY = 'esc_support_memory_v2'; // Alterada versão para forçar reset limpo
 
 const SupportWidget: React.FC = () => {
   const { user, currentTenant, profile } = useAuth();
@@ -59,43 +59,47 @@ const SupportWidget: React.FC = () => {
   const videoPreviewRef = useRef<HTMLVideoElement>(null);
   const timerRef = useRef<number | null>(null);
 
-  // --- LOGOUT RESET TRIGGER ---
-  // Monitora o usuário. Se ele sair (null), limpa o chat e o storage.
+  // --- GERENCIAMENTO DE SESSÃO DO CHAT ---
   useEffect(() => {
-    if (!user) {
-      localStorage.removeItem(MEMORY_KEY);
-      setMessages([initialMessage]);
-      setIsOpen(false);
-      setAttachments([]);
+    if (user?.id) {
+        // Tenta carregar histórico salvo
+        const savedData = localStorage.getItem(MEMORY_KEY);
+        if (savedData) {
+            try {
+                const parsed = JSON.parse(savedData);
+                // VERIFICAÇÃO CRÍTICA: O histórico pertence a este usuário?
+                if (parsed.userId === user.id && Array.isArray(parsed.history)) {
+                    setMessages([...parsed.history, { 
+                        id: 'divider-' + Date.now(), 
+                        role: 'system', 
+                        text: '--- Sessão Restaurada ---' 
+                    }]);
+                } else {
+                    // Se for outro usuário ou dados inválidos, limpa tudo
+                    console.log('Resetting chat: Different user or invalid data');
+                    localStorage.removeItem(MEMORY_KEY);
+                    setMessages([initialMessage]);
+                }
+            } catch (e) {
+                localStorage.removeItem(MEMORY_KEY);
+                setMessages([initialMessage]);
+            }
+        }
+    } else {
+        // Se não tem usuário (logout), limpa o estado visual
+        setMessages([initialMessage]);
+        setIsOpen(false);
     }
-  }, [user]);
+  }, [user?.id]); // Depende explicitamente do ID do usuário
 
-  // --- MEMÓRIA LÓGICA (Load & Save) ---
+  // Salvar histórico a cada nova mensagem
   useEffect(() => {
-    if (user) {
-      // Carregar histórico ao abrir apenas se tiver usuário logado
-      const saved = localStorage.getItem(MEMORY_KEY);
-      if (saved) {
-          try {
-              const parsed = JSON.parse(saved);
-              if (parsed.length > 0) {
-                  setMessages([...parsed.slice(-10), { 
-                      id: 'divider-' + Date.now(), 
-                      role: 'system', 
-                      text: '--- Nova Sessão Iniciada ---' 
-                  }]);
-              }
-          } catch (e) {
-              localStorage.removeItem(MEMORY_KEY);
-          }
-      }
-    }
-  }, [user]);
-
-  useEffect(() => {
-    // Salvar histórico a cada nova mensagem (se tiver usuário)
-    if (user && messages.length > 1) {
-        localStorage.setItem(MEMORY_KEY, JSON.stringify(messages.filter(m => m.role !== 'system')));
+    if (user?.id && messages.length > 1) {
+        const payload = {
+            userId: user.id,
+            history: messages.filter(m => m.role !== 'system')
+        };
+        localStorage.setItem(MEMORY_KEY, JSON.stringify(payload));
     }
   }, [messages, user]);
 
@@ -287,11 +291,11 @@ const SupportWidget: React.FC = () => {
         text: responseText 
       }]);
 
-    } catch (error) {
+    } catch (error: any) {
       setMessages(prev => [...prev, { 
         id: Date.now().toString(), 
         role: 'agent', 
-        text: 'Erro ao conectar. Tente novamente ou use o WhatsApp.' 
+        text: `Erro de conexão: ${error.message || 'Tente novamente.'}`
       }]);
     } finally {
       setLoading(false);
