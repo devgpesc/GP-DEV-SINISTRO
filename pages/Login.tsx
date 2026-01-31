@@ -110,7 +110,7 @@ const Login: React.FC = () => {
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">Inteligente & Ágil</span>
           </h1>
           <p className="text-slate-400 text-lg max-w-md leading-relaxed font-light mb-10">
-            Plataforma SaaS completa para abertura, rastreamento e auditoria financeira de eventos automotivos.
+            Plataforma completa para abertura, rastreamento e auditoria financeira de eventos automotivos.
           </p>
 
           <div className="space-y-5">
@@ -247,7 +247,7 @@ const Login: React.FC = () => {
                 <ShieldCheck size={12} className="text-green-600" />
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Ambiente Seguro SSL</span>
              </div>
-             <p className="text-[10px] text-slate-300 font-medium">© {new Date().getFullYear()} {company.product} by {company.name}.</p>
+             <p className="text-xs text-slate-500 font-black">© 2026 {company.product} by {company.name}.</p>
           </div>
         </div>
       </div>
