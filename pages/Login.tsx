@@ -7,6 +7,7 @@ import {
   Loader2, ArrowRight, ShieldCheck, Mail, Lock, 
   LayoutDashboard, Zap, Globe, AlertCircle, Car, CheckCircle2, User, Hexagon
 } from 'lucide-react';
+import EscLogo from '../components/EscLogo';
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -84,24 +85,9 @@ const Login: React.FC = () => {
         <div className="relative z-10">
           {/* LOGO AREA */}
           <div className="mb-12">
-             <img 
-               src="/logo-white.png" 
-               alt="EventPro Logo" 
-               className="h-24 object-contain mb-4"
-               onError={(e) => {
-                 e.currentTarget.style.display = 'none';
-                 e.currentTarget.nextElementSibling?.classList.remove('hidden');
-               }}
-             />
-             {/* Fallback caso a imagem não exista */}
-             <div className="hidden flex items-center gap-3">
-                <div className="bg-white/10 p-2 rounded-xl backdrop-blur-md border border-white/10">
-                   <Hexagon className="text-white" size={32} strokeWidth={2.5} />
-                </div>
-                <div>
-                   <h1 className="text-3xl font-black text-white tracking-tighter leading-none">EVENT<span className="text-blue-500">PRO</span></h1>
-                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em]">{company.name}</p>
-                </div>
+             {/* Logo Customizada */}
+             <div className="flex items-center gap-3">
+                <EscLogo className="w-16 h-16 text-white" classNameText="text-white text-3xl" />
              </div>
           </div>
 
@@ -156,8 +142,7 @@ const Login: React.FC = () => {
           
           {/* Mobile Logo Only */}
           <div className="lg:hidden flex items-center gap-2 mb-8 justify-center flex-col">
-             <img src="/logo-dark.png" alt="EventPro" className="h-16 mb-2 object-contain" onError={(e) => e.currentTarget.style.display = 'none'} />
-             <span className="font-black text-2xl text-slate-900 tracking-tight">EVENT<span className="text-blue-600">PRO</span></span>
+             <EscLogo className="w-12 h-12 text-slate-900" classNameText="text-slate-900 text-2xl" />
           </div>
 
           <div className="bg-white p-10 md:p-14 rounded-[40px] shadow-2xl shadow-slate-200/50 border border-slate-100">

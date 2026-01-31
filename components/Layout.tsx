@@ -12,6 +12,7 @@ import { isSupabaseConfigured, supabase } from '../services/supabaseClient';
 import { auditService } from '../services/auditService';
 import AIChatWindow from './AIChatWindow';
 import SupportWidget from './SupportWidget';
+import EscLogo from './EscLogo';
 
 // ... (Interfaces remain same)
 interface LayoutProps {
@@ -64,9 +65,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [isAiChatOpen, setIsAiChatOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
-  // Company Logo
-  const [companyLogo, setCompanyLogo] = useState('');
-  
   // Profile Edit States
   const [editName, setEditName] = useState('');
   const [editAvatar, setEditAvatar] = useState('');
@@ -95,18 +93,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           auditService.log('Navigate', 'Page', location.pathname, { path: location.pathname });
       }
   }, [location.pathname, user]);
-
-  useEffect(() => {
-    const fetchLogo = async () => {
-        try {
-            const { data } = await supabase.from('saas_settings').select('logo_url').limit(1).maybeSingle();
-            if (data?.logo_url) setCompanyLogo(data.logo_url);
-        } catch (e) {
-            console.error("Erro logo", e);
-        }
-    };
-    fetchLogo();
-  }, []);
 
   useEffect(() => {
     if (showProfileModal) {
@@ -313,21 +299,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         {/* ... (Sidebar Content remains the same) ... */}
         <div className="p-6">
           <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-2">
-                <img 
-                    src={companyLogo || "/logo-white.png"} 
-                    className="h-8 w-auto object-contain max-w-[150px]" 
-                    alt="EventPro Logo" 
-                    onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                        e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                    }}
-                />
-                <div className="hidden flex items-center gap-2">
-                    <div className="bg-blue-600 p-1.5 rounded-lg"><Hexagon className="text-white" size={20} /></div>
-                    <h1 className="text-lg font-black tracking-tight">EVENT<span className="text-blue-500">PRO</span></h1>
-                </div>
-            </div>
+            
+            {/* LOGO CUSTOMIZADA ESC */}
+            <EscLogo className="w-8 h-8 text-white" classNameText="text-white text-lg" />
+
             <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-white">
                 <X size={24}/>
             </button>
@@ -405,10 +380,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-slate-600 hover:bg-slate-50 rounded-xl">
                 <Menu size={24}/>
             </button>
-            <div className="flex items-center gap-2">
-                <img src="/logo-dark.png" className="h-6 w-auto" alt="EventPro" onError={(e) => { e.currentTarget.style.display='none'; e.currentTarget.nextElementSibling?.classList.remove('hidden'); }} />
-                <span className="font-black text-slate-800 hidden">EVENTPRO</span>
-            </div>
+            
+            {/* LOGO CUSTOMIZADA MOBILE */}
+            <EscLogo className="w-6 h-6 text-slate-800" classNameText="text-slate-800 text-base" showText={true} />
+
             <button 
               onClick={() => setShowNotifications(!showNotifications)}
               className="relative p-2 text-slate-600 hover:bg-slate-50 rounded-xl"
