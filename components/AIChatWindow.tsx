@@ -33,7 +33,7 @@ const AIChatWindow: React.FC<AIChatWindowProps> = ({ isOpen, onClose }) => {
     { 
       id: 'welcome',
       role: 'ai', 
-      text: 'Olá. Sou seu CIO Virtual. Estou monitorando os indicadores operacionais e financeiros em tempo real.\n\nVocê pode me enviar fotos de avarias, áudios de vistoria ou perguntar sobre estratégias de redução de custos.', 
+      text: 'Olá. Sou sua IA Especialista em Sinistros. Estou monitorando os processos, custos e SLAs em tempo real.\n\nVocê pode me enviar fotos de avarias, áudios de vistoria ou solicitar análises de cotações.', 
       time: new Date().toLocaleTimeString() 
     }
   ]);
@@ -216,7 +216,7 @@ const AIChatWindow: React.FC<AIChatWindowProps> = ({ isOpen, onClose }) => {
           setMessages(prev => [...prev, { 
               id: (Date.now() + 1).toString(),
               role: 'ai', 
-              text: "Desculpe, tive um problema ao processar sua solicitação. Tente novamente.", 
+              text: "Desculpe, tive um problema ao processar sua solicitação. Verifique sua conexão ou a chave da API.", 
               time: new Date().toLocaleTimeString() 
           }]);
       } finally {
@@ -254,10 +254,10 @@ const AIChatWindow: React.FC<AIChatWindowProps> = ({ isOpen, onClose }) => {
                     )}
                 </div>
                 <div>
-                    <h3 className="font-black text-lg tracking-tight leading-none text-white">CIO Virtual</h3>
+                    <h3 className="font-black text-lg tracking-tight leading-none text-white">AutoClaims AI</h3>
                     <p className="text-[10px] text-blue-200 font-bold uppercase tracking-widest mt-1 flex items-center gap-1.5">
                         {contextLoading ? <Loader2 size={10} className="animate-spin"/> : <span className="w-1.5 h-1.5 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.8)]"></span>}
-                        Agente Cognitivo 3.0
+                        Inteligência de Frotas
                     </p>
                 </div>
             </div>
