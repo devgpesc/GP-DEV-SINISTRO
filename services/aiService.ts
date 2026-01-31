@@ -36,11 +36,16 @@ export const aiService = {
   async getConfig() {
     try {
         const { data } = await supabase.from('saas_settings').select('*').limit(1).maybeSingle();
+        // Fallback para variáveis de ambiente caso o banco esteja vazio ou sem chaves
+        const googleKey = data?.gemini_key && data.gemini_key.length > 10 
+            ? data.gemini_key 
+            : process.env.API_KEY;
+
         return {
           provider: (data?.ai_provider || 'google') as LLMProvider,
           model: data?.ai_model || 'gemini-3-pro-preview',
           keys: {
-            google: data?.gemini_key || process.env.API_KEY, 
+            google: googleKey, 
             openai: data?.openai_key,
             anthropic: data?.anthropic_key,
             groq: data?.groq_key
@@ -65,23 +70,39 @@ export const aiService = {
     try {
       if (config.provider === 'google') {
         const apiKey = config.keys.google;
-        if (!apiKey) return "⚠️ Chave de API do Google não configurada.";
+        if (!apiKey) return "⚠️ Chave de API do Google não configurada. Vá em Configurações > Inteligência Artificial.";
 
         const ai = new GoogleGenAI({ apiKey });
-        const response = await ai.models.generateContent({
-            model: config.model || 'gemini-3-pro-preview',
-            contents: `Dados para análise:\n${JSON.stringify(options.data)}\n\nContexto: ${options.context || ''}`,
-            config: {
-                systemInstruction: systemPrompt,
-                temperature: 0.7
-            }
-        });
-        return response.text || "Sem análise disponível.";
+        
+        // Tentativa Modelo Pro
+        try {
+            const response = await ai.models.generateContent({
+                model: config.model || 'gemini-3-pro-preview',
+                contents: `Dados para análise:\n${JSON.stringify(options.data)}\n\nContexto: ${options.context || ''}`,
+                config: {
+                    systemInstruction: systemPrompt,
+                    temperature: 0.7
+                }
+            });
+            return response.text || "Sem análise disponível.";
+        } catch (proError: any) {
+            console.warn("Fallback to Flash model (Insight):", proError.message);
+            // Fallback Modelo Flash
+            const response = await ai.models.generateContent({
+                model: 'gemini-3-flash-preview',
+                contents: `Dados para análise:\n${JSON.stringify(options.data)}\n\nContexto: ${options.context || ''}`,
+                config: {
+                    systemInstruction: systemPrompt,
+                    temperature: 0.7
+                }
+            });
+            return response.text || "Análise gerada (modo rápido).";
+        }
       }
       return "Provedor de IA não suportado para esta função.";
     } catch (error: any) {
       console.error("AI Insight Error:", error);
-      return "Não foi possível gerar a análise no momento.";
+      return "Não foi possível gerar a análise. Verifique sua chave de API.";
     }
   },
 
@@ -90,7 +111,7 @@ export const aiService = {
     const config = await this.getConfig();
     const apiKey = config.keys.google;
     
-    if (!apiKey) return "⚠️ Erro: Chave de API não configurada. Contate o administrador.";
+    if (!apiKey) return "⚠️ Erro Crítico: Chave de API não configurada. Por favor, configure uma chave Gemini nas Configurações do sistema.";
 
     const ai = new GoogleGenAI({ apiKey });
     
@@ -136,7 +157,6 @@ export const aiService = {
 
         attachments.forEach(att => {
             if (att.base64) {
-                // Fallback simples para mimeType se vier incompleto
                 let mimeType = att.mimeType || 'application/octet-stream';
                 if (att.type === 'image' && !mimeType.includes('image')) mimeType = 'image/jpeg';
                 
@@ -151,19 +171,50 @@ export const aiService = {
 
         if (parts.length === 0) return "Como posso ajudar com seus processos de sinistro hoje?";
 
-        const response = await ai.models.generateContent({
-            model: config.model || 'gemini-3-pro-preview',
-            contents: { parts },
-            config: {
-                systemInstruction: supportSystemPrompt,
-                temperature: 0.4 // Temperatura baixa para ser mais preciso nas instruções
-            }
-        });
-        return response.text || "Sem resposta.";
+        // --- LÓGICA DE FALLBACK AUTOMÁTICO ---
+        try {
+            // Tentativa 1: Modelo Principal (Configurado ou Pro)
+            const response = await ai.models.generateContent({
+                model: config.model || 'gemini-3-pro-preview',
+                contents: { parts },
+                config: {
+                    systemInstruction: supportSystemPrompt,
+                    temperature: 0.4
+                }
+            });
+            return response.text || "Sem resposta.";
+
+        } catch (primaryError: any) {
+            console.warn("Primary Model Failed. Retrying with Flash...", primaryError.message);
+            
+            // Tentativa 2: Modelo Flash (Mais rápido e estável)
+            const response = await ai.models.generateContent({
+                model: 'gemini-3-flash-preview',
+                contents: { parts },
+                config: {
+                    systemInstruction: supportSystemPrompt,
+                    temperature: 0.4
+                }
+            });
+            return response.text || "Sem resposta (Flash).";
+        }
 
     } catch (error: any) {
-        console.error("Support AI Error", error);
-        return "Desculpe, estou com dificuldades de conexão com o servidor de inteligência no momento.";
+        console.error("Support AI Fatal Error", error);
+        
+        // Mensagens de erro amigáveis para o usuário
+        const msg = error.message?.toLowerCase() || '';
+        if (msg.includes('401') || msg.includes('invalid') || msg.includes('key')) {
+            return "❌ Erro de Autenticação: Sua chave de API (Gemini) parece inválida ou expirou. Verifique nas Configurações.";
+        }
+        if (msg.includes('429') || msg.includes('quota')) {
+            return "⏳ Sistema sobrecarregado (Quota Excedida). Por favor, aguarde alguns instantes e tente novamente.";
+        }
+        if (msg.includes('model') || msg.includes('not found')) {
+            return "⚠️ O modelo de IA configurado não está disponível na sua região ou conta. Tente alterar para 'gemini-2.0-flash' nas configurações.";
+        }
+
+        return "Desculpe, estou com dificuldades técnicas de conexão no momento. Tente novamente em alguns segundos.";
     }
   },
 
@@ -172,13 +223,13 @@ export const aiService = {
   },
 
   async classifySupportTicket(chatHistory: any[], userContext: any): Promise<SupportTicketDossier> {
-     // Mock ou implementação futura para classificar tickets automaticamente
+     // Mock temporário para garantir funcionalidade mesmo sem API
      return {
-        summary: "Ticket gerado via chat",
-        technical_category: "Dúvida Operacional",
+        summary: "Usuário reportou problemas técnicos ou dúvidas operacionais.",
+        technical_category: "Suporte Geral",
         sentiment: "Normal",
         priority: "Média",
-        suggested_fix: "Verificar base de conhecimento"
+        suggested_fix: "Verificar logs do sistema e orientar usuário conforme base de conhecimento."
     };
   }
 };
