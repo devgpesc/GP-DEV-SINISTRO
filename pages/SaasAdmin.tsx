@@ -32,6 +32,9 @@ const SaasAdmin: React.FC = () => {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [tenantToDelete, setTenantToDelete] = useState<SaasTenant | null>(null);
   
+  // Verification State (Nova Lógica de UX)
+  const [verifyState, setVerifyState] = useState({ loading: false, blocked: false, message: '' });
+  
   // Processing States
   const [isProcessing, setIsProcessing] = useState(false);
   const [loadingAdminData, setLoadingAdminData] = useState(false);
@@ -135,6 +138,42 @@ const SaasAdmin: React.FC = () => {
       });
   };
 
+  // Nova Função: Verifica dependências antes de permitir exclusão
+  const handleRequestDelete = async (tenant: SaasTenant) => {
+      setTenantToDelete(tenant);
+      setVerifyState({ loading: true, blocked: false, message: 'Verificando dependências de dados...' });
+
+      try {
+          // Verifica Membros e Eventos em paralelo
+          const [membersRes, eventsRes] = await Promise.all([
+              supabase.from('organization_members').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id),
+              supabase.from('events').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id)
+          ]);
+
+          const memberCount = membersRes.count || 0;
+          const eventCount = eventsRes.count || 0;
+
+          if (memberCount > 0 || eventCount > 0) {
+              // Bloqueia e informa o motivo
+              setVerifyState({
+                  loading: false,
+                  blocked: true,
+                  message: `Não é possível excluir. Esta empresa possui ${memberCount} membro(s) e ${eventCount} evento(s) vinculados. Remova os dados ou arquive o status da empresa.`
+              });
+          } else {
+              // Libera exclusão
+              setVerifyState({
+                  loading: false,
+                  blocked: false,
+                  message: 'Esta ação removerá permanentemente o acesso da empresa e seus registros. Tem certeza?'
+              });
+          }
+      } catch (err) {
+          console.error(err);
+          setVerifyState({ loading: false, blocked: true, message: 'Erro ao verificar integridade dos dados. Tente novamente.' });
+      }
+  };
+
   const handleDeleteTenant = async () => {
       if (!tenantToDelete) return;
       setIsProcessing(true);
@@ -147,9 +186,8 @@ const SaasAdmin: React.FC = () => {
           setTenantToDelete(null);
       } catch (error: any) {
           addToast('error', 'Erro ao Excluir', error.message);
-          // Geralmente erro de Foreign Key se houver dados vinculados sem cascade
           if (error.code === '23503') {
-              addToast('warning', 'Ação Bloqueada', 'Não é possível excluir empresas que possuem dados ou usuários ativos.');
+              addToast('warning', 'Ação Bloqueada', 'Dados vinculados impedem a exclusão.');
           }
       } finally {
           setIsProcessing(false);
@@ -520,7 +558,7 @@ const SaasAdmin: React.FC = () => {
                                         <Edit size={18}/>
                                     </button>
                                     <button 
-                                        onClick={(e) => { e.stopPropagation(); setTenantToDelete(tenant); }} 
+                                        onClick={(e) => { e.stopPropagation(); handleRequestDelete(tenant); }} 
                                         className="p-2 bg-white text-slate-400 hover:text-red-600 border border-slate-200 hover:border-red-200 rounded-xl transition-all shadow-sm"
                                     >
                                         <Trash2 size={18}/>
@@ -813,15 +851,16 @@ const SaasAdmin: React.FC = () => {
           </div>
       )}
 
-      {/* Modal Confirmação de Exclusão */}
+      {/* Modal Confirmação de Exclusão com Verificação Inteligente */}
       <ActionModal 
         isOpen={!!tenantToDelete}
         onClose={() => setTenantToDelete(null)}
-        onConfirm={handleDeleteTenant}
-        title="Excluir Empresa?"
-        description="Esta ação removerá permanentemente o acesso da empresa e seus registros."
-        type="danger"
-        confirmText="Sim, Excluir"
+        onConfirm={verifyState.blocked ? () => setTenantToDelete(null) : handleDeleteTenant}
+        title={verifyState.loading ? 'Verificando...' : (verifyState.blocked ? 'Ação Bloqueada' : 'Excluir Empresa?')}
+        description={verifyState.message}
+        type={verifyState.blocked ? 'warning' : 'danger'}
+        confirmText={verifyState.loading ? '...' : (verifyState.blocked ? 'Entendi' : 'Sim, Excluir')}
+        showCancel={!verifyState.blocked && !verifyState.loading}
       />
     </div>
   );
