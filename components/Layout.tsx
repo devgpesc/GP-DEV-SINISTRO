@@ -5,7 +5,7 @@ import {
   LayoutDashboard, FileText, ShoppingCart, Users, Truck, 
   BarChart3, Settings, Package, Car, Bell, Search, UserCircle, X, ShoppingBag, Clock, Trash2, CheckCheck,
   Globe, ShieldCheck, Wifi, WifiOff, AlertTriangle, CheckCircle2, UserCheck, Mail, Phone, MapPin, Key,
-  Camera, Save, Loader2, Edit3, AlertCircle, LogOut, ChevronDown, Zap, Sparkles, Info, Menu
+  Camera, Save, Loader2, Edit3, AlertCircle, LogOut, ChevronDown, Zap, Sparkles, Info, Menu, Hexagon
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { isSupabaseConfigured, supabase } from '../services/supabaseClient';
@@ -61,7 +61,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [isAiChatOpen, setIsAiChatOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
-  // Company Logo
+  // Company Logo - Carregado do banco ou padrão
   const [companyLogo, setCompanyLogo] = useState('');
   
   // Profile Edit States
@@ -307,12 +307,20 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         <div className="p-6">
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-2">
-                {companyLogo ? (
-                    <img src={companyLogo} className="h-8 w-auto bg-white/10 rounded p-1 object-contain" alt="Logo" />
-                ) : (
-                    <div className="bg-blue-600 p-2 rounded-lg"><Car className="text-white" size={24} /></div>
-                )}
-                <h1 className="text-xl font-bold tracking-tight">AutoClaims<span className="text-blue-500">Pro</span></h1>
+                {/* LOGO AREA SIDEBAR - TENTA CARREGAR IMAGEM OU MOSTRA TEXTO */}
+                <img 
+                    src={companyLogo || "/logo-white.png"} 
+                    className="h-8 w-auto object-contain max-w-[150px]" 
+                    alt="EventPro Logo" 
+                    onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                    }}
+                />
+                <div className="hidden flex items-center gap-2">
+                    <div className="bg-blue-600 p-1.5 rounded-lg"><Hexagon className="text-white" size={20} /></div>
+                    <h1 className="text-lg font-black tracking-tight">EVENT<span className="text-blue-500">PRO</span></h1>
+                </div>
             </div>
             {/* Botão fechar no mobile */}
             <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-white">
@@ -393,11 +401,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <Menu size={24}/>
             </button>
             <div className="flex items-center gap-2">
-                {companyLogo ? (
-                    <img src={companyLogo} className="h-6 w-auto" alt="Logo" />
-                ) : (
-                    <span className="font-bold text-slate-800">AutoClaims</span>
-                )}
+                <img src="/logo-dark.png" className="h-6 w-auto" alt="EventPro" onError={(e) => { e.currentTarget.style.display='none'; e.currentTarget.nextElementSibling?.classList.remove('hidden'); }} />
+                <span className="font-black text-slate-800 hidden">EVENTPRO</span>
             </div>
             
             {/* Mobile Notification Bell */}

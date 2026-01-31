@@ -5,7 +5,7 @@ import { supabase } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { 
   Loader2, ArrowRight, ShieldCheck, Mail, Lock, 
-  LayoutDashboard, Zap, Globe, AlertCircle, Car, CheckCircle2, User
+  LayoutDashboard, Zap, Globe, AlertCircle, Car, CheckCircle2, User, Hexagon
 } from 'lucide-react';
 
 const Login: React.FC = () => {
@@ -18,7 +18,7 @@ const Login: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   
   // Configuração visual da marca
-  const [company] = useState({ name: 'Esc Solutions', product: 'AutoClaims Pro' });
+  const [company] = useState({ name: 'Esc Solutions', product: 'EventPro' });
 
   useEffect(() => {
     if (user) {
@@ -82,11 +82,27 @@ const Login: React.FC = () => {
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-600/20 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
 
         <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-12">
-             <div className="bg-white/10 p-2 rounded-xl backdrop-blur-md border border-white/10">
-                <Car className="text-white" size={24} />
+          {/* LOGO AREA */}
+          <div className="mb-12">
+             <img 
+               src="/logo-white.png" 
+               alt="EventPro Logo" 
+               className="h-24 object-contain mb-4"
+               onError={(e) => {
+                 e.currentTarget.style.display = 'none';
+                 e.currentTarget.nextElementSibling?.classList.remove('hidden');
+               }}
+             />
+             {/* Fallback caso a imagem não exista */}
+             <div className="hidden flex items-center gap-3">
+                <div className="bg-white/10 p-2 rounded-xl backdrop-blur-md border border-white/10">
+                   <Hexagon className="text-white" size={32} strokeWidth={2.5} />
+                </div>
+                <div>
+                   <h1 className="text-3xl font-black text-white tracking-tighter leading-none">EVENT<span className="text-blue-500">PRO</span></h1>
+                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em]">{company.name}</p>
+                </div>
              </div>
-             <span className="text-white font-bold tracking-widest text-sm uppercase opacity-90">{company.name}</span>
           </div>
 
           <h1 className="text-5xl font-extrabold text-white leading-[1.1] mb-6 tracking-tight">
@@ -134,57 +150,58 @@ const Login: React.FC = () => {
       </div>
 
       {/* LADO DIREITO (Login Form) */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-12 relative">
-        <div className="w-full max-w-[440px] animate-in slide-in-from-right-8 duration-700 fade-in">
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-12 relative bg-[#F8FAFC]">
+        {/* Aumentado max-w para ficar maior e mais confortável */}
+        <div className="w-full max-w-xl animate-in slide-in-from-right-8 duration-700 fade-in">
           
           {/* Mobile Logo Only */}
-          <div className="lg:hidden flex items-center gap-2 mb-8 justify-center">
-             <div className="bg-blue-600 p-2 rounded-lg"><Car className="text-white" size={20} /></div>
-             <span className="font-bold text-slate-900">{company.product}</span>
+          <div className="lg:hidden flex items-center gap-2 mb-8 justify-center flex-col">
+             <img src="/logo-dark.png" alt="EventPro" className="h-16 mb-2 object-contain" onError={(e) => e.currentTarget.style.display = 'none'} />
+             <span className="font-black text-2xl text-slate-900 tracking-tight">EVENT<span className="text-blue-600">PRO</span></span>
           </div>
 
-          <div className="bg-white p-8 md:p-10 rounded-[32px] shadow-2xl shadow-slate-200/50 border border-slate-100">
-            <div className="text-center mb-8">
-              <h2 className="text-2xl font-black text-slate-900 tracking-tight">Acesso ao Painel</h2>
-              <p className="text-slate-500 text-sm mt-2 font-medium">Bem-vindo de volta! Insira seus dados.</p>
+          <div className="bg-white p-10 md:p-14 rounded-[40px] shadow-2xl shadow-slate-200/50 border border-slate-100">
+            <div className="text-center mb-10">
+              <h2 className="text-3xl font-black text-slate-900 tracking-tight">Acesso ao Painel</h2>
+              <p className="text-slate-500 text-base mt-2 font-medium">Bem-vindo de volta! Insira suas credenciais.</p>
             </div>
 
             {error && (
-               <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 text-red-600 animate-in slide-in-from-top-2">
-                  <AlertCircle className="shrink-0 mt-0.5" size={18} />
-                  <p className="text-xs font-bold leading-relaxed">{error}</p>
+               <div className="mb-8 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 text-red-600 animate-in slide-in-from-top-2">
+                  <AlertCircle className="shrink-0 mt-0.5" size={20} />
+                  <p className="text-sm font-bold leading-relaxed">{error}</p>
                </div>
             )}
 
-            <form onSubmit={handleLogin} className="space-y-5">
-               <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider ml-1">E-mail Corporativo</label>
+            <form onSubmit={handleLogin} className="space-y-6">
+               <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">E-mail Corporativo</label>
                   <div className="relative group">
-                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={18} />
+                      <Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={20} />
                       <input 
                         type="email" 
                         required 
                         value={email}
                         onChange={e => setEmail(e.target.value)}
-                        className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none text-sm font-semibold text-slate-800 focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all placeholder:text-slate-400"
+                        className="w-full pl-14 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none text-base font-semibold text-slate-800 focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all placeholder:text-slate-400"
                         placeholder="nome@empresa.com"
                       />
                   </div>
                </div>
                
-               <div className="space-y-1.5">
+               <div className="space-y-2">
                   <div className="flex justify-between items-center ml-1">
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Senha</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Senha</label>
                     <a href="#" className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:underline">Esqueceu?</a>
                   </div>
                   <div className="relative group">
-                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={18} />
+                      <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={20} />
                       <input 
                         type="password" 
                         required 
                         value={password}
                         onChange={e => setPassword(e.target.value)}
-                        className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none text-sm font-semibold text-slate-800 focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all placeholder:text-slate-400"
+                        className="w-full pl-14 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none text-base font-semibold text-slate-800 focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all placeholder:text-slate-400"
                         placeholder="••••••••"
                       />
                   </div>
@@ -193,17 +210,17 @@ const Login: React.FC = () => {
                <button 
                   type="submit" 
                   disabled={localLoading}
-                  className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-sm shadow-xl shadow-blue-600/20 hover:bg-blue-700 hover:shadow-blue-600/30 hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none"
+                  className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-blue-600/20 hover:bg-blue-700 hover:shadow-blue-600/30 hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none"
                >
-                  {localLoading ? <Loader2 className="animate-spin" size={20}/> : (
+                  {localLoading ? <Loader2 className="animate-spin" size={22}/> : (
                     <>
-                      Entrar na Plataforma <ArrowRight size={18} className="opacity-80"/>
+                      Entrar na Plataforma <ArrowRight size={20} className="opacity-80"/>
                     </>
                   )}
                </button>
             </form>
 
-            <div className="mt-6 mb-6 relative flex py-2 items-center">
+            <div className="mt-8 mb-8 relative flex py-2 items-center">
                 <div className="flex-grow border-t border-slate-100"></div>
                 <span className="flex-shrink-0 mx-4 text-xs font-bold text-slate-300 uppercase">Ou continue com</span>
                 <div className="flex-grow border-t border-slate-100"></div>
@@ -212,14 +229,14 @@ const Login: React.FC = () => {
             <button 
                onClick={handleGoogle}
                disabled={localLoading}
-               className="w-full py-3.5 bg-white border border-slate-200 text-slate-700 font-bold text-sm rounded-2xl flex items-center justify-center gap-3 hover:bg-slate-50 hover:border-slate-300 transition-all group disabled:opacity-60"
+               className="w-full py-4 bg-white border border-slate-200 text-slate-700 font-bold text-sm rounded-2xl flex items-center justify-center gap-3 hover:bg-slate-50 hover:border-slate-300 transition-all group disabled:opacity-60"
             >
-               <Globe size={18} className="text-slate-400 group-hover:text-blue-600 transition-colors"/>
+               <Globe size={20} className="text-slate-400 group-hover:text-blue-600 transition-colors"/>
                Google Workspace
             </button>
 
-            <div className="mt-8 text-center">
-               <p className="text-slate-500 text-xs font-medium">
+            <div className="mt-10 text-center">
+               <p className="text-slate-500 text-sm font-medium">
                  Não tem uma conta? <Link to="/register" className="text-blue-600 font-bold hover:underline">Criar conta empresarial</Link>
                </p>
             </div>
@@ -230,7 +247,7 @@ const Login: React.FC = () => {
                 <ShieldCheck size={12} className="text-green-600" />
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Ambiente Seguro SSL</span>
              </div>
-             <p className="text-[10px] text-slate-300 font-medium">© {new Date().getFullYear()} {company.name}. Todos os direitos reservados.</p>
+             <p className="text-[10px] text-slate-300 font-medium">© {new Date().getFullYear()} {company.product} by {company.name}.</p>
           </div>
         </div>
       </div>

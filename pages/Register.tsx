@@ -71,7 +71,7 @@ const Register: React.FC = () => {
            <div className="inline-flex items-center justify-center p-4 bg-blue-600 rounded-[28px] text-white shadow-2xl mb-6">
              <Car size={32} />
            </div>
-           <h2 className="text-3xl font-black text-slate-800 tracking-tighter">AutoClaims<span className="text-blue-600">Pro</span></h2>
+           <h2 className="text-3xl font-black text-slate-800 tracking-tighter">EVENT<span className="text-blue-600">PRO</span></h2>
         </div>
 
         <Link to="/login" className="inline-flex items-center gap-2 text-slate-400 hover:text-blue-600 font-bold text-xs uppercase tracking-widest mb-6 transition-colors">
