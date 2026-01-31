@@ -54,21 +54,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => { userRef.current = user; }, [user]);
 
   const loadContextData = useCallback(async (userId: string, userEmail?: string, userMeta?: any) => {
+    if (!mounted.current) return;
+
     try {
-      if (!mounted.current) return;
+      // TIMEOUT DE SEGURANÇA PARA DADOS (3 Segundos)
+      // Se o banco demorar, não trava o login.
+      const dbTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('DB_TIMEOUT')), 3000));
 
-      // 1. Perfil com tratamento de erro silencioso (para não travar app)
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
+      const fetchProfile = supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+      const fetchMembers = supabase.from('organization_members').select('*, saas_tenants(*)').eq('user_id', userId);
 
-      if (profileError) {
-        console.warn('[Auth] Aviso ao carregar perfil:', profileError.message);
-      }
+      // Race: Dados vs Timeout
+      const results = await Promise.race([
+          Promise.all([fetchProfile, fetchMembers]),
+          dbTimeout
+      ]) as any;
 
-      const finalProfile: UserProfile = profileData || {
+      // Se for timeout, lança erro para cair no catch
+      if (!Array.isArray(results)) throw new Error("Dados demoraram a carregar");
+
+      const [profileRes, membersRes] = results;
+
+      // 1. Perfil
+      const finalProfile: UserProfile = profileRes.data || {
         id: userId,
         email: userEmail,
         role: 'Usuário',
@@ -81,12 +89,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (mounted.current) setProfile(finalProfile);
 
       // 2. Tenants (Memberships)
-      const { data: membersData } = await supabase
-        .from('organization_members')
-        .select('*, saas_tenants(*)')
-        .eq('user_id', userId);
-
-      const validMemberships = (membersData as any[])?.filter(m => m.saas_tenants) || [];
+      const validMemberships = (membersRes.data as any[])?.filter(m => m.saas_tenants) || [];
       if (mounted.current) setMemberships(validMemberships);
 
       // 3. Seleção de Tenant
@@ -106,8 +109,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (mounted.current) setCurrentTenant(selectedTenant);
 
-    } catch (err) {
-      console.error('[Auth] Erro crítico no contexto:', err);
+    } catch (err: any) {
+      console.warn('[Auth] Carregamento parcial ou offline:', err.message);
+      // Fallback Seguro para não travar a UI
+      if (mounted.current) {
+          setProfile({
+            id: userId,
+            email: userEmail,
+            role: 'Usuário',
+            full_name: userMeta?.full_name || 'Usuário (Modo Rápido)',
+            permissions: {}
+          });
+      }
     }
   }, []);
 
@@ -120,18 +133,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // 1. Recupera sessão inicial
         const { data: { session: initialSession }, error } = await supabase.auth.getSession();
         
-        if (error) throw error;
-
-        if (initialSession?.user) {
-          if (mounted.current) {
-            setSession(initialSession);
-            setUser(initialSession.user);
-            await loadContextData(
-              initialSession.user.id, 
-              initialSession.user.email, 
-              initialSession.user.user_metadata
-            );
-          }
+        if (mounted.current) {
+            if (initialSession?.user) {
+                setSession(initialSession);
+                setUser(initialSession.user);
+                // Carrega dados sem bloquear indefinidamente (timeout interno no loadContextData)
+                await loadContextData(
+                  initialSession.user.id, 
+                  initialSession.user.email, 
+                  initialSession.user.user_metadata
+                );
+            }
         }
       } catch (error) {
         console.error('[Auth] Falha na inicialização:', error);
@@ -140,28 +152,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUser(null);
         }
       } finally {
+        // GARANTIA ABSOLUTA DE FIM DE LOADING
         if (mounted.current) setLoading(false);
       }
     };
-
-    // SAFETY VALVE: Se o Supabase travar, libera a UI em 6 segundos
-    const safetyTimeout = setTimeout(() => {
-        if (loading && mounted.current) {
-            console.warn('[Auth] Timeout de segurança atingido. Forçando liberação.');
-            setLoading(false);
-        }
-    }, 6000);
 
     initialize();
 
     const { data: listenerData } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (!mounted.current) return;
 
-      // Atualiza sessão e usuário básicos
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+      // Eventos de Login
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           setSession(newSession);
           setUser(newSession?.user ?? null);
           
+          // Só recarrega dados se o usuário mudou (evita reload no F5 se getSession já pegou)
           if (newSession?.user && newSession.user.id !== userRef.current?.id) {
              await loadContextData(
                newSession.user.id, 
@@ -170,7 +176,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
              );
           }
       } else if (event === 'SIGNED_OUT') {
-          // Limpeza redundante, mas segura via Evento
+          // Limpeza Completa
           setSession(null);
           setUser(null);
           setProfile(null);
@@ -185,7 +191,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => {
       mounted.current = false;
-      clearTimeout(safetyTimeout);
       if (authListener) authListener.unsubscribe();
     };
   }, [loadContextData]);
@@ -212,7 +217,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
         console.error("Erro ao realizar logout no Supabase:", error);
     } finally {
-        // GARANTIA DE SAÍDA: Limpa estado local mesmo se a chamada de rede falhar ou demorar
+        // Força limpeza local mesmo com erro de rede
         if (mounted.current) {
             setSession(null);
             setUser(null);
@@ -220,11 +225,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setMemberships([]);
             setCurrentTenant(null);
             localStorage.removeItem(TENANT_STORAGE_KEY);
-            
-            // Pequeno delay para garantir que a UI processe o estado 'loading' antes de redirecionar
+            // Pequeno delay para UI
             setTimeout(() => {
                 if (mounted.current) setLoading(false);
-            }, 50);
+            }, 100);
         }
     }
   };
@@ -238,7 +242,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             updated_at: new Date().toISOString(),
             ...data
         };
-        // Remove undefined keys
         Object.keys(updates).forEach(key => updates[key] === undefined && delete updates[key]);
 
         const { error } = await supabase.from('profiles').upsert(updates);
