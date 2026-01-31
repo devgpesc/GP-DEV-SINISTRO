@@ -5,7 +5,7 @@ import { LLMProvider } from '../types';
 
 /**
  * AI Service for AutoClaims Pro (Unified Gateway)
- * Supports: Google Gemini, OpenAI, Anthropic, Groq via Client-Side or Proxy.
+ * Centraliza a inteligência do sistema, gerenciando contexto e prompts.
  */
 
 interface AIAnalysisOptions {
@@ -19,9 +19,10 @@ interface Attachment {
   base64?: string;
   mimeType?: string;
   file?: File;
+  url?: string;
+  name?: string;
 }
 
-// Interface para o Dossiê Inteligente
 interface SupportTicketDossier {
   summary: string;
   technical_category: string;
@@ -34,9 +35,7 @@ export const aiService = {
   
   async getConfig() {
     try {
-        const { data, error } = await supabase.from('saas_settings').select('*').limit(1).single();
-        if (error) throw error;
-        
+        const { data } = await supabase.from('saas_settings').select('*').limit(1).maybeSingle();
         return {
           provider: (data?.ai_provider || 'google') as LLMProvider,
           model: data?.ai_model || 'gemini-3-pro-preview',
@@ -58,88 +57,77 @@ export const aiService = {
 
   async generateStrategicInsight(options: AIAnalysisOptions): Promise<string> {
     const config = await this.getConfig();
-    const systemPrompt = this.getSystemPrompt(options.type);
+    const systemPrompt = `Você é um Diretor Executivo (CFO/COO) de uma empresa de gestão de frotas e seguros (AutoClaims Pro).
+    Analise os dados financeiros e operacionais fornecidos.
+    Foque em: Redução de custos (savings), eficiência de SLA (tempo de sinistro) e performance de fornecedores.
+    Responda em Português do Brasil de forma executiva e direta.`;
     
     try {
       if (config.provider === 'google') {
         const apiKey = config.keys.google;
-        
         if (!apiKey) return "⚠️ Chave de API do Google não configurada.";
 
         const ai = new GoogleGenAI({ apiKey });
-        
-        // Tenta modelo PRO primeiro
-        try {
-            const response = await ai.models.generateContent({
-              model: 'gemini-3-pro-preview', 
-              contents: `Analise estes dados e forneça insights estratégicos:\n${JSON.stringify(options.data)}\n\nContexto Adicional: ${options.context || ''}`,
-              config: {
+        const response = await ai.models.generateContent({
+            model: config.model || 'gemini-3-pro-preview',
+            contents: `Dados para análise:\n${JSON.stringify(options.data)}\n\nContexto: ${options.context || ''}`,
+            config: {
                 systemInstruction: systemPrompt,
                 temperature: 0.7
-              }
-            });
-            return response.text || "Sem resposta da IA.";
-        } catch (proError: any) {
-            console.warn("Gemini Pro falhou, tentando Flash...", proError);
-            // Fallback para Flash
-            const response = await ai.models.generateContent({
-              model: 'gemini-3-flash-preview', 
-              contents: `Analise estes dados e forneça insights estratégicos:\n${JSON.stringify(options.data)}\n\nContexto Adicional: ${options.context || ''}`,
-              config: {
-                systemInstruction: systemPrompt,
-                temperature: 0.7
-              }
-            });
-            return response.text || "Sem resposta da IA (Fallback).";
-        }
-      } 
-      
-      return "IA Estratégica disponível apenas com Google Gemini 3 no momento.";
-
+            }
+        });
+        return response.text || "Sem análise disponível.";
+      }
+      return "Provedor de IA não suportado para esta função.";
     } catch (error: any) {
-      console.error("AI Service Error:", error);
-      return this.handleError(error);
+      console.error("AI Insight Error:", error);
+      return "Não foi possível gerar a análise no momento.";
     }
   },
 
-  // --- CHAT DE SUPORTE TÉCNICO MULTIMODAL (EVOLUÍDO) ---
+  // --- CHAT DE SUPORTE TÉCNICO ---
   async chatSupport(message: string, userContext: any, attachments: Attachment[] = [], memorySummary: string = ''): Promise<string> {
     const config = await this.getConfig();
     const apiKey = config.keys.google;
     
-    if (!apiKey || config.provider !== 'google') {
-        throw new Error("Chave de API inválida ou não configurada em Configurações > IA.");
-    }
+    if (!apiKey) return "⚠️ Erro: Chave de API não configurada. Contate o administrador.";
 
     const ai = new GoogleGenAI({ apiKey });
     
+    // --- DEFINIÇÃO CORRETA DO SISTEMA ---
     const supportSystemPrompt = `
-      Você é o "Gerente de Suporte Virtual" da ESC Solutions (EventPro).
-      Sua persona é sênior, técnica, empática e focada em resolução.
+      Você é o "Gerente de Suporte Virtual" da ESC Solutions (EventPro / AutoClaims).
+      Sua persona é sênior, técnica, empática e focada em resolução eficiente.
       
-      IMPORTANTE - DEFINIÇÃO DO SISTEMA:
-      Este é um sistema de Gestão de Sinistros Automotivos e Frotas.
-      NÃO é um sistema de eventos sociais ou festas.
-      
-      BASE DE CONHECIMENTO (FUNCIONALIDADES):
-      1. CRIAR EVENTO (SINISTRO):
-         - Vá em "Eventos" > Botão "Novo Sinistro".
-         - Selecione Associado e Veículo (Obrigatório).
-         - Defina Tipo (Colisão, Roubo, etc) e Categoria.
-         - Anexe fotos e clique em Salvar.
-      
-      2. COTAÇÕES:
-         - Matriz de compra comparativa de peças (Cotação -> Itens -> Fornecedores).
-      
-      3. COMPRAS:
-         - Ordens de Compra (OCs) geradas a partir de cotações aprovadas.
+      IMPORTANTE - CONTEXTO DO SISTEMA:
+      Este é um sistema SaaS de GESTÃO DE SINISTROS AUTOMOTIVOS (Seguros, Frotas, Oficinas).
+      ATENÇÃO: NÃO é uma plataforma de eventos sociais, festas, shows ou venda de ingressos.
+      Quando o usuário falar "Evento", ele se refere a um SINISTRO VEICULAR (Colisão, Roubo, Pane, etc).
 
-      CONTEXTO TÉCNICO ATUAL DO USUÁRIO:
+      BASE DE CONHECIMENTO (PROCEDIMENTOS CORRETOS):
+      1. CRIAR NOVO SINISTRO (EVENTO):
+         - Acesse o menu lateral "Eventos".
+         - Clique no botão "Novo Sinistro" (canto superior direito).
+         - Passo 1 (Vínculo): Selecione obrigatoriamente o Associado (Cliente) e depois o Veículo.
+         - Passo 2 (Detalhes): O protocolo é automático. Defina o Tipo (Colisão, Furto...), Categoria e Prioridade.
+         - Passo 3 (Evidências): Anexe fotos e documentos se houver.
+         - Clique em "Salvar Sinistro".
+      
+      2. COTAÇÕES (PEÇAS/SERVIÇOS):
+         - Após criar o evento, o status inicial é "Aguardando".
+         - Vá ao menu "Cotações" para iniciar o processo de compra de peças para o sinistro.
+         - Lance os itens e selecione fornecedores para enviar a RFQ.
+      
+      3. COMPRAS (ORDENS DE COMPRA - OC):
+         - A aprovação da cotação gera OCs automaticamente no menu "Compras".
+         - O gestor deve aprovar a OC para que ela seja enviada ao fornecedor.
+
+      CONTEXTO TÉCNICO DO USUÁRIO ATUAL:
       ${JSON.stringify(userContext, null, 2)}
       
       MEMÓRIA DA CONVERSA: ${memorySummary}
       
-      Responda em Português do Brasil. Se o usuário perguntar como fazer algo, dê o passo a passo exato conforme a Base de Conhecimento acima.
+      Responda em Português do Brasil. Se o usuário perguntar "como criar um evento", use o procedimento de SINISTRO acima. Nunca mencione ingressos ou local de festa.
     `;
 
     try {
@@ -148,9 +136,9 @@ export const aiService = {
 
         attachments.forEach(att => {
             if (att.base64) {
-                let mimeType = att.mimeType || 'application/pdf';
-                if (att.type === 'image') mimeType = 'image/jpeg';
-                else if (att.type === 'audio') mimeType = 'audio/mp3';
+                // Fallback simples para mimeType se vier incompleto
+                let mimeType = att.mimeType || 'application/octet-stream';
+                if (att.type === 'image' && !mimeType.includes('image')) mimeType = 'image/jpeg';
                 
                 parts.push({
                     inlineData: {
@@ -161,67 +149,36 @@ export const aiService = {
             }
         });
 
-        if (parts.length === 0) return "Por favor, digite algo.";
+        if (parts.length === 0) return "Como posso ajudar com seus processos de sinistro hoje?";
 
-        // Tenta modelo PRO
-        try {
-            const response = await ai.models.generateContent({
-                model: 'gemini-3-pro-preview',
-                contents: { parts },
-                config: {
-                    systemInstruction: supportSystemPrompt,
-                    temperature: 0.4
-                }
-            });
-            return response.text || "Sem resposta.";
-        } catch (e: any) {
-            // Se falhar (ex: 404 model not found ou 429 quota), tenta FLASH
-            console.warn("Fallback to Flash model due to:", e.message);
-            const response = await ai.models.generateContent({
-                model: 'gemini-3-flash-preview',
-                contents: { parts },
-                config: {
-                    systemInstruction: supportSystemPrompt,
-                    temperature: 0.4
-                }
-            });
-            return response.text || "Sem resposta (Flash).";
-        }
+        const response = await ai.models.generateContent({
+            model: config.model || 'gemini-3-pro-preview',
+            contents: { parts },
+            config: {
+                systemInstruction: supportSystemPrompt,
+                temperature: 0.4 // Temperatura baixa para ser mais preciso nas instruções
+            }
+        });
+        return response.text || "Sem resposta.";
 
     } catch (error: any) {
         console.error("Support AI Error", error);
-        throw new Error(this.handleError(error));
+        return "Desculpe, estou com dificuldades de conexão com o servidor de inteligência no momento.";
     }
   },
 
-  // CHAT MULTIMODAL AVANÇADO (CIO)
   async chatWithContext(userMessage: string, contextData: any, attachments: Attachment[] = []): Promise<string> {
     return this.chatSupport(userMessage, contextData, attachments);
   },
 
-  // CLASSIFICADOR
   async classifySupportTicket(chatHistory: any[], userContext: any): Promise<SupportTicketDossier> {
-    // ... Mantido lógica anterior simplificada para brevidade ...
-    return {
-        summary: "Processamento indisponível",
-        technical_category: "Erro",
+     // Mock ou implementação futura para classificar tickets automaticamente
+     return {
+        summary: "Ticket gerado via chat",
+        technical_category: "Dúvida Operacional",
         sentiment: "Normal",
         priority: "Média",
-        suggested_fix: "Verificar logs"
+        suggested_fix: "Verificar base de conhecimento"
     };
-  },
-
-  handleError(error: any): string {
-      const msg = error.message?.toLowerCase() || '';
-      
-      if (msg.includes('429') || msg.includes('quota')) return "Limite de uso da IA excedido. Tente novamente mais tarde.";
-      if (msg.includes('401') || msg.includes('key')) return "Chave de API inválida. Verifique as configurações.";
-      if (msg.includes('model') || msg.includes('not found')) return "Modelo de IA indisponível. Contate o suporte.";
-      
-      return `Erro técnico na IA: ${error.message}`;
-  },
-
-  getSystemPrompt(type: string): string {
-    return `Você é um Diretor Executivo (CFO/COO) de uma empresa de gestão de frotas e seguros.`;
   }
 };

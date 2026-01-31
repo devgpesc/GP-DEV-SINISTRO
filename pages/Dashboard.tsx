@@ -166,6 +166,7 @@ const Dashboard: React.FC = () => {
                     <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-6">
                         <ShieldAlert size={28}/>
                     </div>
+                    {/* MUDANÇA: 'Meus Sinistros' ao invés de 'Meus Eventos' (Já estava correto, mantendo) */}
                     <h3 className="text-xl font-black text-slate-800 mb-2">Meus Sinistros</h3>
                     <p className="text-sm text-slate-500 font-medium mb-6">Acompanhe o andamento dos processos e registre novos eventos.</p>
                     <div className="flex items-center gap-2 text-blue-600 font-bold text-sm uppercase tracking-wider">
@@ -178,7 +179,8 @@ const Dashboard: React.FC = () => {
                         <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2"><Clock size={20} className="text-blue-600"/> Resumo Rápido</h3>
                         <div className="space-y-4">
                             <div className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
-                                <span className="text-sm font-bold text-slate-600">Eventos Ativos</span>
+                                {/* MUDANÇA: 'Sinistros Ativos' */}
+                                <span className="text-sm font-bold text-slate-600">Sinistros Ativos</span>
                                 <span className="bg-white px-3 py-1 rounded-lg text-sm font-black text-slate-800 shadow-sm border border-slate-100">{events.length}</span>
                             </div>
                             <div className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
@@ -202,7 +204,8 @@ const Dashboard: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
                 <KPICard title="Total Compras" value={`R$ ${kpis?.totalPurchases.toLocaleString('pt-BR', {maximumFractionDigits: 0})}`} trend="up" icon={ShoppingBag} color="blue" />
                 <KPICard title="Economia Estimada" value={`R$ ${kpis?.savings.toLocaleString('pt-BR', {maximumFractionDigits: 0})}`} trend="up" icon={TrendingDown} color="green" />
-                <KPICard title="Eventos em Aberto" value={kpis?.openEvents} trend="down" icon={ShieldAlert} color="amber" />
+                {/* MUDANÇA: 'Sinistros Abertos' */}
+                <KPICard title="Sinistros Abertos" value={kpis?.openEvents} trend="down" icon={ShieldAlert} color="amber" />
                 <KPICard title="Ticket Médio" value={`R$ ${kpis?.avgTicket.toLocaleString('pt-BR', {maximumFractionDigits: 0})}`} trend="up" icon={DollarSign} color="slate" />
             </div>
 
@@ -244,6 +247,7 @@ const Dashboard: React.FC = () => {
 
                 {/* Status Chart */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                {/* MUDANÇA: Título mantido como 'Status dos Sinistros' */}
                 <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
                     <Clock size={20} className="text-blue-600" />
                     Status dos Sinistros
@@ -271,7 +275,8 @@ const Dashboard: React.FC = () => {
                             </ResponsiveContainer>
                             <div className="absolute inset-0 flex items-center justify-center flex-col pointer-events-none">
                                 <span className="text-3xl font-bold text-slate-800">{events.length}</span>
-                                <span className="text-xs text-slate-500 font-medium">Eventos</span>
+                                {/* MUDANÇA: 'Sinistros' */}
+                                <span className="text-xs text-slate-500 font-medium">Sinistros</span>
                             </div>
                         </>
                     ) : (

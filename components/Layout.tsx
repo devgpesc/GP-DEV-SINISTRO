@@ -318,7 +318,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
             <p className="px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Operacional</p>
             <NavItem to="/" icon={LayoutDashboard} label="Dashboard" active={location.pathname === '/'} onClick={closeMobileMenu} />
-            <NavItem to="/eventos" icon={FileText} label="Eventos" active={location.pathname === '/eventos'} onClick={closeMobileMenu} />
+            {/* MUDANÇA: Rótulo atualizado de 'Eventos' para 'Sinistros' */}
+            <NavItem to="/eventos" icon={FileText} label="Sinistros" active={location.pathname === '/eventos'} onClick={closeMobileMenu} />
             
             {(canViewFinancial || canApprove) && (
                 <>
