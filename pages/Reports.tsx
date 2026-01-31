@@ -86,19 +86,25 @@ const Reports: React.FC = () => {
   // --- CÁLCULOS ESTRATÉGICOS (KPIs) ---
   const filteredOrders = useMemo(() => {
     return orders.filter(o => {
-      // Filtro de Data Início
+      const orderDate = new Date(o.createdAt);
+
+      // Filtro de Data Início (Correção de Timezone)
       if (dateRange.start) {
-          const startDate = new Date(dateRange.start);
-          const orderDate = new Date(o.createdAt);
-          startDate.setHours(0,0,0,0); // Início do dia
+          // Divide a string YYYY-MM-DD para garantir o uso do fuso local
+          const [year, month, day] = dateRange.start.split('-').map(Number);
+          // Cria data no início do dia (00:00:00) localmente
+          // Mês no JS é 0-indexado (Janeiro = 0)
+          const startDate = new Date(year, month - 1, day, 0, 0, 0, 0);
+          
           if (orderDate < startDate) return false;
       }
       
-      // Filtro de Data Fim
+      // Filtro de Data Fim (Correção de Timezone)
       if (dateRange.end) {
-          const endDate = new Date(dateRange.end);
-          endDate.setHours(23, 59, 59, 999); // Final do dia
-          const orderDate = new Date(o.createdAt);
+          const [year, month, day] = dateRange.end.split('-').map(Number);
+          // Cria data no final do dia (23:59:59) localmente
+          const endDate = new Date(year, month - 1, day, 23, 59, 59, 999);
+          
           if (orderDate > endDate) return false;
       }
 
@@ -194,16 +200,26 @@ const Reports: React.FC = () => {
             <Filter size={16}/> Filtros
          </div>
          <div className="flex items-center gap-2 flex-1">
-            <input type="date" className="p-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-600 outline-none" value={dateRange.start} onChange={e => setDateRange({...dateRange, start: e.target.value})} />
-            <span className="text-slate-300">-</span>
-            <input type="date" className="p-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-600 outline-none" value={dateRange.end} onChange={e => setDateRange({...dateRange, end: e.target.value})} />
+            <input 
+              type="date" 
+              className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 transition-all" 
+              value={dateRange.start} 
+              onChange={e => setDateRange({...dateRange, start: e.target.value})} 
+            />
+            <span className="text-slate-300 font-bold">-</span>
+            <input 
+              type="date" 
+              className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 transition-all" 
+              value={dateRange.end} 
+              onChange={e => setDateRange({...dateRange, end: e.target.value})} 
+            />
          </div>
-         <select className="p-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-600 outline-none" value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}>
+         <select className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer" value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}>
             <option>Todas Categorias</option>
             <option>Peças</option>
             <option>Serviços</option>
          </select>
-         <button onClick={() => { setDateRange({start: '', end: ''}); setCategoryFilter('Todas Categorias'); }} className="p-2 text-slate-400 hover:text-blue-600" title="Limpar Filtros"><RefreshCw size={16}/></button>
+         <button onClick={() => { setDateRange({start: '', end: ''}); setCategoryFilter('Todas Categorias'); }} className="p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all" title="Limpar Filtros"><RefreshCw size={16}/></button>
       </div>
 
       {/* Strategic KPIs */}
