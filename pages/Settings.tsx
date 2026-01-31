@@ -159,6 +159,32 @@ const Settings: React.FC = () => {
   const handleDeleteInvite = async (id: string) => { await supabase.from('invitations').delete().eq('id', id); setInvitations(prev => prev.filter(i => i.id !== id)); };
   const copyInviteLink = () => { navigator.clipboard.writeText(generatedLink); setCopied(true); setTimeout(() => setCopied(false), 2000); addToast('success', 'Copiado', 'Link na área de transferência.'); };
 
+  // --- TRADUTORES PARA AUDITORIA ---
+  const translateAction = (act: string) => {
+      const map: any = {
+          'create': 'Criar',
+          'update': 'Editar',
+          'delete': 'Excluir',
+          'update settings': 'Configurações',
+          'create invite': 'Novo Convite',
+          'update user': 'Editar Usuário',
+          'delete user': 'Remover Usuário',
+          'register': 'Novo Cadastro',
+          'navigate': 'Acesso'
+      };
+      return map[act.toLowerCase()] || act;
+  };
+
+  const translateEntity = (ent: string) => {
+      const map: any = {
+          'user': 'Usuário',
+          'settings': 'Configuração',
+          'invitation': 'Convite',
+          'page': 'Página'
+      };
+      return map[ent.toLowerCase()] || ent;
+  };
+
   const tabs = [
     { id: 'ai_config', label: 'Inteligência Artificial', icon: Brain },
     { id: 'general', label: 'Geral', icon: Building },
@@ -292,18 +318,20 @@ const Settings: React.FC = () => {
                                                   {log.profiles?.full_name || log.user_email || 'Sistema'}
                                               </td>
                                               <td className="p-4">
-                                                  <span className="bg-white border border-slate-200 px-2 py-1 rounded font-bold text-slate-600">{log.action}</span>
+                                                  <span className="bg-white border border-slate-200 px-2 py-1 rounded font-bold text-slate-600">{translateAction(log.action)}</span>
                                               </td>
                                               <td className="p-4 text-slate-500">
-                                                  {log.entity} <span className="opacity-50">#{log.entity_id?.substring(0,6)}</span>
+                                                  <span className="font-bold text-slate-600">{translateEntity(log.entity)}</span> <span className="opacity-50">#{log.entity_id?.substring(0,6)}</span>
                                               </td>
                                               <td className="p-4 text-slate-500">
-                                                  {log.details?.ip ? (
+                                                  {(log.details?.ip) ? (
                                                       <div className="flex flex-col">
                                                           <span className="font-mono text-[10px]">{log.details.ip}</span>
                                                           <span className="flex items-center gap-1 text-[9px] font-bold text-slate-400"><MapPin size={8}/> {log.details.location || 'N/D'}</span>
                                                       </div>
-                                                  ) : '-'}
+                                                  ) : (
+                                                      <span className="text-slate-300">-</span>
+                                                  )}
                                               </td>
                                               <td className="p-4 text-slate-500">
                                                   {log.details?.os ? (
