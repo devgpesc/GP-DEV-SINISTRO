@@ -10,6 +10,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { isSupabaseConfigured, supabase } from '../services/supabaseClient';
 import AIChatWindow from './AIChatWindow';
+import SupportWidget from './SupportWidget'; // Importado
 
 interface LayoutProps {
   children?: React.ReactNode;
@@ -78,7 +79,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
 
-  // Permissions Logic
+  // Permissões Logic
   const role = profile?.role || 'Usuário';
   const isManagerOrAdmin = role === 'Gerente' || role === 'Admin' || role === 'super_admin';
   
@@ -255,7 +256,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     }
   };
 
-  // Fecha o menu mobile ao clicar em um link
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
 
   return (
@@ -307,7 +307,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         <div className="p-6">
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-2">
-                {/* LOGO AREA SIDEBAR - TENTA CARREGAR IMAGEM OU MOSTRA TEXTO */}
                 <img 
                     src={companyLogo || "/logo-white.png"} 
                     className="h-8 w-auto object-contain max-w-[150px]" 
@@ -322,7 +321,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                     <h1 className="text-lg font-black tracking-tight">EVENT<span className="text-blue-500">PRO</span></h1>
                 </div>
             </div>
-            {/* Botão fechar no mobile */}
             <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-white">
                 <X size={24}/>
             </button>
@@ -550,6 +548,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       </main>
 
       <AIChatWindow isOpen={isAiChatOpen} onClose={() => setIsAiChatOpen(false)} />
+      
+      {/* NOVO WIDGET DE SUPORTE */}
+      <SupportWidget />
 
       {showProfileModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">

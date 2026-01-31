@@ -82,7 +82,51 @@ export const aiService = {
     }
   },
 
-  // CHAT MULTIMODAL AVANÇADO
+  // --- NOVO: CHAT DE SUPORTE TÉCNICO ---
+  async chatSupport(message: string, userContext: any): Promise<string> {
+    const config = await this.getConfig();
+    const apiKey = config.keys.google;
+    
+    if (!apiKey || config.provider !== 'google') {
+        // Fallback simples se não tiver Gemini configurado para suporte
+        return "Olá. Para suporte avançado, por favor configure a chave do Google Gemini nas configurações.";
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+    
+    const supportSystemPrompt = `
+      Você é o Agente de Suporte Técnico Nível 1 da ESC Solutions, criadora do software EventPro.
+      Seu objetivo é ajudar o usuário a navegar no sistema, resolver dúvidas operacionais e diagnosticar erros simples.
+      
+      CONTEXTO ATUAL DO USUÁRIO:
+      ${JSON.stringify(userContext, null, 2)}
+      
+      DIRETRIZES:
+      1. Seja educado, técnico mas acessível.
+      2. Se o usuário perguntar sobre funcionalidades, explique onde clicar.
+      3. Se o usuário relatar um "Erro" ou "Bug", peça detalhes ou sugira recarregar (F5).
+      4. Se o problema parecer complexo, financeiro ou crítico, sugira explicitamente clicar no botão "Falar no WhatsApp" acima do chat.
+      5. Não invente recursos que não existem. O sistema tem: Eventos, Cotações, Compras, Entregas, Fornecedores, Associados, Veículos e Relatórios.
+      6. Responda em Português do Brasil.
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview', // Modelo mais rápido para chat
+            contents: message,
+            config: {
+                systemInstruction: supportSystemPrompt,
+                temperature: 0.5,
+            }
+        });
+        return response.text || "Desculpe, não entendi. Pode reformular?";
+    } catch (error: any) {
+        console.error("Support AI Error", error);
+        return "Estou com instabilidade momentânea. Por favor, utilize o botão de WhatsApp para suporte humano.";
+    }
+  },
+
+  // CHAT MULTIMODAL AVANÇADO (CIO)
   async chatWithContext(userMessage: string, contextData: any, attachments: Attachment[] = []): Promise<string> {
     const config = await this.getConfig();
     
