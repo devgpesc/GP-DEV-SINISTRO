@@ -4,17 +4,20 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 type Session = any;
 type User = any;
 import { supabase } from '../services/supabaseClient';
+import { SaasTenant } from '../types';
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   profile: any;
+  currentTenant: SaasTenant | null; // Empresa ativa
   loading: boolean;
   signOut: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   updateProfile: (data: { full_name?: string; avatar_url?: string; role?: string }) => Promise<void>;
   isSuperAdmin: boolean;
   checkPermission: (feature: string) => boolean;
+  switchTenant: (tenantId: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -23,17 +26,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<any>(null);
+  const [currentTenant, setCurrentTenant] = useState<SaasTenant | null>(null);
   
-  // Começa TRUE para bloquear a UI até termos certeza da sessão (evita flash de login)
+  // Começa TRUE para bloquear a UI até termos certeza da sessão
   const [loading, setLoading] = useState(true); 
 
-  // Ref para acessar o perfil atual dentro do listener sem recriar o efeito
   const profileRef = useRef(profile);
   useEffect(() => {
     profileRef.current = profile;
   }, [profile]);
 
-  // Busca perfil real no banco com retry
+  // Busca perfil real no banco
   const fetchProfile = useCallback(async (userId: string, userEmail?: string, userMeta?: any) => {
     try {
       const { data, error } = await supabase
@@ -47,9 +50,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return null;
       }
       
-      // Fallback em memória se o trigger falhou (Safety net)
+      // Fallback em memória
       if (!data) {
-          console.warn('[Auth] Perfil DB não encontrado. Usando fallback.');
           return {
               id: userId,
               email: userEmail,
@@ -58,12 +60,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               permissions: {}
           };
       }
-      
       return data;
     } catch (err) {
       console.error('[Auth] Falha crítica no fetchProfile:', err);
       return null;
     }
+  }, []);
+
+  // Busca a empresa ativa (Tenant)
+  const fetchTenant = useCallback(async (userId: string) => {
+      try {
+          // 1. Busca relação usuário-empresa
+          const { data: links, error } = await supabase
+              .from('organization_members')
+              .select('tenant_id, saas_tenants(*)')
+              .eq('user_id', userId)
+              .limit(1);
+
+          if (error) throw error;
+
+          if (links && links.length > 0) {
+              // Se tiver vinculado a uma empresa, usa ela
+              return links[0].saas_tenants;
+          } else {
+              // Fallback: Se for Super Admin, pode não estar em 'organization_members' mas acessa tudo
+              // Ou se o sistema for legado, busca se é owner direto na tabela saas_tenants
+              const { data: owned } = await supabase
+                  .from('saas_tenants')
+                  .select('*')
+                  .eq('owner_id', userId)
+                  .limit(1)
+                  .maybeSingle();
+              
+              return owned || null;
+          }
+      } catch (e) {
+          console.error('[Auth] Erro ao buscar tenant:', e);
+          return null;
+      }
   }, []);
 
   // Inicialização "Blindada"
@@ -72,7 +106,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const initializeAuth = async () => {
         try {
-            // 1. Verifica sessão persistida (LocalStorage)
             const { data: { session: initialSession }, error } = await supabase.auth.getSession();
 
             if (error) throw error;
@@ -81,20 +114,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 if (mounted) {
                     setSession(initialSession);
                     setUser(initialSession.user);
-                    // Busca perfil antes de liberar a tela
+                    
+                    // Busca perfil
                     const p = await fetchProfile(
                         initialSession.user.id, 
                         initialSession.user.email, 
                         initialSession.user.user_metadata
                     );
                     if (mounted) setProfile(p);
+
+                    // Busca Tenant
+                    const t = await fetchTenant(initialSession.user.id);
+                    if (mounted) setCurrentTenant(t);
                 }
             } else {
-                // Sem sessão, limpa estados
                 if (mounted) {
                     setUser(null);
                     setSession(null);
                     setProfile(null);
+                    setCurrentTenant(null);
                 }
             }
         } catch (err) {
@@ -105,29 +143,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
         } finally {
             if (mounted) {
-                setLoading(false); // SÓ AGORA libera a UI
+                setLoading(false);
             }
         }
     };
 
     initializeAuth();
 
-    // 2. Escuta mudanças em tempo real
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
         if (!mounted) return;
-
-        console.log('[Auth] Evento:', event);
 
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
             setSession(newSession);
             setUser(newSession?.user ?? null);
             
             if (newSession?.user) {
-                // Usa ref para checar estado atual sem re-triggerar o effect
                 const currentProfile = profileRef.current;
-                
-                // Atualiza perfil se necessário (se não existe ou se o ID mudou)
-                // Se a role mudou no banco, forçamos um refresh
                 if (!currentProfile || currentProfile.id !== newSession.user.id) {
                     const p = await fetchProfile(
                         newSession.user.id, 
@@ -135,6 +166,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         newSession.user.user_metadata
                     );
                     if (mounted) setProfile(p);
+
+                    const t = await fetchTenant(newSession.user.id);
+                    if (mounted) setCurrentTenant(t);
                 }
             }
             setLoading(false);
@@ -143,6 +177,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setSession(null);
             setUser(null);
             setProfile(null);
+            setCurrentTenant(null);
             setLoading(false);
             localStorage.removeItem('sb-autoclaims-auth-token'); 
         }
@@ -152,7 +187,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         mounted = false;
         subscription.unsubscribe();
     };
-  }, [fetchProfile]); // Removed 'profile' from dependencies to prevent loop
+  }, [fetchProfile, fetchTenant]);
 
   const signInWithGoogle = async () => {
     try {
@@ -212,16 +247,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return !!profile.permissions?.[feature];
   };
 
+  const switchTenant = async (tenantId: string) => {
+      // Implementação futura para quem tem múltiplas empresas
+      console.log("Switching to tenant:", tenantId);
+  };
+
   const value = {
     user,
     session,
     profile,
+    currentTenant,
     loading,
     signOut,
     signInWithGoogle,
     updateProfile,
     isSuperAdmin: profile?.role === 'super_admin' || profile?.role === 'Admin',
-    checkPermission
+    checkPermission,
+    switchTenant
   };
 
   return (

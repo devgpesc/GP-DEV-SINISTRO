@@ -20,81 +20,14 @@ export enum Priority {
   URGENT = 'Urgente'
 }
 
-export interface Supplier {
-  id: string;
-  name: string;
-  cnpj: string;
-  rating: number;
-  segment: 'Peças' | 'Serviços' | 'Ambos';
-  whatsapp: string;
-  status: 'Ativo' | 'Inativo' | 'Bloqueado';
-  blockedReason?: string;
-  city: string;
-  email?: string;
-  contactName?: string;
-  createdAt: string;
-}
+// --- SAAS TYPES ---
 
-export interface PurchaseOrder {
+export interface OrganizationMember {
   id: string;
-  code: string;
-  eventId: string;
-  supplierId: string;
-  items: Array<{ 
-    catalogId: string; // Link com Catálogo
-    name: string; 
-    quantity: number; 
-    price: number;
-    catalog_item_id?: string; // Novo
-  }>;
-  total: number;
-  status: 'Gerada' | 'Enviada' | 'Aprovada' | 'Recebida' | 'Cancelada';
-  createdAt: string;
-  approvedAt?: string;
-}
-
-// --- NOVOS TIPOS PARA MATRIZ INTELIGENTE ---
-
-export interface Quotation {
-  id: string;
-  code: string;
-  eventId?: string;
-  eventRef?: string;
-  status: 'Em Aberto' | 'Análise' | 'Aprovada' | 'Finalizada' | 'Cancelada';
+  tenant_id: string;
+  user_id: string;
+  role: 'owner' | 'admin' | 'member' | 'observer';
   created_at: string;
-  deadline?: string;
-}
-
-export interface QuotationItem {
-  id: string;
-  quotation_id: string;
-  name: string;
-  quantity: number;
-  unit: string;
-  category?: string;
-  target_price?: number;
-  catalog_item_id?: string; // Link com Catálogo
-  status: 'Pendente' | 'Cotado' | 'Comprado';
-}
-
-export interface SupplierPrice {
-  id: string;
-  quotation_item_id: string;
-  supplier_id: string;
-  price: number;
-  obs?: string;
-  availability: boolean;
-  is_winner?: boolean;
-}
-
-export interface CatalogItem {
-  id: string;
-  code: string;
-  name: string;
-  category: string;
-  type: 'Peça' | 'Serviço';
-  unit: string;
-  description?: string;
 }
 
 export interface SaasTenant {
@@ -124,8 +57,90 @@ export interface SaasPlan {
   };
 }
 
+// --- BUSINESS ENTITIES ---
+
+export interface Supplier {
+  id: string;
+  tenant_id?: string;
+  name: string;
+  cnpj: string;
+  rating: number;
+  segment: 'Peças' | 'Serviços' | 'Ambos';
+  whatsapp: string;
+  status: 'Ativo' | 'Inativo' | 'Bloqueado';
+  blockedReason?: string;
+  city: string;
+  email?: string;
+  contactName?: string;
+  createdAt: string;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  tenant_id?: string;
+  code: string;
+  eventId: string;
+  supplierId: string;
+  items: Array<{ 
+    catalogId: string;
+    name: string; 
+    quantity: number; 
+    price: number;
+    catalog_item_id?: string;
+  }>;
+  total: number;
+  status: 'Gerada' | 'Enviada' | 'Aprovada' | 'Recebida' | 'Cancelada';
+  createdAt: string;
+  approvedAt?: string;
+}
+
+export interface Quotation {
+  id: string;
+  tenant_id?: string;
+  code: string;
+  eventId?: string;
+  eventRef?: string;
+  status: 'Em Aberto' | 'Análise' | 'Aprovada' | 'Finalizada' | 'Cancelada';
+  created_at: string;
+  deadline?: string;
+}
+
+export interface QuotationItem {
+  id: string;
+  quotation_id: string;
+  name: string;
+  quantity: number;
+  unit: string;
+  category?: string;
+  target_price?: number;
+  catalog_item_id?: string;
+  status: 'Pendente' | 'Cotado' | 'Comprado';
+}
+
+export interface SupplierPrice {
+  id: string;
+  quotation_item_id: string;
+  supplier_id: string;
+  price: number;
+  obs?: string;
+  availability: boolean;
+  is_winner?: boolean;
+}
+
+export interface CatalogItem {
+  id: string;
+  tenant_id?: string;
+  code: string;
+  name: string;
+  category: string;
+  type: 'Peça' | 'Serviço';
+  unit: string;
+  description?: string;
+}
+
 export interface Associate {
   id: string;
+  tenant_id?: string;
   name: string;
   document: string;
   type: 'PF' | 'PJ';
@@ -133,6 +148,7 @@ export interface Associate {
 
 export interface Vehicle {
   id: string;
+  tenant_id?: string;
   plate: string;
   model: string;
   brand: string;
@@ -154,6 +170,7 @@ export interface Vehicle {
 
 export interface Event {
   id: string;
+  tenant_id?: string;
   protocol: string;
   type: EventType;
   priority: Priority;
@@ -169,6 +186,7 @@ export interface Event {
 
 export interface Delivery {
   id: string;
+  tenant_id?: string;
   po: string;
   supplier: string;
   items: number;
@@ -177,10 +195,9 @@ export interface Delivery {
   status?: string;
 }
 
-// --- NOVOS TIPOS AUDITORIA E CONVITES ---
-
 export interface AuditLog {
   id: string;
+  tenant_id?: string;
   action: string;
   entity: string;
   entity_id?: string;
@@ -193,6 +210,7 @@ export interface AuditLog {
 
 export interface Invitation {
   id: string;
+  tenant_id?: string;
   email: string;
   name: string;
   role: string;
