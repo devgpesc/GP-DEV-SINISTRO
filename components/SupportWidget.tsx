@@ -58,7 +58,7 @@ const SupportWidget: React.FC = () => {
   // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isOpen, attachments]);
+  }, [messages, isOpen, attachments, loading]);
 
   // --- HELPERS DE ARQUIVO ---
   const fileToBase64 = (file: File): Promise<string> => {
@@ -365,14 +365,21 @@ const SupportWidget: React.FC = () => {
                   </div>
                 </div>
               ))}
+              
+              {/* ELEGANT TYPING INDICATOR */}
               {loading && (
-                 <div className="flex justify-start relative z-10">
-                    <div className="bg-white p-3 rounded-xl rounded-tl-none shadow-sm flex items-center gap-2">
-                       <Loader2 size={14} className="animate-spin text-[#075E54]"/>
-                       <span className="text-xs text-slate-500">Analisando...</span>
+                 <div className="flex justify-start relative z-10 animate-in fade-in duration-300">
+                    <div className="w-6 h-6 rounded-full bg-white border border-slate-200 flex items-center justify-center mr-2 mt-1 shrink-0 text-[#075E54]">
+                       <LifeBuoy size={14}/>
+                    </div>
+                    <div className="bg-white p-3.5 rounded-xl rounded-tl-none shadow-sm flex items-center gap-1.5 min-w-[60px]">
+                       <div className="w-1.5 h-1.5 bg-[#075E54] rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                       <div className="w-1.5 h-1.5 bg-[#075E54] rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                       <div className="w-1.5 h-1.5 bg-[#075E54] rounded-full animate-bounce"></div>
                     </div>
                  </div>
               )}
+              
               <div ref={messagesEndRef} />
             </div>
 
