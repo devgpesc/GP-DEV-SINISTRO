@@ -22,17 +22,11 @@ import Register from './pages/Register.tsx';
 import SaasAdmin from './pages/SaasAdmin.tsx';
 import Associates from './pages/Associates.tsx';
 import Notifications from './pages/Notifications.tsx';
-import AIAssistant from './components/AIAssistant.tsx';
 
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isSuperAdmin } = useAuth();
   if (!isSuperAdmin) return <Navigate to="/" replace />;
   return <>{children}</>;
-};
-
-const AuthOnlyAssistant = () => {
-  const { user } = useAuth();
-  return user ? <AIAssistant /> : null;
 };
 
 const App: React.FC = () => {
@@ -69,7 +63,6 @@ const App: React.FC = () => {
                </PrivateRoute>
             } />
           </Routes>
-          <AuthOnlyAssistant />
         </Router>
       </ToastProvider>
     </AuthProvider>

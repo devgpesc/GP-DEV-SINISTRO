@@ -87,6 +87,12 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     if (profile) {
         loadDashboardData();
+    } else {
+        // Fallback: Se o perfil não estiver disponível imediatamente, 
+        // aguarda um pouco e remove o loading para não travar a tela.
+        // O PrivateRoute já garante que há um usuário logado.
+        const timer = setTimeout(() => setLoading(false), 2000);
+        return () => clearTimeout(timer);
     }
     return () => { if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current); };
   }, [profile?.id, profile?.role]); // Dependências primitivas para evitar loop
