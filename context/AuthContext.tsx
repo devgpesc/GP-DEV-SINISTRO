@@ -157,23 +157,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { data: listenerData } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (!mounted.current) return;
 
-      setSession(newSession);
-      setUser(newSession?.user ?? null);
-
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        if (newSession?.user && newSession.user.id !== userRef.current?.id) {
-           await loadContextData(
-             newSession.user.id, 
-             newSession.user.email, 
-             newSession.user.user_metadata
-           );
-        }
+      // Atualiza sessão e usuário básicos
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+          setSession(newSession);
+          setUser(newSession?.user ?? null);
+          
+          if (newSession?.user && newSession.user.id !== userRef.current?.id) {
+             await loadContextData(
+               newSession.user.id, 
+               newSession.user.email, 
+               newSession.user.user_metadata
+             );
+          }
       } else if (event === 'SIGNED_OUT') {
-        setProfile(null);
-        setMemberships([]);
-        setCurrentTenant(null);
-        localStorage.removeItem(TENANT_STORAGE_KEY);
-        setLoading(false);
+          // Limpeza redundante, mas segura via Evento
+          setSession(null);
+          setUser(null);
+          setProfile(null);
+          setMemberships([]);
+          setCurrentTenant(null);
+          localStorage.removeItem(TENANT_STORAGE_KEY);
+          setLoading(false);
       }
     });
 
@@ -203,7 +207,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOut = async () => {
     setLoading(true);
-    await supabase.auth.signOut();
+    try {
+        await supabase.auth.signOut();
+    } catch (error) {
+        console.error("Erro ao realizar logout no Supabase:", error);
+    } finally {
+        // GARANTIA DE SAÍDA: Limpa estado local mesmo se a chamada de rede falhar ou demorar
+        if (mounted.current) {
+            setSession(null);
+            setUser(null);
+            setProfile(null);
+            setMemberships([]);
+            setCurrentTenant(null);
+            localStorage.removeItem(TENANT_STORAGE_KEY);
+            
+            // Pequeno delay para garantir que a UI processe o estado 'loading' antes de redirecionar
+            // Isso evita piscadas
+            setTimeout(() => {
+                if (mounted.current) setLoading(false);
+            }, 50);
+        }
+    }
   };
 
   const updateProfile = async (data: { full_name?: string; avatar_url?: string; role?: string }) => {
