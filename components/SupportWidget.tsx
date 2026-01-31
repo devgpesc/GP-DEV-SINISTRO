@@ -30,7 +30,7 @@ const SupportWidget: React.FC = () => {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [isClassifying, setIsClassifying] = useState(false); // Estado para animação de classificação
+  const [isClassifying, setIsClassifying] = useState(false);
   
   // Estados de Mídia
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -42,13 +42,13 @@ const SupportWidget: React.FC = () => {
   const [isRecordingVideo, setIsRecordingVideo] = useState(false);
   const [videoStream, setVideoStream] = useState<MediaStream | null>(null);
 
-  const [messages, setMessages] = useState<any[]>([
-    { 
-      id: 'welcome', 
-      role: 'agent', 
-      text: 'Olá! Sou seu Gerente de Suporte Virtual. Estou analisando seu contexto atual. Como posso destravar seu trabalho agora?' 
-    }
-  ]);
+  const initialMessage = { 
+    id: 'welcome', 
+    role: 'agent', 
+    text: 'Olá! Sou seu Gerente de Suporte Virtual. Estou analisando seu contexto atual. Como posso destravar seu trabalho agora?' 
+  };
+
+  const [messages, setMessages] = useState<any[]>([initialMessage]);
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -59,34 +59,45 @@ const SupportWidget: React.FC = () => {
   const videoPreviewRef = useRef<HTMLVideoElement>(null);
   const timerRef = useRef<number | null>(null);
 
+  // --- LOGOUT RESET TRIGGER ---
+  // Monitora o usuário. Se ele sair (null), limpa o chat.
+  useEffect(() => {
+    if (!user) {
+      localStorage.removeItem(MEMORY_KEY);
+      setMessages([initialMessage]);
+      setIsOpen(false);
+      setAttachments([]);
+    }
+  }, [user]);
+
   // --- MEMÓRIA LÓGICA (Load & Save) ---
   useEffect(() => {
-    // Carregar histórico ao abrir
-    const saved = localStorage.getItem(MEMORY_KEY);
-    if (saved) {
-        try {
-            const parsed = JSON.parse(saved);
-            // Mantém apenas as últimas 10 mensagens para não poluir
-            if (parsed.length > 0) {
-                // Adiciona um divisor visual se houver histórico antigo
-                setMessages([...parsed.slice(-10), { 
-                    id: 'divider-' + Date.now(), 
-                    role: 'system', 
-                    text: '--- Nova Sessão Iniciada ---' 
-                }]);
-            }
-        } catch (e) {
-            localStorage.removeItem(MEMORY_KEY);
-        }
+    if (user) {
+      // Carregar histórico ao abrir apenas se tiver usuário
+      const saved = localStorage.getItem(MEMORY_KEY);
+      if (saved) {
+          try {
+              const parsed = JSON.parse(saved);
+              if (parsed.length > 0) {
+                  setMessages([...parsed.slice(-10), { 
+                      id: 'divider-' + Date.now(), 
+                      role: 'system', 
+                      text: '--- Nova Sessão Iniciada ---' 
+                  }]);
+              }
+          } catch (e) {
+              localStorage.removeItem(MEMORY_KEY);
+          }
+      }
     }
-  }, []);
+  }, [user]); // Dependência de user adicionada para recarregar ao logar
 
   useEffect(() => {
-    // Salvar histórico a cada nova mensagem (exceto a de boas-vindas inicial se for única)
-    if (messages.length > 1) {
+    // Salvar histórico a cada nova mensagem (se tiver usuário)
+    if (user && messages.length > 1) {
         localStorage.setItem(MEMORY_KEY, JSON.stringify(messages.filter(m => m.role !== 'system')));
     }
-  }, [messages]);
+  }, [messages, user]);
 
   // Auto-scroll
   useEffect(() => {
@@ -345,6 +356,7 @@ _Ticket gerado via EventPro AI_
     );
   }
 
+  // Component render logic same as before, just with the added effects above...
   return (
     <>
       <div 
@@ -464,7 +476,6 @@ _Ticket gerado via EventPro AI_
                 </React.Fragment>
               ))}
               
-              {/* ELEGANT TYPING INDICATOR */}
               {loading && (
                  <div className="flex justify-start relative z-10 animate-in fade-in duration-300">
                     <div className="w-6 h-6 rounded-full bg-white border border-slate-200 flex items-center justify-center mr-2 mt-1 shrink-0 text-[#075E54]">
@@ -554,7 +565,7 @@ _Ticket gerado via EventPro AI_
         )}
       </div>
 
-      {/* MODAL DE GRAVAÇÃO DE VÍDEO */}
+      {/* MODAL DE GRAVAÇÃO DE VÍDEO (Igual ao anterior) */}
       {showVideoModal && (
           <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 animate-in fade-in">
               <div className="relative w-full max-w-lg bg-black rounded-2xl overflow-hidden border border-slate-700 shadow-2xl">
