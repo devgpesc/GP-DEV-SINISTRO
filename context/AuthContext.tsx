@@ -1,23 +1,28 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
-// Fix: Types User and Session not exported in v1, define as any locally
-type Session = any;
-type User = any;
+import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../services/supabaseClient';
-import { SaasTenant } from '../types';
+import { SaasTenant, OrganizationMember } from '../types';
+
+// Extensão do tipo OrganizationMember para incluir os dados da empresa (Join)
+interface EnrichedMembership extends OrganizationMember {
+  saas_tenants: SaasTenant;
+}
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   profile: any;
-  currentTenant: SaasTenant | null; // Empresa ativa
+  memberships: EnrichedMembership[]; // Lista de todas as empresas do usuário
+  currentTenant: SaasTenant | null;  // Empresa atualmente selecionada
   loading: boolean;
   signOut: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   updateProfile: (data: { full_name?: string; avatar_url?: string; role?: string }) => Promise<void>;
   isSuperAdmin: boolean;
   checkPermission: (feature: string) => boolean;
-  switchTenant: (tenantId: string) => Promise<void>;
+  switchTenant: (tenantId: string) => void; // Função para trocar de empresa
+  refreshContext: () => Promise<void>; // Recarrega dados sem deslogar
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -26,168 +31,141 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<any>(null);
+  
+  // Multi-tenant States
+  const [memberships, setMemberships] = useState<EnrichedMembership[]>([]);
   const [currentTenant, setCurrentTenant] = useState<SaasTenant | null>(null);
   
-  // Começa TRUE para bloquear a UI até termos certeza da sessão
-  const [loading, setLoading] = useState(true); 
+  const [loading, setLoading] = useState(true);
 
+  // Referência para evitar loops em useEffects
   const profileRef = useRef(profile);
-  useEffect(() => {
-    profileRef.current = profile;
-  }, [profile]);
+  useEffect(() => { profileRef.current = profile; }, [profile]);
 
-  // Busca perfil real no banco
-  const fetchProfile = useCallback(async (userId: string, userEmail?: string, userMeta?: any) => {
+  // --- CORE LOGIC: Carregar Dados do Contexto (Perfil + Tenants) ---
+  const loadContextData = useCallback(async (userId: string, userEmail?: string, userMeta?: any) => {
     try {
-      const { data, error } = await supabase
+      // 1. Busca Perfil Global
+      const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .maybeSingle();
 
-      if (error) {
-          console.error('[Auth] Erro ao buscar perfil:', error.message);
-          return null;
+      if (profileError) console.error('[Auth] Erro ao buscar perfil:', profileError.message);
+
+      const finalProfile = profileData || {
+        id: userId,
+        email: userEmail,
+        role: 'Usuário',
+        full_name: userMeta?.full_name || 'Usuário',
+        permissions: {}
+      };
+      setProfile(finalProfile);
+
+      // 2. Busca Memberships (Vínculos com Empresas)
+      const { data: membersData, error: membersError } = await supabase
+        .from('organization_members')
+        .select('*, saas_tenants(*)')
+        .eq('user_id', userId);
+
+      if (membersError) throw membersError;
+
+      // Filtra memberships válidos (onde saas_tenants não é null)
+      const validMemberships = (membersData as any[])?.filter(m => m.saas_tenants) || [];
+      setMemberships(validMemberships);
+
+      // 3. Lógica de Seleção do Tenant Ativo
+      if (validMemberships.length > 0) {
+        const storedTenantId = localStorage.getItem('sb-autoclaims-tenant-id');
+        
+        // Tenta encontrar o tenant salvo no storage dentro dos memberships permitidos
+        const targetMembership = validMemberships.find(m => m.tenant_id === storedTenantId);
+        
+        if (targetMembership) {
+          setCurrentTenant(targetMembership.saas_tenants);
+        } else {
+          // Fallback: Seleciona o primeiro da lista e salva
+          const defaultTenant = validMemberships[0].saas_tenants;
+          setCurrentTenant(defaultTenant);
+          localStorage.setItem('sb-autoclaims-tenant-id', defaultTenant.id);
+        }
+      } else {
+        setCurrentTenant(null); // Usuário sem empresa (fluxo de onboarding)
+        localStorage.removeItem('sb-autoclaims-tenant-id');
       }
-      
-      // Fallback em memória
-      if (!data) {
-          return {
-              id: userId,
-              email: userEmail,
-              role: 'Usuário',
-              full_name: userMeta?.full_name || 'Usuário',
-              permissions: {}
-          };
-      }
-      return data;
+
     } catch (err) {
-      console.error('[Auth] Falha crítica no fetchProfile:', err);
-      return null;
+      console.error('[Auth] Falha crítica ao carregar contexto:', err);
     }
   }, []);
 
-  // Busca a empresa ativa (Tenant)
-  const fetchTenant = useCallback(async (userId: string) => {
-      try {
-          // 1. Busca relação usuário-empresa
-          const { data: links, error } = await supabase
-              .from('organization_members')
-              .select('tenant_id, saas_tenants(*)')
-              .eq('user_id', userId)
-              .limit(1);
-
-          if (error) throw error;
-
-          if (links && links.length > 0) {
-              // Se tiver vinculado a uma empresa, usa ela
-              return links[0].saas_tenants;
-          } else {
-              // Fallback: Se for Super Admin, pode não estar em 'organization_members' mas acessa tudo
-              // Ou se o sistema for legado, busca se é owner direto na tabela saas_tenants
-              const { data: owned } = await supabase
-                  .from('saas_tenants')
-                  .select('*')
-                  .eq('owner_id', userId)
-                  .limit(1)
-                  .maybeSingle();
-              
-              return owned || null;
-          }
-      } catch (e) {
-          console.error('[Auth] Erro ao buscar tenant:', e);
-          return null;
-      }
-  }, []);
-
-  // Inicialização "Blindada"
+  // --- AUTH LISTENER: Inicialização ---
   useEffect(() => {
     let mounted = true;
 
-    const initializeAuth = async () => {
-        try {
-            const { data: { session: initialSession }, error } = await supabase.auth.getSession();
+    const initialize = async () => {
+      try {
+        const { data: { session: initialSession }, error } = await supabase.auth.getSession();
+        if (error) throw error;
 
-            if (error) throw error;
-
-            if (initialSession?.user) {
-                if (mounted) {
-                    setSession(initialSession);
-                    setUser(initialSession.user);
-                    
-                    // Busca perfil
-                    const p = await fetchProfile(
-                        initialSession.user.id, 
-                        initialSession.user.email, 
-                        initialSession.user.user_metadata
-                    );
-                    if (mounted) setProfile(p);
-
-                    // Busca Tenant
-                    const t = await fetchTenant(initialSession.user.id);
-                    if (mounted) setCurrentTenant(t);
-                }
-            } else {
-                if (mounted) {
-                    setUser(null);
-                    setSession(null);
-                    setProfile(null);
-                    setCurrentTenant(null);
-                }
-            }
-        } catch (err) {
-            console.error('[Auth] Erro na inicialização:', err);
-            if (mounted) {
-                setUser(null);
-                setSession(null);
-            }
-        } finally {
-            if (mounted) {
-                setLoading(false);
-            }
+        if (initialSession?.user) {
+          setSession(initialSession);
+          setUser(initialSession.user);
+          if (mounted) {
+            await loadContextData(
+              initialSession.user.id, 
+              initialSession.user.email, 
+              initialSession.user.user_metadata
+            );
+          }
         }
+      } catch (err) {
+        console.error('[Auth] Erro na inicialização:', err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
     };
 
-    initializeAuth();
+    initialize();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-        if (!mounted) return;
+      if (!mounted) return;
 
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-            setSession(newSession);
-            setUser(newSession?.user ?? null);
-            
-            if (newSession?.user) {
-                const currentProfile = profileRef.current;
-                if (!currentProfile || currentProfile.id !== newSession.user.id) {
-                    const p = await fetchProfile(
-                        newSession.user.id, 
-                        newSession.user.email, 
-                        newSession.user.user_metadata
-                    );
-                    if (mounted) setProfile(p);
-
-                    const t = await fetchTenant(newSession.user.id);
-                    if (mounted) setCurrentTenant(t);
-                }
-            }
-            setLoading(false);
-        } 
-        else if (event === 'SIGNED_OUT') {
-            setSession(null);
-            setUser(null);
-            setProfile(null);
-            setCurrentTenant(null);
-            setLoading(false);
-            localStorage.removeItem('sb-autoclaims-auth-token'); 
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        setSession(newSession);
+        setUser(newSession?.user ?? null);
+        
+        if (newSession?.user) {
+          // Recarrega dados apenas se o usuário mudou ou se não temos perfil carregado
+          if (!profileRef.current || profileRef.current.id !== newSession.user.id) {
+             await loadContextData(
+               newSession.user.id, 
+               newSession.user.email, 
+               newSession.user.user_metadata
+             );
+          }
         }
+        setLoading(false);
+      } 
+      else if (event === 'SIGNED_OUT') {
+        setSession(null);
+        setUser(null);
+        setProfile(null);
+        setMemberships([]);
+        setCurrentTenant(null);
+        setLoading(false);
+        localStorage.removeItem('sb-autoclaims-tenant-id');
+      }
     });
 
     return () => {
-        mounted = false;
-        subscription.unsubscribe();
+      mounted = false;
+      subscription.unsubscribe();
     };
-  }, [fetchProfile, fetchTenant]);
+  }, [loadContextData]);
+
+  // --- ACTIONS ---
 
   const signInWithGoogle = async () => {
     try {
@@ -222,13 +200,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const updates: any = {
             id: user.id,
             email: user.email,
-            full_name: data.full_name,
-            avatar_url: data.avatar_url,
             updated_at: new Date().toISOString(),
+            ...data
         };
-
-        if (data.role) updates.role = data.role;
-
+        // Remove undefined keys
         Object.keys(updates).forEach(key => updates[key] === undefined && delete updates[key]);
 
         const { error } = await supabase.from('profiles').upsert(updates);
@@ -243,27 +218,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const checkPermission = (feature: string) => {
       if (!profile) return false;
+      // Super Admin ou Admin Global tem acesso irrestrito por padrão
       if (profile.role === 'Admin' || profile.role === 'super_admin') return true;
+      // Verifica permissões granulares no JSONB do perfil
       return !!profile.permissions?.[feature];
   };
 
-  const switchTenant = async (tenantId: string) => {
-      // Implementação futura para quem tem múltiplas empresas
-      console.log("Switching to tenant:", tenantId);
+  const switchTenant = (tenantId: string) => {
+      const target = memberships.find(m => m.tenant_id === tenantId);
+      if (target) {
+          setCurrentTenant(target.saas_tenants);
+          localStorage.setItem('sb-autoclaims-tenant-id', tenantId);
+          // Opcional: Recarregar a página se necessário para limpar estados globais de outras stores
+          // window.location.reload(); 
+      } else {
+          console.warn("Tentativa de troca para tenant inválido:", tenantId);
+      }
+  };
+
+  const refreshContext = async () => {
+      if (user) {
+          await loadContextData(user.id, user.email, user.user_metadata);
+      }
   };
 
   const value = {
     user,
     session,
     profile,
+    memberships,
     currentTenant,
     loading,
     signOut,
     signInWithGoogle,
     updateProfile,
-    isSuperAdmin: profile?.role === 'super_admin' || profile?.role === 'Admin',
+    isSuperAdmin: profile?.role === 'super_admin', // Apenas super_admin é global
     checkPermission,
-    switchTenant
+    switchTenant,
+    refreshContext
   };
 
   return (
