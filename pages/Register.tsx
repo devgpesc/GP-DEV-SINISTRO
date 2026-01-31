@@ -4,13 +4,14 @@ import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
 import { useToast } from '../context/ToastContext';
 import { auditService } from '../services/auditService';
-import { Car, Mail, Lock, User, Loader2, ArrowLeft, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Car, Mail, Lock, User, Loader2, ArrowLeft, Building, AlertCircle } from 'lucide-react';
 
 const Register: React.FC = () => {
   const { addToast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [companyName, setCompanyName] = useState(''); // Novo campo
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -21,6 +22,7 @@ const Register: React.FC = () => {
     setError(null);
 
     try {
+      // 1. Criar Usuário na Auth
       const { data, error: signUpError } = await (supabase.auth as any).signUp({
         email,
         password,
@@ -33,33 +35,66 @@ const Register: React.FC = () => {
       });
 
       if (signUpError) {
-        console.error("Erro detalhado:", signUpError);
         if (signUpError.message.includes("unique")) {
-            setError("Este e-mail já está cadastrado.");
+            throw new Error("Este e-mail já está cadastrado.");
         } else {
-            setError(signUpError.message);
+            throw signUpError;
         }
-        setLoading(false);
-      } else if (data.user) {
-        // Sucesso no registro
-        
-        // Tenta logar automaticamente (Funciona se o Supabase não exigir email confirm)
+      } 
+      
+      if (data.user) {
+        // 2. Se logou automaticamente (Email Confirm desligado), cria a estrutura da empresa
         if (data.session) {
-             // Auditoria de Registro
-             await auditService.log('Register', 'User', data.user.id, { email: data.user.email });
-             
-             addToast('success', 'Bem-vindo!', 'Conta criada e conectada.');
-             setTimeout(() => navigate('/'), 1000);
+             try {
+                 // A. Criar a Empresa (Tenant)
+                 const { data: tenant, error: tenantError } = await supabase
+                    .from('saas_tenants')
+                    .insert([{
+                        name: companyName,
+                        status: 'active',
+                        owner_id: data.user.id,
+                        document: '00.000.000/0001-00' // Default placeholder
+                    }])
+                    .select()
+                    .single();
+
+                 if (tenantError) throw tenantError;
+
+                 // B. Vincular Usuário à Empresa como Admin
+                 if (tenant) {
+                     const { error: memberError } = await supabase.from('organization_members').insert([{
+                         tenant_id: tenant.id,
+                         user_id: data.user.id,
+                         role: 'owner'
+                     }]);
+                     
+                     if (memberError) console.warn("Erro ao vincular membro (pode já ter sido feito por trigger):", memberError);
+                 }
+
+                 // C. Auditoria
+                 await auditService.log('Register', 'User', data.user.id, { email: data.user.email, company: companyName });
+                 
+                 addToast('success', 'Conta Criada!', `Bem-vindo à ${companyName}.`);
+                 
+                 // Pequeno delay para propagação
+                 setTimeout(() => navigate('/'), 1500);
+
+             } catch (createError: any) {
+                 console.error("Erro ao criar empresa:", createError);
+                 // Não bloqueia o fluxo, mas avisa
+                 setError("Usuário criado, mas houve erro ao configurar a empresa. Entre em contato com o suporte.");
+                 setLoading(false);
+             }
         } else {
-             // Caso exija confirmação de email
+             // Caso exija confirmação de email (Fluxo antigo)
              addToast('success', 'Cadastro Realizado!', 'Verifique seu e-mail para confirmar a conta.');
-             setError("Conta criada! Por favor, verifique sua caixa de entrada (e spam) para clicar no link de confirmação antes de fazer login.");
-             setLoading(false); // Para o loading para o usuário ler a mensagem
+             setError("Conta criada! Por favor, verifique sua caixa de entrada (e spam) para confirmar o e-mail. A empresa será criada no primeiro login.");
+             setLoading(false); 
         }
       }
     } catch (err: any) {
       console.error(err);
-      setError("Erro de conexão. Verifique sua internet e tente novamente.");
+      setError(err.message || "Erro de conexão. Verifique sua internet e tente novamente.");
       setLoading(false);
     }
   };
@@ -79,7 +114,7 @@ const Register: React.FC = () => {
         </Link>
 
         <div className="bg-white p-10 rounded-[48px] shadow-2xl border border-slate-100">
-          <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-8">Criar Cadastro de Produção</h2>
+          <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-8">Criar Conta Empresarial</h2>
           
           {error && (
             <div className={`mb-6 p-4 border rounded-2xl flex items-start gap-3 text-xs font-bold animate-in slide-in-from-top-2 ${error.includes('verifique') ? 'bg-green-50 border-green-100 text-green-700' : 'bg-red-50 border-red-100 text-red-600'}`}>
@@ -88,37 +123,47 @@ const Register: React.FC = () => {
             </div>
           )}
 
-          <form onSubmit={handleRegister} className="space-y-6">
+          <form onSubmit={handleRegister} className="space-y-5">
             <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 px-2 tracking-widest">Nome Completo</label>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 px-2 tracking-widest">Nome da Empresa</label>
               <div className="relative">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                <input required className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={name} onChange={e => setName(e.target.value)} placeholder="Seu nome completo" />
+                <Building className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                <input required className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Ex: Transportadora Silva" />
               </div>
             </div>
+
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 px-2 tracking-widest">Seu Nome</label>
+              <div className="relative">
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                <input required className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={name} onChange={e => setName(e.target.value)} placeholder="Nome completo" />
+              </div>
+            </div>
+
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 px-2 tracking-widest">E-mail Corporativo</label>
               <div className="relative">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                <input type="email" required className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={email} onChange={e => setEmail(e.target.value)} placeholder="email@empresa.com" />
+                <input type="email" required className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@empresa.com" />
               </div>
             </div>
+
             <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 px-2 tracking-widest">Nova Senha</label>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 px-2 tracking-widest">Definir Senha</label>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                 <input type="password" required className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={password} onChange={e => setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" />
               </div>
             </div>
 
-            <button type="submit" disabled={loading} className="w-full py-5 bg-blue-600 text-white rounded-[24px] font-black text-xs uppercase tracking-widest shadow-2xl shadow-blue-600/30 hover:bg-blue-700 transition-all flex items-center justify-center gap-3 disabled:opacity-50">
-              {loading ? <Loader2 className="animate-spin" size={20} /> : 'Finalizar Registro'}
+            <button type="submit" disabled={loading} className="w-full py-5 bg-blue-600 text-white rounded-[24px] font-black text-xs uppercase tracking-widest shadow-2xl shadow-blue-600/30 hover:bg-blue-700 transition-all flex items-center justify-center gap-3 disabled:opacity-50 mt-4">
+              {loading ? <Loader2 className="animate-spin" size={20} /> : 'Criar Conta & Acessar'}
             </button>
           </form>
         </div>
         
         <p className="mt-8 text-center text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">
-          Ambiente de Produção <span className="text-slate-800">Esc Solutions</span>
+          Ambiente Seguro <span className="text-slate-800">EventPro</span>
         </p>
       </div>
     </div>
