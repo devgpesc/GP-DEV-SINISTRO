@@ -57,9 +57,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!mounted.current) return;
 
     try {
-      // TIMEOUT DE SEGURANÇA PARA DADOS (3 Segundos)
+      // TIMEOUT DE SEGURANÇA PARA DADOS (3.5 Segundos)
       // Se o banco demorar, não trava o login.
-      const dbTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('DB_TIMEOUT')), 3000));
+      const dbTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('DB_TIMEOUT')), 3500));
 
       const fetchProfile = supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
       const fetchMembers = supabase.from('organization_members').select('*, saas_tenants(*)').eq('user_id', userId);
@@ -70,7 +70,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           dbTimeout
       ]) as any;
 
-      // Se for timeout, lança erro para cair no catch
+      // Se for timeout, lança erro para cair no catch e liberar a UI
       if (!Array.isArray(results)) throw new Error("Dados demoraram a carregar");
 
       const [profileRes, membersRes] = results;
@@ -111,7 +111,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     } catch (err: any) {
       console.warn('[Auth] Carregamento parcial ou offline:', err.message);
-      // Fallback Seguro para não travar a UI
+      // Fallback Seguro para não travar a UI em caso de falha ou lentidão extrema
       if (mounted.current) {
           setProfile({
             id: userId,
@@ -129,6 +129,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let authListener: any = null;
 
     const initialize = async () => {
+      // TIMEOUT GERAL DE INICIALIZAÇÃO (5s)
+      // Garante que o loading saia da tela mesmo se o Supabase falhar silenciosamente
+      const safetyTimer = setTimeout(() => {
+          if (mounted.current && loading) {
+              console.warn("Safety timeout triggered: Forcing loading false.");
+              setLoading(false);
+          }
+      }, 5000);
+
       try {
         // 1. Recupera sessão inicial
         const { data: { session: initialSession }, error } = await supabase.auth.getSession();
@@ -152,6 +161,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUser(null);
         }
       } finally {
+        clearTimeout(safetyTimer);
         // GARANTIA ABSOLUTA DE FIM DE LOADING
         if (mounted.current) setLoading(false);
       }

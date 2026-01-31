@@ -60,7 +60,7 @@ const SupportWidget: React.FC = () => {
   const timerRef = useRef<number | null>(null);
 
   // --- LOGOUT RESET TRIGGER ---
-  // Monitora o usuário. Se ele sair (null), limpa o chat.
+  // Monitora o usuário. Se ele sair (null), limpa o chat e o storage.
   useEffect(() => {
     if (!user) {
       localStorage.removeItem(MEMORY_KEY);
@@ -73,7 +73,7 @@ const SupportWidget: React.FC = () => {
   // --- MEMÓRIA LÓGICA (Load & Save) ---
   useEffect(() => {
     if (user) {
-      // Carregar histórico ao abrir apenas se tiver usuário
+      // Carregar histórico ao abrir apenas se tiver usuário logado
       const saved = localStorage.getItem(MEMORY_KEY);
       if (saved) {
           try {
@@ -90,7 +90,7 @@ const SupportWidget: React.FC = () => {
           }
       }
     }
-  }, [user]); // Dependência de user adicionada para recarregar ao logar
+  }, [user]);
 
   useEffect(() => {
     // Salvar histórico a cada nova mensagem (se tiver usuário)
@@ -356,7 +356,6 @@ _Ticket gerado via EventPro AI_
     );
   }
 
-  // Component render logic same as before, just with the added effects above...
   return (
     <>
       <div 
@@ -565,7 +564,7 @@ _Ticket gerado via EventPro AI_
         )}
       </div>
 
-      {/* MODAL DE GRAVAÇÃO DE VÍDEO (Igual ao anterior) */}
+      {/* MODAL DE GRAVAÇÃO DE VÍDEO */}
       {showVideoModal && (
           <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 animate-in fade-in">
               <div className="relative w-full max-w-lg bg-black rounded-2xl overflow-hidden border border-slate-700 shadow-2xl">
