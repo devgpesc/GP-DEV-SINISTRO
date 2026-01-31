@@ -3,7 +3,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   MessageCircle, X, Send, LifeBuoy, Loader2, 
   ChevronDown, Mic, Paperclip, Video, StopCircle, 
-  Trash2, FileText, Image as ImageIcon, Film, UploadCloud
+  Trash2, FileText, Image as ImageIcon, Film, UploadCloud,
+  BrainCircuit, ThumbsUp, ThumbsDown
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { aiService } from '../services/aiService';
@@ -17,6 +18,8 @@ interface Attachment {
   base64?: string;
 }
 
+const MEMORY_KEY = 'esc_support_memory_v1';
+
 const SupportWidget: React.FC = () => {
   const { user, currentTenant, profile } = useAuth();
   const location = useLocation();
@@ -27,6 +30,7 @@ const SupportWidget: React.FC = () => {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isClassifying, setIsClassifying] = useState(false); // Estado para animação de classificação
   
   // Estados de Mídia
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -42,7 +46,7 @@ const SupportWidget: React.FC = () => {
     { 
       id: 'welcome', 
       role: 'agent', 
-      text: 'Olá! Sou o suporte virtual da ESC Solutions. Posso analisar prints, vídeos ou documentos. Como posso ajudar?' 
+      text: 'Olá! Sou seu Gerente de Suporte Virtual. Estou analisando seu contexto atual. Como posso destravar seu trabalho agora?' 
     }
   ]);
 
@@ -55,10 +59,39 @@ const SupportWidget: React.FC = () => {
   const videoPreviewRef = useRef<HTMLVideoElement>(null);
   const timerRef = useRef<number | null>(null);
 
+  // --- MEMÓRIA LÓGICA (Load & Save) ---
+  useEffect(() => {
+    // Carregar histórico ao abrir
+    const saved = localStorage.getItem(MEMORY_KEY);
+    if (saved) {
+        try {
+            const parsed = JSON.parse(saved);
+            // Mantém apenas as últimas 10 mensagens para não poluir
+            if (parsed.length > 0) {
+                // Adiciona um divisor visual se houver histórico antigo
+                setMessages([...parsed.slice(-10), { 
+                    id: 'divider-' + Date.now(), 
+                    role: 'system', 
+                    text: '--- Nova Sessão Iniciada ---' 
+                }]);
+            }
+        } catch (e) {
+            localStorage.removeItem(MEMORY_KEY);
+        }
+    }
+  }, []);
+
+  useEffect(() => {
+    // Salvar histórico a cada nova mensagem (exceto a de boas-vindas inicial se for única)
+    if (messages.length > 1) {
+        localStorage.setItem(MEMORY_KEY, JSON.stringify(messages.filter(m => m.role !== 'system')));
+    }
+  }, [messages]);
+
   // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isOpen, attachments, loading]);
+  }, [messages, isOpen, attachments, loading, isClassifying]);
 
   // --- HELPERS DE ARQUIVO ---
   const fileToBase64 = (file: File): Promise<string> => {
@@ -228,7 +261,14 @@ const SupportWidget: React.FC = () => {
         timestamp: new Date().toLocaleString()
       };
 
-      const responseText = await aiService.chatSupport(userMsg.text, context, currentAttachments);
+      // Recupera resumo da memória (últimos 3 tópicos)
+      const memorySummary = messages
+        .filter(m => m.role === 'user')
+        .slice(-3)
+        .map(m => m.text)
+        .join('; ');
+
+      const responseText = await aiService.chatSupport(userMsg.text, context, currentAttachments, memorySummary);
       
       setMessages(prev => [...prev, { 
         id: (Date.now() + 1).toString(), 
@@ -247,9 +287,43 @@ const SupportWidget: React.FC = () => {
     }
   };
 
-  const handleEscalateToWhatsApp = () => {
-    const lastMsg = messages[messages.length - 1]?.text || 'Suporte';
-    const text = `🚨 *SUPORTE ESC SOLUTIONS*\n\n👤 *Cliente:* ${currentTenant?.name}\n📍 *Tela:* ${location.pathname}\n\n⚠️ *Relato:* ${input || 'Envio de mídia/arquivos'}\n🤖 *Contexto:* ${lastMsg.substring(0, 50)}...`;
+  // --- ESCALONAMENTO INTELIGENTE (Advanced) ---
+  const handleEscalateToWhatsApp = async () => {
+    setIsClassifying(true);
+    
+    // 1. Coleta Contexto
+    const context = {
+        tenant: currentTenant?.name || 'Não identificado',
+        plan: currentTenant?.saas_plans?.name || 'Free',
+        user: profile?.full_name || user?.email,
+        screen: location.pathname,
+    };
+
+    // 2. Chama AI Flash para classificar
+    const dossier = await aiService.classifySupportTicket(messages, context);
+    
+    setIsClassifying(false);
+
+    // 3. Formata Mensagem Rica para WhatsApp
+    const priorityIcon = dossier.priority === 'Crítica' || dossier.priority === 'Alta' ? '🔴' : '🟢';
+    
+    const text = `
+${priorityIcon} *CHAMADO ESC SOLUTIONS*
+
+👤 *Cliente:* ${currentTenant?.name}
+📍 *Tela:* ${location.pathname}
+🔧 *Categoria:* ${dossier.technical_category}
+📊 *Prioridade:* ${dossier.priority.toUpperCase()}
+
+📝 *Resumo do Problema:*
+${dossier.summary}
+
+🤖 *Diagnóstico Preliminar:*
+${dossier.suggested_fix}
+
+_Ticket gerado via EventPro AI_
+    `.trim();
+
     window.open(`https://wa.me/5562998464374?text=${encodeURIComponent(text)}`, '_blank');
   };
 
@@ -279,13 +353,14 @@ const SupportWidget: React.FC = () => {
         {/* Header */}
         <div className="bg-[#075E54] p-4 flex justify-between items-center text-white shrink-0">
           <div className="flex items-center gap-3 cursor-pointer flex-1" onClick={() => setIsMinimized(!isMinimized)}>
-            <div className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center backdrop-blur-md">
+            <div className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center backdrop-blur-md relative">
               <LifeBuoy size={20} />
+              <div className="absolute -bottom-1 -right-1 bg-green-400 w-3 h-3 rounded-full border-2 border-[#075E54]"></div>
             </div>
             <div>
               <h3 className="font-bold text-sm leading-tight">Suporte ESC Solutions</h3>
               <p className="text-[10px] text-green-100 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span> Online agora
+                Gerente Virtual Online
               </p>
             </div>
           </div>
@@ -297,11 +372,18 @@ const SupportWidget: React.FC = () => {
 
         {!isMinimized && (
           <>
-            {/* Top Bar */}
+            {/* Top Bar - Intelligent Escalation */}
             <div className="bg-green-50 p-3 border-b border-green-100 flex justify-between items-center px-4 shrink-0">
-               <span className="text-[10px] font-bold text-green-800 uppercase">Precisa de humano?</span>
-               <button onClick={handleEscalateToWhatsApp} className="flex items-center gap-1.5 bg-[#25D366] text-white px-3 py-1.5 rounded-full text-[10px] font-bold uppercase hover:bg-[#128C7E] shadow-sm">
-                  <MessageCircle size={12} fill="white" /> WhatsApp
+               <span className="text-[10px] font-bold text-green-800 uppercase flex items-center gap-1">
+                   {isClassifying ? <Loader2 className="animate-spin" size={10}/> : <BrainCircuit size={12}/>}
+                   {isClassifying ? 'Gerando Dossiê...' : 'Análise Avançada'}
+               </span>
+               <button 
+                 onClick={handleEscalateToWhatsApp} 
+                 disabled={isClassifying}
+                 className="flex items-center gap-1.5 bg-[#25D366] text-white px-3 py-1.5 rounded-full text-[10px] font-bold uppercase hover:bg-[#128C7E] shadow-sm disabled:opacity-70 transition-all"
+               >
+                  <MessageCircle size={12} fill="white" /> Falar com Humano
                </button>
             </div>
 
@@ -323,47 +405,63 @@ const SupportWidget: React.FC = () => {
               )}
 
               {messages.map((msg, i) => (
-                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} relative z-10`}>
-                  {msg.role === 'agent' && (
-                     <div className="w-6 h-6 rounded-full bg-white border border-slate-200 flex items-center justify-center mr-2 mt-1 shrink-0 text-[#075E54]">
-                        <LifeBuoy size={14}/>
-                     </div>
-                  )}
-                  <div className="flex flex-col gap-1 max-w-[85%]">
-                      {/* Render Attachments in Chat History */}
-                      {msg.attachments && msg.attachments.length > 0 && (
-                          <div className={`flex flex-wrap gap-1 mb-1 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                              {msg.attachments.map((att: Attachment, idx: number) => (
-                                  <div key={idx} className="bg-white p-1 rounded-lg border border-slate-200 shadow-sm">
-                                      {att.type === 'image' ? (
-                                          <img src={att.previewUrl} className="w-24 h-24 object-cover rounded-md"/>
-                                      ) : att.type === 'video' ? (
-                                          <video src={att.previewUrl} className="w-32 h-24 object-cover rounded-md" controls/>
-                                      ) : (
-                                          <div className="w-24 h-24 flex flex-col items-center justify-center bg-slate-50 rounded-md text-slate-500">
-                                              {att.type === 'audio' ? <Mic size={24}/> : <FileText size={24}/>}
-                                              <span className="text-[9px] mt-1 font-bold uppercase">{att.type}</span>
-                                          </div>
-                                      )}
-                                  </div>
-                              ))}
-                          </div>
-                      )}
-                      
-                      {msg.text && (
-                        <div className={`p-3 rounded-xl text-sm shadow-sm leading-relaxed whitespace-pre-wrap ${
-                          msg.role === 'user' 
-                            ? 'bg-[#DCF8C6] text-slate-800 rounded-tr-none' 
-                            : 'bg-white text-slate-800 rounded-tl-none'
-                        }`}>
-                          {msg.text}
-                          <div className={`text-[9px] text-right mt-1 opacity-50 font-bold ${msg.role === 'user' ? 'text-green-900' : 'text-slate-500'}`}>
-                            {new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                          </div>
+                <React.Fragment key={i}>
+                    {msg.role === 'system' ? (
+                        <div className="flex justify-center my-4">
+                            <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 px-3 py-1 rounded-full uppercase tracking-widest">{msg.text}</span>
                         </div>
-                      )}
-                  </div>
-                </div>
+                    ) : (
+                        <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} relative z-10 group`}>
+                        {msg.role === 'agent' && (
+                            <div className="w-6 h-6 rounded-full bg-white border border-slate-200 flex items-center justify-center mr-2 mt-1 shrink-0 text-[#075E54]">
+                                <LifeBuoy size={14}/>
+                            </div>
+                        )}
+                        <div className="flex flex-col gap-1 max-w-[85%]">
+                            {/* Render Attachments in Chat History */}
+                            {msg.attachments && msg.attachments.length > 0 && (
+                                <div className={`flex flex-wrap gap-1 mb-1 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                    {msg.attachments.map((att: Attachment, idx: number) => (
+                                        <div key={idx} className="bg-white p-1 rounded-lg border border-slate-200 shadow-sm">
+                                            {att.type === 'image' ? (
+                                                <img src={att.previewUrl} className="w-24 h-24 object-cover rounded-md"/>
+                                            ) : att.type === 'video' ? (
+                                                <video src={att.previewUrl} className="w-32 h-24 object-cover rounded-md" controls/>
+                                            ) : (
+                                                <div className="w-24 h-24 flex flex-col items-center justify-center bg-slate-50 rounded-md text-slate-500">
+                                                    {att.type === 'audio' ? <Mic size={24}/> : <FileText size={24}/>}
+                                                    <span className="text-[9px] mt-1 font-bold uppercase">{att.type}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            
+                            {msg.text && (
+                                <div className={`p-3 rounded-xl text-sm shadow-sm leading-relaxed whitespace-pre-wrap ${
+                                msg.role === 'user' 
+                                    ? 'bg-[#DCF8C6] text-slate-800 rounded-tr-none' 
+                                    : 'bg-white text-slate-800 rounded-tl-none'
+                                }`}>
+                                {msg.text}
+                                <div className={`text-[9px] text-right mt-1 opacity-50 font-bold ${msg.role === 'user' ? 'text-green-900' : 'text-slate-500'}`}>
+                                    {new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                </div>
+                                </div>
+                            )}
+                            
+                            {/* Feedback Actions (Only Agent) */}
+                            {msg.role === 'agent' && i === messages.length - 1 && !loading && (
+                                <div className="flex gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button className="text-slate-400 hover:text-green-600" title="Útil"><ThumbsUp size={12}/></button>
+                                    <button className="text-slate-400 hover:text-red-600" title="Não resolveu"><ThumbsDown size={12}/></button>
+                                </div>
+                            )}
+                        </div>
+                        </div>
+                    )}
+                </React.Fragment>
               ))}
               
               {/* ELEGANT TYPING INDICATOR */}
@@ -449,7 +547,7 @@ const SupportWidget: React.FC = () => {
                   </div>
               )}
               <div className="text-center mt-1">
-                 <p className="text-[8px] text-slate-400">Ambiente monitorado • Arraste arquivos para anexar</p>
+                 <p className="text-[8px] text-slate-400">Ambiente monitorado • IA ativa</p>
               </div>
             </div>
           </>

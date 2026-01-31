@@ -21,6 +21,15 @@ interface Attachment {
   file?: File;
 }
 
+// Interface para o Dossiê Inteligente
+interface SupportTicketDossier {
+  summary: string;
+  technical_category: string;
+  sentiment: 'Normal' | 'Frustrado' | 'Urgente';
+  priority: 'Baixa' | 'Média' | 'Alta' | 'Crítica';
+  suggested_fix: string;
+}
+
 export const aiService = {
   
   async getConfig() {
@@ -83,8 +92,66 @@ export const aiService = {
     }
   },
 
-  // --- NOVO: CHAT DE SUPORTE TÉCNICO MULTIMODAL ---
-  async chatSupport(message: string, userContext: any, attachments: Attachment[] = []): Promise<string> {
+  // --- NOVO: CLASSIFICADOR DE CHAMADOS (Intelligent Escalation) ---
+  async classifySupportTicket(chatHistory: any[], userContext: any): Promise<SupportTicketDossier> {
+    const config = await this.getConfig();
+    const apiKey = config.keys.google;
+    
+    // Fallback padrão se não tiver chave
+    const defaultDossier: SupportTicketDossier = {
+        summary: "Suporte solicitado pelo usuário.",
+        technical_category: "Geral",
+        sentiment: "Normal",
+        priority: "Média",
+        suggested_fix: "Análise humana necessária."
+    };
+
+    if (!apiKey || config.provider !== 'google') return defaultDossier;
+
+    const ai = new GoogleGenAI({ apiKey });
+    
+    const classificationPrompt = `
+      Analise o histórico de chat de suporte abaixo e gere um DOSSIÊ TÉCNICO para o time de engenharia/Nível 2.
+      
+      CONTEXTO DO USUÁRIO:
+      ${JSON.stringify(userContext)}
+      
+      HISTÓRICO DO CHAT:
+      ${JSON.stringify(chatHistory.map(m => ({ role: m.role, text: m.text })))}
+      
+      SAÍDA ESPERADA (JSON PURO):
+      {
+        "summary": "Resumo técnico de uma linha (Ex: Falha FK ao criar Veículo)",
+        "technical_category": "Bug | Dúvida | Financeiro | Infraestrutura",
+        "sentiment": "Normal | Frustrado | Urgente",
+        "priority": "Baixa | Média | Alta | Crítica",
+        "suggested_fix": "Ação sugerida para o humano (Ex: Verificar tabela vehicles)"
+      }
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview', // Modelo rápido para classificação
+            contents: "Gere o JSON de classificação.",
+            config: {
+                systemInstruction: classificationPrompt,
+                responseMimeType: "application/json",
+                temperature: 0.2
+            }
+        });
+        
+        const jsonText = response.text;
+        if (!jsonText) return defaultDossier;
+        
+        return JSON.parse(jsonText) as SupportTicketDossier;
+    } catch (error) {
+        console.error("Erro na classificação automática:", error);
+        return defaultDossier;
+    }
+  },
+
+  // --- NOVO: CHAT DE SUPORTE TÉCNICO MULTIMODAL (EVOLUÍDO) ---
+  async chatSupport(message: string, userContext: any, attachments: Attachment[] = [], memorySummary: string = ''): Promise<string> {
     const config = await this.getConfig();
     const apiKey = config.keys.google;
     
@@ -94,25 +161,29 @@ export const aiService = {
 
     const ai = new GoogleGenAI({ apiKey });
     
+    // Prompt Evoluído: Gerente de Suporte Virtual
     const supportSystemPrompt = `
-      Você é o Agente de Suporte Técnico Nível 1 da ESC Solutions, criadora do software EventPro.
-      Sua missão é ajudar o usuário a resolver problemas técnicos ou dúvidas operacionais.
+      Você é o "Gerente de Suporte Virtual" da ESC Solutions (EventPro).
+      Sua persona é sênior, técnica, empática e focada em resolução (Problem Solver).
       
-      CONTEXTO ATUAL DO USUÁRIO:
+      CONTEXTO TÉCNICO ATUAL:
       ${JSON.stringify(userContext, null, 2)}
       
-      CAPACIDADES MULTIMODAIS:
-      - Você pode VER imagens (prints de erro, fotos de veículos).
-      - Você pode OUVIR áudios (descrições de problemas).
-      - Você pode VER vídeos curtos enviados pelo usuário.
+      MEMÓRIA DE INTERAÇÕES ANTERIORES:
+      ${memorySummary ? memorySummary : 'Nenhum histórico recente relevante.'}
       
-      DIRETRIZES:
-      1. Se o usuário enviar uma IMAGEM de erro, analise o texto da imagem e sugira a solução.
-      2. Se o usuário enviar um ÁUDIO, transcreva mentalmente e responda à dúvida.
-      3. Se o usuário enviar um VÍDEO, descreva o que vê e diagnostique.
-      4. Seja educado, técnico mas acessível.
-      5. Se o problema parecer complexo ou se você não conseguir resolver, sugira clicar no botão "WhatsApp" acima.
-      6. Responda em Português do Brasil.
+      CAPACIDADES:
+      - Visão Computacional (Análise de prints de erro).
+      - Audição (Transcrever relatos).
+      - Raciocínio de Debugging (Identificar causa raiz).
+      
+      DIRETRIZES DE ATENDIMENTO:
+      1. **Não peça desculpas excessivas**. Foco na solução. Ex: Em vez de "Sinto muito pelo erro", use "Entendi o bloqueio, vamos contornar isso verificando X".
+      2. **Identifique padrões**. Se a memória indicar erros repetidos, sugira algo diferente.
+      3. **Seja Educativo**. Ensine o usuário a usar a ferramenta, não apenas dê a resposta.
+      4. **Detecção de Frustração**. Se o usuário parecer irritado (caps lock, repetição), seja direto e sugira o escalonamento para WhatsApp imediatamente.
+      5. **Limites**. Você não tem acesso direto ao banco de dados para alterar registros, apenas para ler configs via contexto.
+      6. **Resposta**. Responda em Português do Brasil, usando formatação Markdown (negrito para botões/menus).
     `;
 
     try {
@@ -147,11 +218,11 @@ export const aiService = {
         if (parts.length === 0) return "Por favor, digite algo ou envie um arquivo.";
 
         const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-preview', // Usar modelo Pro para melhor visão/áudio
+            model: 'gemini-3-pro-preview', // Usar modelo Pro para raciocínio complexo
             contents: { parts },
             config: {
                 systemInstruction: supportSystemPrompt,
-                temperature: 0.5,
+                temperature: 0.4, // Mais determinístico para suporte
             }
         });
         return response.text || "Desculpe, não entendi. Pode reformular?";
