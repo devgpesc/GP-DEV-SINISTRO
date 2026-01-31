@@ -222,7 +222,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             localStorage.removeItem(TENANT_STORAGE_KEY);
             
             // Pequeno delay para garantir que a UI processe o estado 'loading' antes de redirecionar
-            // Isso evita piscadas
             setTimeout(() => {
                 if (mounted.current) setLoading(false);
             }, 50);

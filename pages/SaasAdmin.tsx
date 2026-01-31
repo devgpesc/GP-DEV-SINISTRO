@@ -195,6 +195,47 @@ const SaasAdmin: React.FC = () => {
       }
   };
 
+  const handleSaveTenant = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setIsProcessing(true);
+      try {
+          if (editingTenant) {
+              const { error } = await supabase.from('saas_tenants').update({
+                  name: tenantForm.name,
+                  document: tenantForm.document,
+                  plan_id: tenantForm.plan_id,
+                  status: tenantForm.status
+              }).eq('id', editingTenant.id);
+
+              if (error) throw error;
+              addToast('success', 'Atualizado', 'Dados da empresa atualizados.');
+          } else {
+              const { data, error } = await supabase.functions.invoke('create-tenant', {
+                  body: {
+                      companyName: tenantForm.name,
+                      document: tenantForm.document,
+                      planId: tenantForm.plan_id,
+                      adminName: tenantForm.adminName,
+                      adminEmail: tenantForm.adminEmail,
+                      adminPassword: tenantForm.adminPassword
+                  }
+              });
+
+              if (error) throw error;
+              if (data && data.error) throw new Error(data.error);
+
+              addToast('success', 'Criado', 'Empresa e administrador criados com sucesso.');
+          }
+          setIsTenantModalOpen(false);
+          loadData();
+      } catch (error: any) {
+          console.error(error);
+          addToast('error', 'Erro ao Salvar', error.message || 'Falha na operação.');
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
   // --- LÓGICA DE PLANOS (Nova) ---
 
   const openPlanModal = (plan?: SaasPlan) => {
@@ -449,8 +490,90 @@ const SaasAdmin: React.FC = () => {
           </div>
       )}
 
-      {/* Modal Tenant (Inalterado, apenas omitido para brevidade se não houve mudanças) */}
-      {/* ... [Código do Tenant Modal igual ao anterior] ... */}
+      {/* Modal Tenant */}
+      {isTenantModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => !isProcessing && setIsTenantModalOpen(false)}></div>
+          <div className="relative bg-white w-full max-w-lg rounded-[40px] shadow-2xl p-8 animate-in zoom-in duration-300 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-2xl font-black text-slate-800 mb-6">{editingTenant ? 'Editar Empresa' : 'Criar Nova Empresa'}</h3>
+            <form onSubmit={handleSaveTenant} className="space-y-6">
+                <div className="space-y-4">
+                    <h4 className="text-[10px] font-black uppercase text-blue-600 tracking-widest mb-2 flex items-center gap-2"><Building size={14}/> Dados da Empresa</h4>
+                    <div>
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Nome da Empresa</label>
+                        <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" 
+                            value={tenantForm.name} onChange={e => setTenantForm({...tenantForm, name: e.target.value})} placeholder="Ex: Transportadora X" />
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">CNPJ / Documento</label>
+                        <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" 
+                            value={tenantForm.document} onChange={e => setTenantForm({...tenantForm, document: e.target.value})} placeholder="00.000.000/0001-00" />
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Status</label>
+                        <select className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none"
+                            value={tenantForm.status} onChange={e => setTenantForm({...tenantForm, status: e.target.value as any})}>
+                            <option value="active">Ativo</option>
+                            <option value="blocked">Bloqueado</option>
+                            <option value="suspended">Suspenso</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Plano de Assinatura</label>
+                        <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
+                            {plans.map(plan => (
+                                <div key={plan.id} onClick={() => setTenantForm({...tenantForm, plan_id: plan.id})}
+                                    className={`p-3 rounded-2xl border-2 cursor-pointer flex justify-between items-center transition-all ${tenantForm.plan_id === plan.id ? 'border-blue-600 bg-blue-50' : 'border-slate-100 hover:border-slate-200'}`}>
+                                    <div>
+                                        <p className="font-bold text-slate-800 text-sm">{plan.name}</p>
+                                        <p className="text-[10px] font-bold text-slate-400">{plan.max_users} usuários</p>
+                                    </div>
+                                    <p className="font-black text-blue-600">R$ {plan.price}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="space-y-4 pt-4 border-t border-slate-100">
+                    <h4 className="text-[10px] font-black uppercase text-blue-600 tracking-widest mb-2 flex items-center gap-2">
+                        <User size={14}/> 
+                        {editingTenant ? 'Administrador da Conta' : 'Administrador Inicial'}
+                        {loadingAdminData && <Loader2 size={12} className="animate-spin ml-2"/>}
+                    </h4>
+                    
+                    <div className={`transition-opacity ${loadingAdminData ? 'opacity-50' : 'opacity-100'}`}>
+                        <div>
+                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Nome Completo</label>
+                            <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" 
+                                value={tenantForm.adminName} onChange={e => setTenantForm({...tenantForm, adminName: e.target.value})} placeholder="Ex: João Admin" />
+                        </div>
+                        <div className="mt-4">
+                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">E-mail de Acesso</label>
+                            <input required type="email" disabled={!!editingTenant} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none disabled:opacity-60 disabled:bg-slate-100" 
+                                value={tenantForm.adminEmail} onChange={e => setTenantForm({...tenantForm, adminEmail: e.target.value})} placeholder="admin@empresa.com" />
+                            {editingTenant && <p className="text-[9px] text-slate-400 mt-1 pl-1 flex items-center gap-1"><AlertCircle size={10}/> Para alterar o e-mail, utilize a gestão de usuários.</p>}
+                        </div>
+                        {!editingTenant && (
+                            <div className="mt-4">
+                                <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Senha Provisória</label>
+                                <input required type="text" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" 
+                                    value={tenantForm.adminPassword} onChange={e => setTenantForm({...tenantForm, adminPassword: e.target.value})} placeholder="Defina uma senha" />
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4">
+                    <button type="button" onClick={() => setIsTenantModalOpen(false)} disabled={isProcessing} className="px-6 py-3 text-slate-400 font-black uppercase text-[10px]">Cancelar</button>
+                    <button type="submit" disabled={isProcessing} className="px-8 py-3 bg-blue-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-blue-600/20 flex items-center gap-2">
+                        {isProcessing ? <Loader2 className="animate-spin" size={14}/> : (editingTenant ? 'Salvar Alterações' : 'Criar Empresa & Admin')}
+                    </button>
+                </div>
+            </form>
+          </div>
+        </div>
+      )}
       
       {/* Modal Plano Avançado */}
       {isPlanModalOpen && (
