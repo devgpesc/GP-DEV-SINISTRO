@@ -249,7 +249,7 @@ const Settings: React.FC = () => {
 
   const generateInviteLink = async () => {
       if (!profile) {
-          addToast('error', 'Sessão inválida', 'Não foi possível identificar o usuário atual.');
+          addToast('error', 'Perfil indisponível', 'Não foi possível identificar o usuário logado.');
           return;
       }
 
