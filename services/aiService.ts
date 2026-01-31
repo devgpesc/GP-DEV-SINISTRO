@@ -17,7 +17,8 @@ interface AIAnalysisOptions {
 interface Attachment {
   type: string;
   base64?: string;
-  mimeType: string;
+  mimeType?: string; // Alterado para opcional para compatibilidade
+  file?: File;
 }
 
 export const aiService = {
@@ -82,38 +83,72 @@ export const aiService = {
     }
   },
 
-  // --- NOVO: CHAT DE SUPORTE TÉCNICO ---
-  async chatSupport(message: string, userContext: any): Promise<string> {
+  // --- NOVO: CHAT DE SUPORTE TÉCNICO MULTIMODAL ---
+  async chatSupport(message: string, userContext: any, attachments: Attachment[] = []): Promise<string> {
     const config = await this.getConfig();
     const apiKey = config.keys.google;
     
     if (!apiKey || config.provider !== 'google') {
-        // Fallback simples se não tiver Gemini configurado para suporte
-        return "Olá. Para suporte avançado, por favor configure a chave do Google Gemini nas configurações.";
+        return "Olá. Para suporte avançado com envio de arquivos, por favor configure a chave do Google Gemini nas configurações.";
     }
 
     const ai = new GoogleGenAI({ apiKey });
     
     const supportSystemPrompt = `
       Você é o Agente de Suporte Técnico Nível 1 da ESC Solutions, criadora do software EventPro.
-      Seu objetivo é ajudar o usuário a navegar no sistema, resolver dúvidas operacionais e diagnosticar erros simples.
+      Sua missão é ajudar o usuário a resolver problemas técnicos ou dúvidas operacionais.
       
       CONTEXTO ATUAL DO USUÁRIO:
       ${JSON.stringify(userContext, null, 2)}
       
+      CAPACIDADES MULTIMODAIS:
+      - Você pode VER imagens (prints de erro, fotos de veículos).
+      - Você pode OUVIR áudios (descrições de problemas).
+      - Você pode VER vídeos curtos enviados pelo usuário.
+      
       DIRETRIZES:
-      1. Seja educado, técnico mas acessível.
-      2. Se o usuário perguntar sobre funcionalidades, explique onde clicar.
-      3. Se o usuário relatar um "Erro" ou "Bug", peça detalhes ou sugira recarregar (F5).
-      4. Se o problema parecer complexo, financeiro ou crítico, sugira explicitamente clicar no botão "Falar no WhatsApp" acima do chat.
-      5. Não invente recursos que não existem. O sistema tem: Eventos, Cotações, Compras, Entregas, Fornecedores, Associados, Veículos e Relatórios.
+      1. Se o usuário enviar uma IMAGEM de erro, analise o texto da imagem e sugira a solução.
+      2. Se o usuário enviar um ÁUDIO, transcreva mentalmente e responda à dúvida.
+      3. Se o usuário enviar um VÍDEO, descreva o que vê e diagnostique.
+      4. Seja educado, técnico mas acessível.
+      5. Se o problema parecer complexo ou se você não conseguir resolver, sugira clicar no botão "WhatsApp" acima.
       6. Responda em Português do Brasil.
     `;
 
     try {
+        // Constrói payload multimodal
+        const parts: any[] = [];
+        
+        if (message) parts.push({ text: message });
+
+        attachments.forEach(att => {
+            if (att.base64) {
+                // Mapeia tipos genéricos para MIME types suportados pelo Gemini
+                let mimeType = att.mimeType;
+                if (!mimeType) {
+                    if (att.type === 'image') mimeType = 'image/jpeg';
+                    else if (att.type === 'audio') mimeType = 'audio/mp3'; // Gemini aceita mp3/wav/aac/flac etc.
+                    else if (att.type === 'video') mimeType = 'video/mp4';
+                    else mimeType = 'application/pdf'; // Default fallback
+                }
+                
+                // Correção para WebM (gravação do navegador) se necessário
+                if (att.file?.type) mimeType = att.file.type;
+
+                parts.push({
+                    inlineData: {
+                        mimeType: mimeType,
+                        data: att.base64
+                    }
+                });
+            }
+        });
+
+        if (parts.length === 0) return "Por favor, digite algo ou envie um arquivo.";
+
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview', // Modelo mais rápido para chat
-            contents: message,
+            model: 'gemini-3-pro-preview', // Usar modelo Pro para melhor visão/áudio
+            contents: { parts },
             config: {
                 systemInstruction: supportSystemPrompt,
                 temperature: 0.5,
@@ -122,124 +157,13 @@ export const aiService = {
         return response.text || "Desculpe, não entendi. Pode reformular?";
     } catch (error: any) {
         console.error("Support AI Error", error);
-        return "Estou com instabilidade momentânea. Por favor, utilize o botão de WhatsApp para suporte humano.";
+        return "Estou analisando seu arquivo mas encontrei uma dificuldade técnica. Tente enviar uma imagem ou texto.";
     }
   },
 
-  // CHAT MULTIMODAL AVANÇADO (CIO)
+  // CHAT MULTIMODAL AVANÇADO (CIO - Mantido para compatibilidade)
   async chatWithContext(userMessage: string, contextData: any, attachments: Attachment[] = []): Promise<string> {
-    const config = await this.getConfig();
-    
-    // Prompt do Sistema para o Chat (Persona CIO)
-    const chatSystemPrompt = `
-      Você é o CIO Virtual (Chief Intelligence Officer) do AutoClaims Pro.
-      Sua missão é atuar como um estrategista de negócios sênior.
-      
-      CAPACIDADES:
-      1. Análise Financeira e Operacional baseada no contexto JSON fornecido.
-      2. Visão Computacional: Analise imagens de avarias, notas fiscais ou documentos enviados.
-      3. Audição: Transcreva e analise áudios de vistorias ou relatos enviados pelo usuário.
-      
-      DIRETRIZES DE RESPOSTA:
-      - Seja executivo, direto e orientado a lucro/eficiência.
-      - Use formatação Markdown (negrito, bullet points).
-      - Se receber uma imagem de carro, identifique o dano e estime a categoria (Funilaria, Mecânica).
-      - Se receber um áudio, responda confirmando o entendimento do relato.
-      
-      CONTEXTO DE DADOS ATUAL:
-      ${JSON.stringify(contextData, null, 2)}
-    `;
-
-    try {
-        // --- GOOGLE GEMINI (MULTIMODAL) ---
-        if (config.provider === 'google') {
-            const apiKey = config.keys.google;
-            if (!apiKey) return "⚠️ Configure sua API Key do Google.";
-
-            const ai = new GoogleGenAI({ apiKey });
-            
-            // Construção do Payload Multimodal
-            const parts: any[] = [];
-            
-            // 1. Texto do usuário
-            if (userMessage) parts.push({ text: userMessage });
-            
-            // 2. Anexos (Imagens, Áudio, PDF)
-            attachments.forEach(att => {
-                if (att.base64) {
-                    parts.push({
-                        inlineData: {
-                            mimeType: att.mimeType,
-                            data: att.base64
-                        }
-                    });
-                }
-            });
-
-            // Se não houver nada, aborta
-            if (parts.length === 0) return "Por favor, envie um texto, áudio ou imagem.";
-
-            const response = await ai.models.generateContent({
-                model: 'gemini-3-pro-preview', // Suporta áudio e imagem nativamente
-                contents: { parts },
-                config: {
-                    systemInstruction: chatSystemPrompt,
-                    temperature: 0.6,
-                }
-            });
-            return response.text || "Não consegui processar a resposta.";
-        }
-
-        // --- OPENAI (GPT-4o) ---
-        if (config.provider === 'openai') {
-            const apiKey = config.keys.openai;
-            if (!apiKey) return "⚠️ Chave OpenAI ausente.";
-
-            // OpenAI Vision payload builder (simplificado para imagem)
-            const messages: any[] = [{ role: "system", content: chatSystemPrompt }];
-            
-            const contentParts: any[] = [{ type: "text", text: userMessage }];
-            
-            attachments.forEach(att => {
-                if (att.type === 'image' && att.base64) {
-                    contentParts.push({
-                        type: "image_url",
-                        image_url: { url: `data:${att.mimeType};base64,${att.base64}` }
-                    });
-                }
-                // OpenAI não aceita áudio direto no endpoint de chat completion padrão (precisa de Whisper)
-                // Ignorando áudio para OpenAI neste fallback simples
-            });
-
-            messages.push({ role: "user", content: contentParts });
-
-            const res = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiKey}`
-                },
-                body: JSON.stringify({
-                    model: "gpt-4o-mini", 
-                    messages: messages,
-                    temperature: 0.6
-                })
-            });
-
-            if (!res.ok) {
-                const errJson = await res.json().catch(() => ({}));
-                throw new Error(errJson.error?.message || `Erro HTTP ${res.status}`);
-            }
-
-            const json = await res.json();
-            return json.choices?.[0]?.message?.content || "Sem resposta.";
-        }
-
-        return `Provedor ${config.provider} não suporta multimodalidade neste sistema. Use o Google Gemini.`;
-
-    } catch (error: any) {
-        return this.handleError(error);
-    }
+    return this.chatSupport(userMessage, contextData, attachments);
   },
 
   handleError(error: any): string {
@@ -256,7 +180,6 @@ export const aiService = {
 
   getSystemPrompt(type: string): string {
     const basePrompt = `Você é um Diretor Executivo (CFO/COO) de uma empresa de gestão de frotas e seguros.`;
-    // ... (mantido igual)
     return basePrompt;
   }
 };
