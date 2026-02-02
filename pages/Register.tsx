@@ -1,20 +1,60 @@
 
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
 import { useToast } from '../context/ToastContext';
 import { auditService } from '../services/auditService';
-import { Car, Mail, Lock, User, Loader2, ArrowLeft, Building, AlertCircle } from 'lucide-react';
+import { Car, Mail, Lock, User, Loader2, ArrowLeft, Building, AlertCircle, Link as LinkIcon } from 'lucide-react';
 
 const Register: React.FC = () => {
   const { addToast } = useToast();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [companyName, setCompanyName] = useState(''); // Novo campo
+  const [companyName, setCompanyName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const navigate = useNavigate();
+  
+  // State para Convite
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const [inviteData, setInviteData] = useState<any>(null);
+  const [verifyingInvite, setVerifyingInvite] = useState(false);
+
+  useEffect(() => {
+    const token = searchParams.get('invite');
+    if (token) {
+        setInviteToken(token);
+        verifyInvite(token);
+    }
+  }, [searchParams]);
+
+  const verifyInvite = async (token: string) => {
+      setVerifyingInvite(true);
+      try {
+          const { data, error } = await supabase
+            .from('invitations')
+            .select('*, saas_tenants(name)')
+            .eq('token', token)
+            .maybeSingle();
+
+          if (error) throw error;
+          if (!data) throw new Error("Convite inválido ou expirado.");
+
+          setInviteData(data);
+          setEmail(data.email || '');
+          setName(data.name || '');
+          setCompanyName(data.saas_tenants?.name || 'Empresa Convidada');
+          
+      } catch (err: any) {
+          setError(err.message);
+          setInviteToken(null);
+      } finally {
+          setVerifyingInvite(false);
+      }
+  };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,14 +76,56 @@ const Register: React.FC = () => {
 
       if (signUpError) {
         if (signUpError.message.includes("unique")) {
-            throw new Error("Este e-mail já está cadastrado.");
+            throw new Error("Este e-mail já está cadastrado. Tente fazer login.");
         } else {
             throw signUpError;
         }
       } 
       
       if (data.user) {
-        // 2. Se logou automaticamente (Email Confirm desligado), cria a estrutura da empresa
+        // FLUXO DE CONVITE (JOIN EXISTING TENANT)
+        if (inviteToken && inviteData) {
+             try {
+                 // A. Vincular Usuário à Empresa Existente
+                 const { error: memberError } = await supabase.from('organization_members').insert([{
+                     tenant_id: inviteData.tenant_id,
+                     user_id: data.user.id,
+                     role: inviteData.role || 'member'
+                 }]);
+                 
+                 if (memberError) console.warn("Membro já existe ou erro:", memberError);
+
+                 // B. Atualizar status do convite
+                 await supabase.from('invitations').update({ status: 'accepted' }).eq('id', inviteData.id);
+
+                 // C. Se for Owner, transferir propriedade (caso tenha sido criado pelo Super Admin como placeholder)
+                 if (inviteData.role === 'owner') {
+                     await supabase.from('saas_tenants').update({ owner_id: data.user.id }).eq('id', inviteData.tenant_id);
+                 }
+
+                 // D. Auditoria
+                 await auditService.log('Accept Invite', 'Invitation', inviteData.id, { tenant: inviteData.tenant_id });
+                 
+                 addToast('success', 'Cadastro Concluído!', `Você agora faz parte de ${companyName}.`);
+                 
+                 // Login automático se possível ou redirecionamento
+                 setTimeout(() => {
+                     if (data.session) navigate('/');
+                     else navigate('/login');
+                 }, 1500);
+                 
+                 return;
+
+             } catch (inviteErr: any) {
+                 console.error("Erro ao processar convite:", inviteErr);
+                 setError("Conta criada, mas houve erro ao entrar na empresa. Entre em contato com o suporte.");
+                 setLoading(false);
+                 return;
+             }
+        }
+
+        // FLUXO PADRÃO (CREATE NEW TENANT)
+        // Se logou automaticamente (Email Confirm desligado), cria a estrutura da empresa
         if (data.session) {
              try {
                  // A. Criar a Empresa (Tenant)
@@ -68,7 +150,7 @@ const Register: React.FC = () => {
                          role: 'owner'
                      }]);
                      
-                     if (memberError) console.warn("Erro ao vincular membro (pode já ter sido feito por trigger):", memberError);
+                     if (memberError) console.warn("Erro ao vincular membro:", memberError);
                  }
 
                  // C. Auditoria
@@ -76,19 +158,17 @@ const Register: React.FC = () => {
                  
                  addToast('success', 'Conta Criada!', `Bem-vindo à ${companyName}.`);
                  
-                 // Pequeno delay para propagação
                  setTimeout(() => navigate('/'), 1500);
 
              } catch (createError: any) {
                  console.error("Erro ao criar empresa:", createError);
-                 // Não bloqueia o fluxo, mas avisa
                  setError("Usuário criado, mas houve erro ao configurar a empresa. Entre em contato com o suporte.");
                  setLoading(false);
              }
         } else {
-             // Caso exija confirmação de email (Fluxo antigo)
+             // Caso exija confirmação de email
              addToast('success', 'Cadastro Realizado!', 'Verifique seu e-mail para confirmar a conta.');
-             setError("Conta criada! Por favor, verifique sua caixa de entrada (e spam) para confirmar o e-mail. A empresa será criada no primeiro login.");
+             setError("Conta criada! Por favor, verifique sua caixa de entrada (e spam) para confirmar o e-mail.");
              setLoading(false); 
         }
       }
@@ -98,6 +178,10 @@ const Register: React.FC = () => {
       setLoading(false);
     }
   };
+
+  if (verifyingInvite) {
+      return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-blue-600" size={32}/></div>;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
@@ -114,7 +198,10 @@ const Register: React.FC = () => {
         </Link>
 
         <div className="bg-white p-10 rounded-[48px] shadow-2xl border border-slate-100">
-          <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-8">Criar Conta Empresarial</h2>
+          <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-2">
+              {inviteToken ? 'Aceitar Convite' : 'Criar Conta Empresarial'}
+          </h2>
+          {inviteToken && <p className="text-sm text-blue-600 font-bold mb-6 flex items-center gap-2"><LinkIcon size={14}/> Você foi convidado para: {companyName}</p>}
           
           {error && (
             <div className={`mb-6 p-4 border rounded-2xl flex items-start gap-3 text-xs font-bold animate-in slide-in-from-top-2 ${error.includes('verifique') ? 'bg-green-50 border-green-100 text-green-700' : 'bg-red-50 border-red-100 text-red-600'}`}>
@@ -124,13 +211,15 @@ const Register: React.FC = () => {
           )}
 
           <form onSubmit={handleRegister} className="space-y-5">
-            <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 px-2 tracking-widest">Nome da Empresa</label>
-              <div className="relative">
-                <Building className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                <input required className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Ex: Transportadora Silva" />
-              </div>
-            </div>
+            {!inviteToken && (
+                <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 px-2 tracking-widest">Nome da Empresa</label>
+                <div className="relative">
+                    <Building className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                    <input required className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Ex: Transportadora Silva" />
+                </div>
+                </div>
+            )}
 
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 px-2 tracking-widest">Seu Nome</label>
@@ -144,7 +233,7 @@ const Register: React.FC = () => {
               <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 px-2 tracking-widest">E-mail Corporativo</label>
               <div className="relative">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                <input type="email" required className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@empresa.com" />
+                <input type="email" required className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@empresa.com" readOnly={!!inviteToken} />
               </div>
             </div>
 
@@ -157,7 +246,7 @@ const Register: React.FC = () => {
             </div>
 
             <button type="submit" disabled={loading} className="w-full py-5 bg-blue-600 text-white rounded-[24px] font-black text-xs uppercase tracking-widest shadow-2xl shadow-blue-600/30 hover:bg-blue-700 transition-all flex items-center justify-center gap-3 disabled:opacity-50 mt-4">
-              {loading ? <Loader2 className="animate-spin" size={20} /> : 'Criar Conta & Acessar'}
+              {loading ? <Loader2 className="animate-spin" size={20} /> : (inviteToken ? 'Entrar na Empresa' : 'Criar Conta & Acessar')}
             </button>
           </form>
         </div>

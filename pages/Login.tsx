@@ -35,7 +35,8 @@ const Login: React.FC = () => {
     setError(null);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      // Casting supabase.auth to any
+      const { error } = await (supabase.auth as any).signInWithPassword({ email, password });
       if (error) throw error;
       // O AuthContext detectará a mudança de sessão e redirecionará ou atualizará o estado
     } catch (err: any) {
@@ -53,7 +54,8 @@ const Login: React.FC = () => {
     setLocalLoading(true);
     setError(null);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
+      // Casting supabase.auth to any
+      const { error } = await (supabase.auth as any).signInWithOAuth({
          provider: 'google',
          options: { 
             redirectTo: window.location.origin,

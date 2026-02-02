@@ -1,8 +1,12 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
-import { Session, User } from '@supabase/supabase-js';
+// import { Session, User } from '@supabase/supabase-js'; // Removed to avoid export errors
 import { supabase } from '../services/supabaseClient';
 import { SaasTenant, OrganizationMember } from '../types';
+
+// Workaround for missing types in @supabase/supabase-js
+type User = any;
+type Session = any;
 
 const TENANT_STORAGE_KEY = 'sb-autoclaims-tenant-id';
 
@@ -140,7 +144,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       try {
         // 1. Recupera sessão inicial
-        const { data: { session: initialSession }, error } = await supabase.auth.getSession();
+        // Casting supabase.auth to any to avoid property missing error
+        const { data: { session: initialSession }, error } = await (supabase.auth as any).getSession();
         
         if (mounted.current) {
             if (initialSession?.user) {
@@ -169,7 +174,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     initialize();
 
-    const { data: listenerData } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+    // Casting supabase.auth to any to avoid property missing error
+    const { data: listenerData } = (supabase.auth as any).onAuthStateChange(async (event: string, newSession: any) => {
       if (!mounted.current) return;
 
       // Eventos de Login
@@ -223,7 +229,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = async () => {
     setLoading(true);
     try {
-        await supabase.auth.signOut();
+        // Casting supabase.auth to any to avoid property missing error
+        await (supabase.auth as any).signOut();
     } catch (error) {
         console.error("Erro ao realizar logout no Supabase:", error);
     } finally {

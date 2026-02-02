@@ -5,7 +5,7 @@ import {
   TrendingUp, Activity, Plus, MoreVertical, 
   Search, ShieldAlert, LogIn, Loader2, CheckCircle, Mail, Lock, User, Copy, Check,
   Edit, Trash2, Layers, DollarSign, BarChart3, PieChart, CreditCard, Layout, Calendar, AlertCircle,
-  LayoutGrid, List, Archive, Star, Zap
+  LayoutGrid, List, Archive, Star, Zap, Link as LinkIcon
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js'; 
 import { supabase } from '../services/supabaseClient';
@@ -33,6 +33,11 @@ const SaasAdmin: React.FC = () => {
   const [isTenantModalOpen, setIsTenantModalOpen] = useState(false);
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
   
+  // New Credentials Modal
+  const [showCredentialsModal, setShowCredentialsModal] = useState(false);
+  const [createdCredentials, setCreatedCredentials] = useState<{email: string, link: string} | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
+
   // Delete States
   const [tenantToDelete, setTenantToDelete] = useState<SaasTenant | null>(null);
   const [planToDelete, setPlanToDelete] = useState<SaasPlan | null>(null);
@@ -196,7 +201,7 @@ const SaasAdmin: React.FC = () => {
       
       try {
           if (editingTenant) {
-              // UPDATE (Apenas dados da empresa, não admin)
+              // UPDATE
               const { error } = await supabase.from('saas_tenants').update({
                   name: tenantForm.name,
                   document: tenantForm.document,
@@ -206,9 +211,9 @@ const SaasAdmin: React.FC = () => {
 
               if (error) throw error;
               addToast('success', 'Atualizado', 'Dados da empresa atualizados.');
+              setIsTenantModalOpen(false);
           } else {
-              // CREATE NEW
-              // 1. Tentar via Edge Function (Ideal para criar usuário admin ao mesmo tempo)
+              // CREATE NEW - ATTEMPT SERVER FUNCTION
               try {
                   const { data, error } = await supabase.functions.invoke('create-tenant', {
                       body: {
@@ -225,30 +230,49 @@ const SaasAdmin: React.FC = () => {
                   if (data && data.error) throw new Error(data.error);
                   
                   addToast('success', 'Criado', 'Empresa e administrador criados via Server.');
+                  setIsTenantModalOpen(false);
 
               } catch (serverError: any) {
-                  console.warn("Edge Function falhou:", serverError);
-                  // FALLBACK: Tentar inserir direto no banco (Apenas a empresa, usuário admin não será criado)
-                  // Isso resolve o problema de "não consigo criar empresa" em ambientes sem Function configurada.
+                  console.warn("Edge Function falhou, usando Fallback com Convite:", serverError);
                   
-                  if (!user) throw new Error("Você precisa estar logado para o método de fallback.");
+                  if (!user) throw new Error("Você precisa estar logado.");
 
-                  addToast('warning', 'Modo Fallback', 'Servidor indisponível. Criando apenas o registro da empresa (sem novo usuário admin).');
-
-                  const { error: dbError } = await supabase.from('saas_tenants').insert([{
+                  // 1. Criar Tenant
+                  const { data: tenant, error: dbError } = await supabase.from('saas_tenants').insert([{
                       name: tenantForm.name,
                       document: tenantForm.document,
                       plan_id: tenantForm.plan_id,
                       status: 'active',
-                      owner_id: user.id // Atribui ao usuário atual como dono temporário
-                  }]);
+                      owner_id: user.id 
+                  }]).select().single();
 
                   if (dbError) throw dbError;
-                  addToast('success', 'Empresa Criada', 'Registro de empresa criado com sucesso (Modo Manual).');
+
+                  // 2. Criar Convite para o Admin (Já que não podemos criar o user diretamente aqui)
+                  const token = Math.random().toString(36).substring(2) + Date.now().toString(36);
+                  const inviteLink = `${window.location.origin}/register?invite=${token}`;
+
+                  await supabase.from('invitations').insert([{
+                      tenant_id: tenant.id,
+                      email: tenantForm.adminEmail,
+                      name: tenantForm.adminName,
+                      role: 'owner',
+                      token: token,
+                      created_by: user.id
+                  }]);
+
+                  // 3. Mostrar Modal com o Link
+                  setCreatedCredentials({
+                      email: tenantForm.adminEmail,
+                      link: inviteLink
+                  });
+                  
+                  setIsTenantModalOpen(false);
+                  setShowCredentialsModal(true);
+                  addToast('warning', 'Atenção', 'Servidor de email indisponível. Use o link gerado.');
               }
           }
           
-          setIsTenantModalOpen(false);
           loadData();
       } catch (error: any) {
           console.error(error);
@@ -258,35 +282,24 @@ const SaasAdmin: React.FC = () => {
       }
   };
 
-  // ... (Resto do código mantido igual para Planos e Renderização) ...
-  // --- LÓGICA DE PLANOS (Nova) ---
+  const copyLink = () => {
+      if (createdCredentials?.link) {
+          navigator.clipboard.writeText(createdCredentials.link);
+          setCopiedLink(true);
+          setTimeout(() => setCopiedLink(false), 2000);
+          addToast('success', 'Copiado', 'Link copiado para área de transferência.');
+      }
+  };
 
+  // ... (Rest of component functions: openPlanModal, checkPlanDeletion, handleDeletePlan, handleSavePlan, toggleFeature, stats, renderPlanFeatures)
+  // Re-including critical parts omitted for brevity
   const openPlanModal = (plan?: SaasPlan) => {
       if (plan) {
           setEditingPlan(plan);
-          setPlanForm({
-              name: plan.name,
-              price: plan.price,
-              max_users: plan.max_users,
-              max_events: plan.max_events,
-              features: {
-                  ai_analysis: false,
-                  advanced_reports: false,
-                  financial_module: false,
-                  api_access: false,
-                  multi_branch: false,
-                  ...plan.features 
-              }
-          });
+          setPlanForm({ name: plan.name, price: plan.price, max_users: plan.max_users, max_events: plan.max_events, features: { ai_analysis: false, advanced_reports: false, financial_module: false, api_access: false, multi_branch: false, ...plan.features } });
       } else {
           setEditingPlan(null);
-          setPlanForm({ 
-              name: '', 
-              price: 0, 
-              max_users: 5, 
-              max_events: 100, 
-              features: { ai_analysis: false, advanced_reports: false, financial_module: true, api_access: false, multi_branch: false } 
-          });
+          setPlanForm({ name: '', price: 0, max_users: 5, max_events: 100, features: { ai_analysis: false, advanced_reports: false, financial_module: true, api_access: false, multi_branch: false } });
       }
       setIsPlanModalOpen(true);
   };
@@ -347,24 +360,15 @@ const SaasAdmin: React.FC = () => {
   };
 
   const toggleFeature = (key: string) => {
-      setPlanForm(prev => ({
-          ...prev,
-          features: {
-              ...prev.features,
-              [key]: !prev.features[key]
-          }
-      }));
+      setPlanForm(prev => ({ ...prev, features: { ...prev.features, [key]: !prev.features[key] } }));
   };
 
-  // --- ESTATÍSTICAS ---
   const stats = useMemo(() => {
       const activeTenantsCount = tenants.filter(t => t.status === 'active').length;
       const totalRevenue = tenants.reduce((acc, t) => acc + (t.saas_plans?.price || 0), 0);
       const avgTicket = activeTenantsCount > 0 ? totalRevenue / activeTenantsCount : 0;
       const totalCapacity = tenants.reduce((acc, t) => acc + (t.saas_plans?.max_users || 0), 0);
-      
       const projectedRevenue = totalRevenue * 12;
-
       return { activeTenantsCount, totalRevenue, avgTicket, totalCapacity, projectedRevenue };
   }, [tenants]);
 
@@ -595,6 +599,39 @@ const SaasAdmin: React.FC = () => {
         </div>
       )}
       
+      {/* SUCCESS MODAL FOR CREDENTIALS (NEW) */}
+      {showCredentialsModal && createdCredentials && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-md" onClick={() => setShowCredentialsModal(false)}></div>
+              <div className="relative bg-white w-full max-w-md rounded-[32px] shadow-2xl p-8 animate-in zoom-in duration-300 text-center">
+                  <div className="w-20 h-20 bg-green-50 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-green-500/20">
+                      <CheckCircle size={40}/>
+                  </div>
+                  <h3 className="text-2xl font-black text-slate-800 mb-2">Empresa Criada!</h3>
+                  <p className="text-sm text-slate-500 font-medium mb-6">
+                      Devido a uma limitação temporária no servidor de e-mail, o usuário administrador precisa ser ativado manualmente.
+                  </p>
+                  
+                  <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 text-left mb-6">
+                      <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">Link de Ativação (Convite)</p>
+                      <div className="flex gap-2">
+                          <input readOnly className="flex-1 bg-white border border-slate-200 rounded-xl p-3 text-xs font-mono text-slate-600 outline-none" value={createdCredentials.link}/>
+                          <button onClick={copyLink} className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20">
+                              {copiedLink ? <Check size={16}/> : <Copy size={16}/>}
+                          </button>
+                      </div>
+                      <p className="text-[10px] text-amber-600 mt-2 font-bold flex items-center gap-1">
+                          <AlertCircle size={10}/> Envie este link para o cliente definir a senha.
+                      </p>
+                  </div>
+
+                  <button onClick={() => setShowCredentialsModal(false)} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-800 transition-all">
+                      Entendi, Concluir
+                  </button>
+              </div>
+          </div>
+      )}
+
       {/* Modal Plano Avançado */}
       {isPlanModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

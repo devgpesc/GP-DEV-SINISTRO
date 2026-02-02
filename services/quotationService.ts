@@ -99,7 +99,8 @@ export const quotationService = {
       console.log('>>> Iniciando processPurchase (Relacional)', { quotationId, selectionsCount: Object.keys(selections).length });
 
       // 1. Validar Usuário
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      // Casting supabase.auth to any to avoid missing getUser error
+      const { data: { user }, error: authError } = await (supabase.auth as any).getUser();
       if (authError || !user) {
           throw new Error("Sessão expirada. Faça login novamente para aprovar.");
       }

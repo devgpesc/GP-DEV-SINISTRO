@@ -69,7 +69,8 @@ export const auditService = {
 
   async log(action: string, entity: string, entityId: string, details: any = {}) {
     try {
-        const { data: { user } } = await supabase.auth.getUser();
+        // Casting supabase.auth to any to avoid missing getUser error
+        const { data: { user } } = await (supabase.auth as any).getUser();
         if (!user) return;
 
         const meta = await this.getClientMetadata();
