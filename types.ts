@@ -39,6 +39,13 @@ export interface SaasTenant {
   created_at: string;
   owner_id?: string;
   saas_plans?: SaasPlan;
+  
+  // Billing Fields (Novos)
+  subscription_status?: 'trial' | 'active' | 'past_due' | 'canceled' | 'incomplete';
+  subscription_id?: string;
+  trial_ends_at?: string;
+  billing_cycle?: 'monthly' | 'yearly';
+  current_period_end?: string;
 }
 
 export interface SaasPlan {

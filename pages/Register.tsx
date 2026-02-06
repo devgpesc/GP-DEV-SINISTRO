@@ -61,6 +61,13 @@ const Register: React.FC = () => {
     setLoading(true);
     setError(null);
 
+    // Validação Básica
+    if (!inviteToken && !companyName.trim()) {
+        setError("O nome da empresa é obrigatório para criar uma nova conta.");
+        setLoading(false);
+        return;
+    }
+
     try {
       // 1. Criar Usuário na Auth
       const { data, error: signUpError } = await (supabase.auth as any).signUp({
@@ -124,10 +131,14 @@ const Register: React.FC = () => {
              }
         }
 
-        // FLUXO PADRÃO (CREATE NEW TENANT)
-        // Se logou automaticamente (Email Confirm desligado), cria a estrutura da empresa
+        // FLUXO PADRÃO (CREATE NEW TENANT - SELF SERVICE)
+        // Cria a estrutura da empresa para o novo cliente (Se ele não foi convidado)
         if (data.session) {
              try {
+                 // Busca um plano padrão (Trial)
+                 const { data: plans } = await supabase.from('saas_plans').select('id').limit(1);
+                 const defaultPlanId = plans && plans.length > 0 ? plans[0].id : null;
+
                  // A. Criar a Empresa (Tenant)
                  const { data: tenant, error: tenantError } = await supabase
                     .from('saas_tenants')
@@ -135,14 +146,17 @@ const Register: React.FC = () => {
                         name: companyName,
                         status: 'active',
                         owner_id: data.user.id,
-                        document: '00.000.000/0001-00' // Default placeholder
+                        plan_id: defaultPlanId,
+                        document: '00.000.000/0001-00', // Default placeholder
+                        subscription_status: 'trial',
+                        trial_ends_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() // 14 dias trial
                     }])
                     .select()
                     .single();
 
                  if (tenantError) throw tenantError;
 
-                 // B. Vincular Usuário à Empresa como Admin
+                 // B. Vincular Usuário à Empresa como Owner
                  if (tenant) {
                      const { error: memberError } = await supabase.from('organization_members').insert([{
                          tenant_id: tenant.id,
@@ -153,7 +167,7 @@ const Register: React.FC = () => {
                      if (memberError) console.warn("Erro ao vincular membro:", memberError);
                  }
 
-                 // C. Auditoria
+                 // C. Auditoria e Toast
                  await auditService.log('Register', 'User', data.user.id, { email: data.user.email, company: companyName });
                  
                  addToast('success', 'Conta Criada!', `Bem-vindo à ${companyName}.`);
@@ -201,7 +215,11 @@ const Register: React.FC = () => {
           <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-2">
               {inviteToken ? 'Aceitar Convite' : 'Criar Conta Empresarial'}
           </h2>
-          {inviteToken && <p className="text-sm text-blue-600 font-bold mb-6 flex items-center gap-2"><LinkIcon size={14}/> Você foi convidado para: {companyName}</p>}
+          {inviteToken ? (
+             <p className="text-sm text-blue-600 font-bold mb-6 flex items-center gap-2"><LinkIcon size={14}/> Você foi convidado para: {companyName}</p>
+          ) : (
+             <p className="text-sm text-slate-500 font-medium mb-6">Comece a gerenciar sua frota e sinistros hoje.</p>
+          )}
           
           {error && (
             <div className={`mb-6 p-4 border rounded-2xl flex items-start gap-3 text-xs font-bold animate-in slide-in-from-top-2 ${error.includes('verifique') ? 'bg-green-50 border-green-100 text-green-700' : 'bg-red-50 border-red-100 text-red-600'}`}>
@@ -213,7 +231,7 @@ const Register: React.FC = () => {
           <form onSubmit={handleRegister} className="space-y-5">
             {!inviteToken && (
                 <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 px-2 tracking-widest">Nome da Empresa</label>
+                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 px-2 tracking-widest">Nome da Sua Empresa</label>
                 <div className="relative">
                     <Building className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                     <input required className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Ex: Transportadora Silva" />

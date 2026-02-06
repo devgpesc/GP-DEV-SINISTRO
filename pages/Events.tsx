@@ -1,12 +1,14 @@
+
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   Plus, Search, Eye, X, AlertCircle, 
   FileText, Trash2, ShieldAlert, Edit3, User, Link as LinkIcon, Lock, CheckCircle2,
-  Filter, Calendar, Paperclip, Image as ImageIcon, Download, File
+  Filter, Calendar, Paperclip, Image as ImageIcon, Download, File, Loader2
 } from 'lucide-react';
 import { EventStatus, EventType, Priority, Event, Vehicle, Associate } from '../types';
 import { supabase } from '../services/supabaseClient';
 import { eventService } from '../services/eventService';
+import { useToast } from '../context/ToastContext';
 
 const StatusBadge = ({ status }: { status: EventStatus }) => {
   const styles: any = {
@@ -38,12 +40,13 @@ const PriorityBadge = ({ priority }: { priority: Priority }) => {
 };
 
 const Events: React.FC = () => {
+  const { addToast } = useToast();
   const [events, setEvents] = useState<Event[]>([]);
   const [associates, setAssociates] = useState<Associate[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [eventToEdit, setEventToEdit] = useState<Event | null>(null);
   const [eventToDelete, setEventToDelete] = useState<Event | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -90,6 +93,7 @@ const Events: React.FC = () => {
         setVehicles(vs || []);
     } catch (e) {
         console.error('Erro ao carregar eventos:', e);
+        addToast('error', 'Erro', 'Falha ao carregar dados do servidor.');
     }
   };
 
@@ -153,7 +157,6 @@ const Events: React.FC = () => {
         attachments: [...prev.attachments, ...newAttachments]
       }));
     }
-    // Limpa o input
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -168,10 +171,11 @@ const Events: React.FC = () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isFormLocked) {
-        alert('Selecione um Associado e um Veículo.');
+        addToast('warning', 'Campos Incompletos', 'Selecione um Associado e um Veículo.');
         return;
     }
 
+    setIsSaving(true);
     try {
         const protocol = formData.protocolMode === 'auto' ? (eventToEdit ? eventToEdit.protocol : nextAutoProtocol) : formData.manualProtocol;
         
@@ -190,26 +194,35 @@ const Events: React.FC = () => {
         };
 
         if (eventToEdit) {
-            // Update via Supabase direct for simple fields (eventService create handles insert mostly)
-            const { error } = await supabase.from('events').update(eventData).eq('id', eventToEdit.id);
-            if (error) throw error;
+            // CORREÇÃO: Usa o método seguro do service que remove campos inválidos
+            await eventService.updateEvent(eventToEdit.id, eventData);
+            addToast('success', 'Sinistro Atualizado', 'As alterações foram salvas com sucesso.');
         } else {
             await eventService.createEvent(eventData);
+            addToast('success', 'Sinistro Criado', `Protocolo ${protocol} gerado.`);
         }
         
         loadData();
         setIsModalOpen(false);
         setEventToEdit(null);
     } catch (error: any) {
-        alert('Erro ao salvar: ' + error.message);
+        console.error(error);
+        addToast('error', 'Erro ao Salvar', error.message || 'Ocorreu um erro inesperado.');
+    } finally {
+        setIsSaving(false);
     }
   };
 
   const handleDelete = async () => {
       if (eventToDelete) {
-          await supabase.from('events').delete().eq('id', eventToDelete.id);
-          setEvents(events.filter(e => e.id !== eventToDelete.id));
-          setEventToDelete(null);
+          try {
+            await supabase.from('events').delete().eq('id', eventToDelete.id);
+            setEvents(events.filter(e => e.id !== eventToDelete.id));
+            setEventToDelete(null);
+            addToast('success', 'Excluído', 'Registro removido permanentemente.');
+          } catch (e) {
+            addToast('error', 'Erro', 'Não foi possível excluir o evento.');
+          }
       }
   };
 
@@ -398,7 +411,7 @@ const Events: React.FC = () => {
       {/* Create/Edit Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => !isSaving && setIsModalOpen(false)}></div>
           <div className="relative bg-white w-full max-w-3xl rounded-[40px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
             <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
               <h3 className="text-xl font-black text-slate-800 flex items-center gap-3"><div className="bg-blue-600 p-2.5 rounded-2xl text-white"><ShieldAlert size={24} /></div>{eventToEdit ? 'Editar Sinistro' : 'Registro de Sinistro'}</h3>
@@ -506,7 +519,10 @@ const Events: React.FC = () => {
             </div>
             <div className="p-6 bg-white border-t border-slate-100 flex justify-end gap-3 sticky bottom-0 z-10">
               <button type="button" onClick={() => setIsModalOpen(false)} className="px-8 py-3 text-slate-400 font-black uppercase text-[10px]">Cancelar</button>
-              <button type="submit" onClick={handleSave} disabled={isFormLocked} className="px-12 py-4 bg-blue-600 text-white rounded-[20px] font-black text-xs uppercase tracking-widest shadow-xl flex items-center gap-2 disabled:opacity-50">{isFormLocked ? <Lock size={14}/> : <ShieldAlert size={16}/>} Salvar Sinistro</button>
+              <button type="submit" onClick={handleSave} disabled={isFormLocked || isSaving} className="px-12 py-4 bg-blue-600 text-white rounded-[20px] font-black text-xs uppercase tracking-widest shadow-xl flex items-center gap-2 disabled:opacity-50">
+                  {isSaving ? <Loader2 className="animate-spin" size={16}/> : (isFormLocked ? <Lock size={14}/> : <ShieldAlert size={16}/>)}
+                  {isSaving ? 'Salvando...' : 'Salvar Sinistro'}
+              </button>
             </div>
           </div>
         </div>
