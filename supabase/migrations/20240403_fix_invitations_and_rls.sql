@@ -1,9 +1,18 @@
 
--- MIGRATION: FIX INVITATIONS FK & TENANT CREATION PERMISSIONS
+-- MIGRATION: FIX INVITATIONS FK & TENANT CREATION PERMISSIONS (CORRIGIDO)
 -- Data: 2024-04-03
--- Objetivo: Corrigir erro 'Could not find relationship' e permitir auto-cadastro.
+-- Objetivo: Corrigir erro 'column tenant_id does not exist' e permitir auto-cadastro.
 
 BEGIN;
+
+-- 0. GARANTIR QUE A COLUNA TENANT_ID EXISTE
+-- Adicionamos a coluna se ela não existir na tabela invitations
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invitations' AND column_name = 'tenant_id') THEN
+        ALTER TABLE public.invitations ADD COLUMN tenant_id uuid;
+    END IF;
+END $$;
 
 -- 1. CORREÇÃO DO RELACIONAMENTO (Foreign Key)
 -- O PostgREST precisa de uma FK explícita para fazer o JOIN (select *, saas_tenants(*))
@@ -27,8 +36,7 @@ CREATE POLICY "Auth Users Create Tenants" ON public.saas_tenants
 FOR INSERT
 WITH CHECK (
     auth.role() = 'authenticated'
-    -- Removemos a checagem de owner_id aqui pois ela pode falhar antes do insert completar
-    -- O backend garante que o owner_id será o usuário logado via código ou trigger se necessário
+    -- Removemos checagens complexas aqui, pois o backend garante o owner_id
 );
 
 -- 3. CORREÇÃO DE PERMISSÕES PARA VÍNCULO DE MEMBRO (Self-Link)
