@@ -102,7 +102,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       if (validMemberships.length === 0 && !isSuperAdmin) {
           console.warn('[Auth] Usuário sem memberships ativas. Forçando logout.');
-          await supabase.auth.signOut();
+          await (supabase.auth as any).signOut();
           if (mounted.current) {
               setSession(null);
               setUser(null);

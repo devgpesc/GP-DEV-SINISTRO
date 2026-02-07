@@ -165,8 +165,8 @@ const SaasAdmin: React.FC = () => {
           if (count > 0) {
               setVerifyState({
                   loading: false,
-                  blocked: false, // PERMITE EXCLUIR MESMO COM DADOS (CASCATA)
-                  message: `ATENÇÃO CRÍTICA: Esta empresa possui ${count} registros vinculados (usuários, eventos, etc). Ao confirmar, TUDO será apagado permanentemente.`
+                  blocked: false, // CHANGE: Não bloqueia mais, apenas avisa
+                  message: `ATENÇÃO CRÍTICA: Esta empresa possui ${count} registros vinculados (usuários, eventos, etc). Ao confirmar, tentaremos forçar a exclusão de tudo.`
               });
           } else {
               setVerifyState({
@@ -176,7 +176,7 @@ const SaasAdmin: React.FC = () => {
               });
           }
       } catch (err) {
-          setVerifyState({ loading: false, blocked: false, message: 'Erro ao verificar integridade, mas você pode forçar a exclusão.' });
+          setVerifyState({ loading: false, blocked: false, message: 'Erro ao verificar integridade, mas você pode tentar forçar a exclusão.' });
       }
   };
 
@@ -184,9 +184,9 @@ const SaasAdmin: React.FC = () => {
       if (!tenantToDelete) return;
       setIsProcessing(true);
       try {
-          // O Banco de dados deve ter ON DELETE CASCADE configurado, ou deletamos manualmente os filhos críticos primeiro
-          // Para garantir: deletamos membros primeiro
+          // Tenta limpar dependências conhecidas primeiro para evitar erro de FK se o CASCADE não estiver configurado no banco
           await supabase.from('organization_members').delete().eq('tenant_id', tenantToDelete.id);
+          await supabase.from('events').delete().eq('tenant_id', tenantToDelete.id);
           
           const { error } = await supabase.from('saas_tenants').delete().eq('id', tenantToDelete.id);
           if (error) throw error;
@@ -195,7 +195,7 @@ const SaasAdmin: React.FC = () => {
           addToast('success', 'Sucesso', 'Empresa e dados removidos.');
           setTenantToDelete(null);
       } catch (error: any) {
-          addToast('error', 'Erro', error.message);
+          addToast('error', 'Erro', error.message || 'Falha ao excluir. Verifique constraints do banco.');
       } finally {
           setIsProcessing(false);
       }
