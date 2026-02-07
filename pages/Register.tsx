@@ -1,6 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import * as ReactRouterDOM from 'react-router-dom';
+const { Link, useNavigate, useSearchParams } = ReactRouterDOM as any;
 import { supabase } from '../services/supabaseClient';
 import { useToast } from '../context/ToastContext';
 import { auditService } from '../services/auditService';

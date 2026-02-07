@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   MessageCircle, X, Send, LifeBuoy, Loader2, 
@@ -8,7 +7,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { aiService } from '../services/aiService';
-import { useLocation } from 'react-router-dom';
+import * as ReactRouterDOM from 'react-router-dom';
+const { useLocation } = ReactRouterDOM as any;
 
 interface Attachment {
   id: string;

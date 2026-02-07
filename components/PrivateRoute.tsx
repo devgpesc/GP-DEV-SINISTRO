@@ -1,6 +1,6 @@
-
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import * as ReactRouterDOM from 'react-router-dom';
+const { Navigate } = ReactRouterDOM as any;
 import { useAuth } from '../context/AuthContext';
 import { Loader2, Car, LogOut } from 'lucide-react';
 

@@ -1,11 +1,11 @@
-
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import * as ReactRouterDOM from 'react-router-dom';
+const { useNavigate, Link } = ReactRouterDOM as any;
 import { supabase } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { 
   Loader2, ArrowRight, ShieldCheck, Mail, Lock, 
-  LayoutDashboard, Zap, Globe, AlertCircle, Car, CheckCircle2, User, Hexagon
+  LayoutDashboard, Zap, Globe, AlertCircle, Car, CheckCircle2, User, Hexagon, Eye, EyeOff
 } from 'lucide-react';
 import EscLogo from '../components/EscLogo';
 
@@ -15,6 +15,7 @@ const Login: React.FC = () => {
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [localLoading, setLocalLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -116,25 +117,6 @@ const Login: React.FC = () => {
              ))}
           </div>
         </div>
-
-        <div className="relative z-10 pt-10 border-t border-white/10 mt-auto">
-           <div className="flex items-center gap-4">
-              <div className="flex -space-x-3">
-                 {[1,2,3].map(i => (
-                   <div key={i} className="w-10 h-10 rounded-full border-2 border-[#0F172A] bg-slate-700 flex items-center justify-center text-xs text-white font-bold">
-                      {i === 3 ? '+99' : <User size={16}/>}
-                   </div>
-                 ))}
-              </div>
-              <div>
-                 <p className="text-white text-sm font-bold">Empresas Conectadas</p>
-                 <div className="flex items-center gap-1 text-green-400 text-xs">
-                    <CheckCircle2 size={12} />
-                    <span>Sistema Operacional</span>
-                 </div>
-              </div>
-           </div>
-        </div>
       </div>
 
       {/* LADO DIREITO (Login Form) */}
@@ -184,13 +166,20 @@ const Login: React.FC = () => {
                   <div className="relative group">
                       <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={20} />
                       <input 
-                        type="password" 
+                        type={showPassword ? "text" : "password"} 
                         required 
                         value={password}
                         onChange={e => setPassword(e.target.value)}
-                        className="w-full pl-14 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none text-base font-semibold text-slate-800 focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all placeholder:text-slate-400"
+                        className="w-full pl-14 pr-12 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none text-base font-semibold text-slate-800 focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all placeholder:text-slate-400"
                         placeholder="••••••••"
                       />
+                      <button 
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-blue-600 transition-colors p-2"
+                      >
+                        {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                      </button>
                   </div>
                </div>
 
