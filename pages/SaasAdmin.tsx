@@ -5,7 +5,7 @@ import {
   TrendingUp, Activity, Plus, MoreVertical, 
   Search, ShieldAlert, LogIn, Loader2, CheckCircle, Mail, Lock, User, Copy, Check,
   Edit, Trash2, Layers, DollarSign, BarChart3, PieChart, CreditCard, Layout, Calendar, AlertCircle,
-  LayoutGrid, List, Archive, Star, Zap, Link as LinkIcon
+  LayoutGrid, List, Archive, Star, Zap, Link as LinkIcon, Eye, EyeOff
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js'; 
 import { supabase } from '../services/supabaseClient';
@@ -21,6 +21,7 @@ const SaasAdmin: React.FC = () => {
   // Estado Geral
   const [activeTab, setActiveTab] = useState<'overview' | 'plans'>('overview');
   const [loading, setLoading] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
   
   // Dados
   const [tenants, setTenants] = useState<SaasTenant[]>([]);
@@ -117,11 +118,13 @@ const SaasAdmin: React.FC = () => {
       setEditingTenant(null);
       setTenantForm({ name: '', document: '', plan_id: '', status: 'active', adminName: '', adminEmail: '', adminPassword: '' });
       setIsTenantModalOpen(true);
+      setShowPassword(false);
   };
 
   const openEditTenantModal = async (tenant: SaasTenant) => {
       setEditingTenant(tenant);
       setIsTenantModalOpen(true);
+      setShowPassword(false);
       
       let adminName = '';
       let adminEmail = '';
@@ -582,8 +585,23 @@ const SaasAdmin: React.FC = () => {
                         {!editingTenant && (
                             <div className="mt-4">
                                 <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Senha Provisória</label>
-                                <input required type="text" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" 
-                                    value={tenantForm.adminPassword} onChange={e => setTenantForm({...tenantForm, adminPassword: e.target.value})} placeholder="Defina uma senha" />
+                                <div className="relative">
+                                    <input 
+                                        required 
+                                        type={showPassword ? "text" : "password"} 
+                                        className="w-full p-4 pr-12 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" 
+                                        value={tenantForm.adminPassword} 
+                                        onChange={e => setTenantForm({...tenantForm, adminPassword: e.target.value})} 
+                                        placeholder="Defina uma senha" 
+                                    />
+                                    <button 
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-blue-600 transition-colors p-1"
+                                    >
+                                        {showPassword ? <EyeOff size={18}/> : <Eye size={18}/>}
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </div>

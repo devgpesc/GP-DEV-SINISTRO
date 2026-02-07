@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
 import { useToast } from '../context/ToastContext';
 import { auditService } from '../services/auditService';
-import { Car, Mail, Lock, User, Loader2, ArrowLeft, Building, AlertCircle, Link as LinkIcon } from 'lucide-react';
+import { Car, Mail, Lock, User, Loader2, ArrowLeft, Building, AlertCircle, Link as LinkIcon, Eye, EyeOff } from 'lucide-react';
 
 const Register: React.FC = () => {
   const { addToast } = useToast();
@@ -13,6 +13,7 @@ const Register: React.FC = () => {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [loading, setLoading] = useState(false);
@@ -260,7 +261,21 @@ const Register: React.FC = () => {
               <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 px-2 tracking-widest">Definir Senha</label>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                <input type="password" required className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={password} onChange={e => setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" />
+                <input 
+                    type={showPassword ? "text" : "password"} 
+                    required 
+                    className="w-full pl-12 pr-12 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" 
+                    value={password} 
+                    onChange={e => setPassword(e.target.value)} 
+                    placeholder="Mínimo 6 caracteres" 
+                />
+                <button 
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-blue-600 transition-colors p-1"
+                >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
             </div>
 
@@ -269,10 +284,6 @@ const Register: React.FC = () => {
             </button>
           </form>
         </div>
-        
-        <p className="mt-8 text-center text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">
-          Ambiente Seguro <span className="text-slate-800">EventPro</span>
-        </p>
       </div>
     </div>
   );
