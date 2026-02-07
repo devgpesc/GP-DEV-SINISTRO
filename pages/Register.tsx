@@ -1,10 +1,12 @@
+
 import React, { useState, useEffect } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 const { Link, useNavigate, useSearchParams } = ReactRouterDOM as any;
 import { supabase } from '../services/supabaseClient';
 import { useToast } from '../context/ToastContext';
 import { auditService } from '../services/auditService';
-import { Car, Mail, Lock, User, Loader2, ArrowLeft, Building, AlertCircle, Link as LinkIcon, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, User, Loader2, ArrowLeft, Building, AlertCircle, Link as LinkIcon, Eye, EyeOff } from 'lucide-react';
+import EscLogo from '../components/EscLogo';
 
 const Register: React.FC = () => {
   const { addToast } = useToast();
@@ -34,23 +36,38 @@ const Register: React.FC = () => {
 
   const verifyInvite = async (token: string) => {
       setVerifyingInvite(true);
+      setError(null);
       try {
-          const { data, error } = await supabase
+          // 1. Busca o convite (SEM JOIN para evitar erro de relacionamento no PostgREST)
+          const { data: invite, error: inviteError } = await supabase
             .from('invitations')
-            .select('*, saas_tenants(name)')
+            .select('*')
             .eq('token', token)
             .maybeSingle();
 
-          if (error) throw error;
-          if (!data) throw new Error("Convite inválido ou expirado.");
+          if (inviteError) throw inviteError;
+          if (!invite) throw new Error("Convite inválido ou expirado.");
 
-          setInviteData(data);
-          setEmail(data.email || '');
-          setName(data.name || '');
-          setCompanyName(data.saas_tenants?.name || 'Empresa Convidada');
+          // 2. Busca o nome da empresa separadamente (Safe Fetch)
+          let tenantName = 'Empresa Convidada';
+          if (invite.tenant_id) {
+              const { data: tenant } = await supabase
+                  .from('saas_tenants')
+                  .select('name')
+                  .eq('id', invite.tenant_id)
+                  .maybeSingle();
+              if (tenant) tenantName = tenant.name;
+          }
+
+          // 3. Monta o objeto final
+          setInviteData({ ...invite, tenant_name: tenantName });
+          setEmail(invite.email || '');
+          setName(invite.name || '');
+          setCompanyName(tenantName);
           
       } catch (err: any) {
-          setError(err.message);
+          console.error("Erro ao verificar convite:", err);
+          setError(err.message || "Erro ao carregar dados do convite.");
           setInviteToken(null);
       } finally {
           setVerifyingInvite(false);
@@ -91,7 +108,7 @@ const Register: React.FC = () => {
       } 
       
       if (data.user) {
-        // FLUXO DE CONVITE (JOIN EXISTING TENANT)
+        // === FLUXO DE CONVITE (JOIN EXISTING TENANT) ===
         if (inviteToken && inviteData) {
              try {
                  // A. Vincular Usuário à Empresa Existente
@@ -132,33 +149,32 @@ const Register: React.FC = () => {
              }
         }
 
-        // FLUXO PADRÃO (CREATE NEW TENANT - SELF SERVICE)
-        // Cria a estrutura da empresa para o novo cliente (Se ele não foi convidado)
+        // === FLUXO PADRÃO (CRIAR NOVA EMPRESA) ===
         if (data.session) {
              try {
-                 // Busca um plano padrão (Trial)
+                 // A. Busca um plano padrão (Trial)
                  const { data: plans } = await supabase.from('saas_plans').select('id').limit(1);
-                 // GARANTIA DE UUID OU NULL (Nunca string vazia)
                  const defaultPlanId = (plans && plans.length > 0 && plans[0].id) ? plans[0].id : null;
 
-                 // A. Criar a Empresa (Tenant)
+                 // B. Criar a Empresa (Tenant)
+                 // Nota: A política RLS deve permitir INSERT para authenticated users onde owner_id = auth.uid()
                  const { data: tenant, error: tenantError } = await supabase
                     .from('saas_tenants')
                     .insert([{
                         name: companyName,
                         status: 'active',
-                        owner_id: data.user.id,
+                        owner_id: data.user.id, // Importante: Define o dono imediatamente
                         plan_id: defaultPlanId,
-                        document: '00.000.000/0001-00', // Default placeholder
+                        document: '00.000.000/0001-00',
                         subscription_status: 'trial',
-                        trial_ends_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() // 14 dias trial
+                        trial_ends_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
                     }])
                     .select()
                     .single();
 
                  if (tenantError) throw tenantError;
 
-                 // B. Vincular Usuário à Empresa como Owner
+                 // C. Vincular Usuário à Empresa como Owner (Membro)
                  if (tenant) {
                      const { error: memberError } = await supabase.from('organization_members').insert([{
                          tenant_id: tenant.id,
@@ -169,7 +185,20 @@ const Register: React.FC = () => {
                      if (memberError) console.warn("Erro ao vincular membro:", memberError);
                  }
 
-                 // C. Auditoria e Toast
+                 // D. Atualizar Perfil para Admin
+                 await supabase.from('profiles').update({
+                     role: 'Admin',
+                     full_name: name,
+                     permissions: {
+                        financial_view: true, 
+                        approve_purchases: true, 
+                        manage_users: true, 
+                        delete_records: true,
+                        view_reports: true
+                     }
+                 }).eq('id', data.user.id);
+
+                 // E. Auditoria e Toast
                  await auditService.log('Register', 'User', data.user.id, { email: data.user.email, company: companyName });
                  
                  addToast('success', 'Conta Criada!', `Bem-vindo à ${companyName}.`);
@@ -178,7 +207,7 @@ const Register: React.FC = () => {
 
              } catch (createError: any) {
                  console.error("Erro ao criar empresa:", createError);
-                 setError("Usuário criado, mas houve erro ao configurar a empresa. Entre em contato com o suporte.");
+                 setError("Usuário criado, mas houve erro ao configurar a empresa: " + createError.message);
                  setLoading(false);
              }
         } else {
@@ -202,11 +231,13 @@ const Register: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-md">
-        <div className="text-center mb-10">
-           <div className="inline-flex items-center justify-center p-4 bg-blue-600 rounded-[28px] text-white shadow-2xl mb-6">
-             <Car size={32} />
+        <div className="text-center mb-10 flex flex-col items-center">
+           {/* LOGO OFICIAL (Mesma do Login) */}
+           <div className="mb-6 scale-125">
+             <EscLogo className="w-16 h-16 text-slate-900" classNameText="text-slate-900 text-3xl" />
            </div>
-           <h2 className="text-3xl font-black text-slate-800 tracking-tighter">EVENT<span className="text-blue-600">PRO</span></h2>
+           
+           <h2 className="text-3xl font-black text-slate-800 tracking-tighter mt-2">EVENT<span className="text-blue-600">PRO</span></h2>
         </div>
 
         <Link to="/login" className="inline-flex items-center gap-2 text-slate-400 hover:text-blue-600 font-bold text-xs uppercase tracking-widest mb-6 transition-colors">

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 const { useNavigate, Link } = ReactRouterDOM as any;
@@ -5,7 +6,7 @@ import { supabase } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { 
   Loader2, ArrowRight, ShieldCheck, Mail, Lock, 
-  LayoutDashboard, Zap, Globe, AlertCircle, Car, CheckCircle2, User, Hexagon, Eye, EyeOff
+  LayoutDashboard, Zap, Globe, AlertCircle, Eye, EyeOff
 } from 'lucide-react';
 import EscLogo from '../components/EscLogo';
 
