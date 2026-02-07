@@ -37,16 +37,48 @@ const Login: React.FC = () => {
     setError(null);
 
     try {
+      // 1. Autenticação Básica (Email/Senha)
       // Casting supabase.auth to any
-      const { error } = await (supabase.auth as any).signInWithPassword({ email, password });
-      if (error) throw error;
-      // O AuthContext detectará a mudança de sessão e redirecionará ou atualizará o estado
+      const { data, error: authError } = await (supabase.auth as any).signInWithPassword({ email, password });
+      
+      if (authError) throw authError;
+      if (!data.user) throw new Error("Usuário não encontrado.");
+
+      // 2. VERIFICAÇÃO DE PERMISSÃO DE ACESSO (VÍNCULO COM EMPRESA)
+      // Verifica se o usuário tem perfil de Super Admin ou se pertence a alguma empresa ativa
+      
+      // Checa perfil primeiro
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', data.user.id)
+        .single();
+
+      if (profile?.role === 'super_admin' || profile?.role === 'Admin') {
+          // Super Admin/Admin sempre passa
+          return; 
+      }
+
+      // Se não for admin global, verifica vínculo com tenant ativo
+      const { data: memberships, error: memberError } = await supabase
+        .from('organization_members')
+        .select('id, saas_tenants!inner(status)')
+        .eq('user_id', data.user.id)
+        .eq('saas_tenants.status', 'active');
+
+      if (memberError || !memberships || memberships.length === 0) {
+          // LOGOUT IMEDIATO SE NÃO TIVER PERMISSÃO
+          await (supabase.auth as any).signOut();
+          throw new Error('Acesso Negado: Este usuário não possui vínculo com uma empresa ativa.');
+      }
+
+      // Sucesso - O AuthContext detectará a sessão e redirecionará
     } catch (err: any) {
       console.error(err);
       if (err.message === 'Invalid login credentials') {
           setError('E-mail ou senha incorretos. Verifique suas credenciais.');
       } else {
-          setError('Não foi possível conectar. Tente novamente mais tarde.');
+          setError(err.message || 'Não foi possível conectar. Tente novamente mais tarde.');
       }
       setLocalLoading(false);
     }

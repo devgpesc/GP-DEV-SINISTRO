@@ -93,10 +93,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (mounted.current) setProfile(finalProfile);
 
       // 2. Tenants (Memberships)
-      const validMemberships = (membersRes.data as any[])?.filter(m => m.saas_tenants) || [];
+      const validMemberships = (membersRes.data as any[])?.filter(m => m.saas_tenants && m.saas_tenants.status === 'active') || [];
       if (mounted.current) setMemberships(validMemberships);
 
-      // 3. Seleção de Tenant
+      // 3. SEGURANÇA: Se não tem memberships válidas e não é Super Admin, faz logout forçado
+      // Isso evita o "User (Modo Rápido)" para quem não deve ter acesso
+      const isSuperAdmin = finalProfile.role === 'super_admin' || finalProfile.role === 'Admin';
+      
+      if (validMemberships.length === 0 && !isSuperAdmin) {
+          console.warn('[Auth] Usuário sem memberships ativas. Forçando logout.');
+          await supabase.auth.signOut();
+          if (mounted.current) {
+              setSession(null);
+              setUser(null);
+              setLoading(false);
+          }
+          return;
+      }
+
+      // 4. Seleção de Tenant
       let selectedTenant: SaasTenant | null = null;
       if (validMemberships.length > 0) {
         const storedTenantId = localStorage.getItem(TENANT_STORAGE_KEY);
@@ -115,7 +130,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     } catch (err: any) {
       console.warn('[Auth] Carregamento parcial ou offline:', err.message);
-      // Fallback Seguro para não travar a UI em caso de falha ou lentidão extrema
+      
+      // Fallback Seguro: Se for erro de rede, permite "Modo Rápido", mas se for falta de permissão, não.
+      // Assumimos que o bloqueio principal é feito no Login.tsx e na lógica acima.
       if (mounted.current) {
           setProfile({
             id: userId,
@@ -134,7 +151,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const initialize = async () => {
       // TIMEOUT GERAL DE INICIALIZAÇÃO (5s)
-      // Garante que o loading saia da tela mesmo se o Supabase falhar silenciosamente
       const safetyTimer = setTimeout(() => {
           if (mounted.current && loading) {
               console.warn("Safety timeout triggered: Forcing loading false.");
@@ -144,14 +160,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       try {
         // 1. Recupera sessão inicial
-        // Casting supabase.auth to any to avoid property missing error
         const { data: { session: initialSession }, error } = await (supabase.auth as any).getSession();
         
         if (mounted.current) {
             if (initialSession?.user) {
                 setSession(initialSession);
                 setUser(initialSession.user);
-                // Carrega dados sem bloquear indefinidamente (timeout interno no loadContextData)
                 await loadContextData(
                   initialSession.user.id, 
                   initialSession.user.email, 
@@ -167,23 +181,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } finally {
         clearTimeout(safetyTimer);
-        // GARANTIA ABSOLUTA DE FIM DE LOADING
         if (mounted.current) setLoading(false);
       }
     };
 
     initialize();
 
-    // Casting supabase.auth to any to avoid property missing error
     const { data: listenerData } = (supabase.auth as any).onAuthStateChange(async (event: string, newSession: any) => {
       if (!mounted.current) return;
 
-      // Eventos de Login
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           setSession(newSession);
           setUser(newSession?.user ?? null);
           
-          // Só recarrega dados se o usuário mudou (evita reload no F5 se getSession já pegou)
           if (newSession?.user && newSession.user.id !== userRef.current?.id) {
              await loadContextData(
                newSession.user.id, 
@@ -192,7 +202,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
              );
           }
       } else if (event === 'SIGNED_OUT') {
-          // Limpeza Completa
           setSession(null);
           setUser(null);
           setProfile(null);
@@ -229,12 +238,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = async () => {
     setLoading(true);
     try {
-        // Casting supabase.auth to any to avoid property missing error
         await (supabase.auth as any).signOut();
     } catch (error) {
         console.error("Erro ao realizar logout no Supabase:", error);
     } finally {
-        // Força limpeza local mesmo com erro de rede
         if (mounted.current) {
             setSession(null);
             setUser(null);
@@ -242,7 +249,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setMemberships([]);
             setCurrentTenant(null);
             localStorage.removeItem(TENANT_STORAGE_KEY);
-            // Pequeno delay para UI
             setTimeout(() => {
                 if (mounted.current) setLoading(false);
             }, 100);

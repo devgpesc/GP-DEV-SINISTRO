@@ -28,7 +28,7 @@ const Settings: React.FC = () => {
   
   // ... (Estados companyInfo, usersList, modals mantidos igual ao original)
   const [companyInfo, setCompanyInfo] = useState({
-    company_name: 'AutoClaims Pro',
+    company_name: 'EventPro',
     cnpj: '',
     address: '',
     email: '',
@@ -87,7 +87,7 @@ const Settings: React.FC = () => {
         const { data } = await supabase.from('saas_settings').select('*').limit(1).maybeSingle();
         if (data) {
             setCompanyInfo({
-                company_name: data.company_name || 'AutoClaims Pro',
+                company_name: data.company_name || 'EventPro',
                 cnpj: data.cnpj || '',
                 address: data.address || '',
                 email: data.email || '',
