@@ -137,7 +137,8 @@ const Register: React.FC = () => {
              try {
                  // Busca um plano padrão (Trial)
                  const { data: plans } = await supabase.from('saas_plans').select('id').limit(1);
-                 const defaultPlanId = plans && plans.length > 0 ? plans[0].id : null;
+                 // GARANTIA DE UUID OU NULL (Nunca string vazia)
+                 const defaultPlanId = (plans && plans.length > 0 && plans[0].id) ? plans[0].id : null;
 
                  // A. Criar a Empresa (Tenant)
                  const { data: tenant, error: tenantError } = await supabase

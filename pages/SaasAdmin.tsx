@@ -140,7 +140,7 @@ const SaasAdmin: React.FC = () => {
       setTenantForm({
           name: tenant.name,
           document: tenant.document,
-          plan_id: tenant.plan_id,
+          plan_id: tenant.plan_id || '', // Garante string vazia para o value do input/select
           status: tenant.status,
           adminName: adminName, 
           adminEmail: adminEmail, 
@@ -198,13 +198,16 @@ const SaasAdmin: React.FC = () => {
       e.preventDefault();
       setIsProcessing(true);
       
+      // SANITIZAÇÃO CRÍTICA: Converter string vazia para NULL para campos UUID
+      const planIdToSend = tenantForm.plan_id && tenantForm.plan_id.trim() !== '' ? tenantForm.plan_id : null;
+      
       try {
           if (editingTenant) {
               // UPDATE
               const { error } = await supabase.from('saas_tenants').update({
                   name: tenantForm.name,
                   document: tenantForm.document,
-                  plan_id: tenantForm.plan_id,
+                  plan_id: planIdToSend,
                   status: tenantForm.status
               }).eq('id', editingTenant.id);
 
@@ -218,7 +221,7 @@ const SaasAdmin: React.FC = () => {
                       body: {
                           companyName: tenantForm.name,
                           document: tenantForm.document,
-                          planId: tenantForm.plan_id,
+                          planId: planIdToSend,
                           adminName: tenantForm.adminName,
                           adminEmail: tenantForm.adminEmail,
                           adminPassword: tenantForm.adminPassword
@@ -240,7 +243,7 @@ const SaasAdmin: React.FC = () => {
                   const { data: tenant, error: dbError } = await supabase.from('saas_tenants').insert([{
                       name: tenantForm.name,
                       document: tenantForm.document,
-                      plan_id: tenantForm.plan_id,
+                      plan_id: planIdToSend,
                       status: 'active',
                       owner_id: user.id 
                   }]).select().single();
@@ -526,7 +529,6 @@ const SaasAdmin: React.FC = () => {
                         <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" 
                             value={tenantForm.name} onChange={e => setTenantForm({...tenantForm, name: e.target.value})} placeholder="Ex: Transportadora X" />
                     </div>
-                    {/* ... (Rest of tenant modal fields) ... */}
                     <div>
                         <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">CNPJ / Documento</label>
                         <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" 
@@ -598,8 +600,39 @@ const SaasAdmin: React.FC = () => {
         </div>
       )}
       
-      {/* ... (Existing code for Plan Modal & Credentials Modal) ... */}
-      
+      {/* SUCCESS MODAL FOR CREDENTIALS (NEW) */}
+      {showCredentialsModal && createdCredentials && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-md" onClick={() => setShowCredentialsModal(false)}></div>
+              <div className="relative bg-white w-full max-w-md rounded-[32px] shadow-2xl p-8 animate-in zoom-in duration-300 text-center">
+                  <div className="w-20 h-20 bg-green-50 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-green-500/20">
+                      <CheckCircle size={40}/>
+                  </div>
+                  <h3 className="text-2xl font-black text-slate-800 mb-2">Empresa Criada!</h3>
+                  <p className="text-sm text-slate-500 font-medium mb-6">
+                      Devido a uma limitação temporária no servidor de e-mail, o usuário administrador precisa ser ativado manualmente.
+                  </p>
+                  
+                  <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 text-left mb-6">
+                      <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">Link de Ativação (Convite)</p>
+                      <div className="flex gap-2">
+                          <input readOnly className="flex-1 bg-white border border-slate-200 rounded-xl p-3 text-xs font-mono text-slate-600 outline-none" value={createdCredentials.link}/>
+                          <button onClick={copyLink} className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20">
+                              {copiedLink ? <Check size={16}/> : <Copy size={16}/>}
+                          </button>
+                      </div>
+                      <p className="text-[10px] text-amber-600 mt-2 font-bold flex items-center gap-1">
+                          <AlertCircle size={10}/> Envie este link para o cliente definir a senha.
+                      </p>
+                  </div>
+
+                  <button onClick={() => setShowCredentialsModal(false)} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-800 transition-all">
+                      Entendi, Concluir
+                  </button>
+              </div>
+          </div>
+      )}
+
       {/* Modal Plano Avançado */}
       {isPlanModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
