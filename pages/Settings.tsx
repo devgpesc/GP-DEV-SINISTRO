@@ -282,7 +282,7 @@ const Settings: React.FC = () => {
                   </div>
               )}
 
-              {/* ABA DE AUDITORIA ATUALIZADA */}
+              {/* ABA DE AUDITORIA */}
               {activeTab === 'audit' && (
                   <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                       <div className="flex items-center gap-3 pb-6 border-b border-slate-50">
@@ -350,6 +350,57 @@ const Settings: React.FC = () => {
                               </table>
                           </div>
                       )}
+                  </div>
+              )}
+
+              {/* ABA DE OUTRAS INTEGRAÇÕES (NOVO) */}
+              {activeTab === 'integrations' && (
+                  <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
+                      <div className="flex items-center gap-3 pb-6 border-b border-slate-50">
+                          <div className="p-3 bg-purple-50 text-purple-600 rounded-2xl"><Globe size={24}/></div>
+                          <div>
+                              <h3 className="text-lg font-black text-slate-800">Conectores Externos</h3>
+                              <p className="text-xs text-slate-400 font-medium">Configure APIs de terceiros para enriquecimento de dados.</p>
+                          </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                              <h4 className="text-sm font-black text-slate-700 mb-4 flex items-center gap-2"><Zap size={16} className="text-yellow-500"/> API Brasil (Veículos)</h4>
+                              <div className="space-y-4">
+                                  <p className="text-xs text-slate-500">Token para consulta automática de placas e FIPE.</p>
+                                  <div className="relative">
+                                      <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
+                                      <input 
+                                          type={showKeys['apibrasil'] ? "text" : "password"} 
+                                          className="w-full pl-12 pr-12 py-3 bg-white border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 outline-none" 
+                                          value={companyInfo.apibrasil_token} 
+                                          onChange={e => setCompanyInfo({...companyInfo, apibrasil_token: e.target.value})} 
+                                          placeholder="Token APIBrasil" 
+                                      />
+                                      <button type="button" onClick={() => toggleShowKey('apibrasil')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">{showKeys['apibrasil'] ? <EyeOff size={14}/> : <Eye size={14}/>}</button>
+                                  </div>
+                              </div>
+                          </div>
+
+                          <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                              <h4 className="text-sm font-black text-slate-700 mb-4 flex items-center gap-2"><Server size={16} className="text-blue-500"/> Detran (Integração)</h4>
+                              <div className="space-y-4">
+                                  <p className="text-xs text-slate-500">Chave de acesso para consultas estaduais.</p>
+                                  <div className="relative">
+                                      <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
+                                      <input 
+                                          type={showKeys['detran'] ? "text" : "password"} 
+                                          className="w-full pl-12 pr-12 py-3 bg-white border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 outline-none" 
+                                          value={companyInfo.detran_key} 
+                                          onChange={e => setCompanyInfo({...companyInfo, detran_key: e.target.value})} 
+                                          placeholder="Chave Detran" 
+                                      />
+                                      <button type="button" onClick={() => toggleShowKey('detran')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">{showKeys['detran'] ? <EyeOff size={14}/> : <Eye size={14}/>}</button>
+                                  </div>
+                              </div>
+                          </div>
+                      </div>
                   </div>
               )}
           </div>

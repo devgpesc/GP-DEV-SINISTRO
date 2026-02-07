@@ -1,11 +1,10 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Globe, Building, Users, Database, 
   TrendingUp, Activity, Plus, MoreVertical, 
   Search, ShieldAlert, LogIn, Loader2, CheckCircle, Mail, Lock, User, Copy, Check,
   Edit, Trash2, Layers, DollarSign, BarChart3, PieChart, CreditCard, Layout, Calendar, AlertCircle,
-  LayoutGrid, List, Archive, Star, Zap, Link as LinkIcon, Eye, EyeOff
+  LayoutGrid, List, Archive, Star, Zap, Link as LinkIcon, Eye, EyeOff, LogOut
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js'; 
 import { supabase } from '../services/supabaseClient';
@@ -16,7 +15,7 @@ import { useAuth } from '../context/AuthContext';
 
 const SaasAdmin: React.FC = () => {
   const { addToast } = useToast();
-  const { user } = useAuth();
+  const { user, switchTenant } = useAuth();
   
   // Estado Geral
   const [activeTab, setActiveTab] = useState<'overview' | 'plans'>('overview');
@@ -166,18 +165,18 @@ const SaasAdmin: React.FC = () => {
           if (count > 0) {
               setVerifyState({
                   loading: false,
-                  blocked: true,
-                  message: `Não é possível excluir. Esta empresa possui ${count} registros vinculados.`
+                  blocked: false, // PERMITE EXCLUIR MESMO COM DADOS (CASCATA)
+                  message: `ATENÇÃO CRÍTICA: Esta empresa possui ${count} registros vinculados (usuários, eventos, etc). Ao confirmar, TUDO será apagado permanentemente.`
               });
           } else {
               setVerifyState({
                   loading: false,
                   blocked: false,
-                  message: 'Esta ação removerá permanentemente o acesso da empresa. Tem certeza?'
+                  message: 'Esta ação removerá permanentemente a empresa e seus dados. Tem certeza?'
               });
           }
       } catch (err) {
-          setVerifyState({ loading: false, blocked: true, message: 'Erro ao verificar integridade.' });
+          setVerifyState({ loading: false, blocked: false, message: 'Erro ao verificar integridade, mas você pode forçar a exclusão.' });
       }
   };
 
@@ -185,10 +184,15 @@ const SaasAdmin: React.FC = () => {
       if (!tenantToDelete) return;
       setIsProcessing(true);
       try {
+          // O Banco de dados deve ter ON DELETE CASCADE configurado, ou deletamos manualmente os filhos críticos primeiro
+          // Para garantir: deletamos membros primeiro
+          await supabase.from('organization_members').delete().eq('tenant_id', tenantToDelete.id);
+          
           const { error } = await supabase.from('saas_tenants').delete().eq('id', tenantToDelete.id);
           if (error) throw error;
+          
           setTenants(prev => prev.filter(t => t.id !== tenantToDelete.id));
-          addToast('success', 'Sucesso', 'Empresa removida.');
+          addToast('success', 'Sucesso', 'Empresa e dados removidos.');
           setTenantToDelete(null);
       } catch (error: any) {
           addToast('error', 'Erro', error.message);
@@ -201,12 +205,10 @@ const SaasAdmin: React.FC = () => {
       e.preventDefault();
       setIsProcessing(true);
       
-      // SANITIZAÇÃO CRÍTICA: Converter string vazia para NULL para campos UUID
       const planIdToSend = tenantForm.plan_id && tenantForm.plan_id.trim() !== '' ? tenantForm.plan_id : null;
       
       try {
           if (editingTenant) {
-              // UPDATE
               const { error } = await supabase.from('saas_tenants').update({
                   name: tenantForm.name,
                   document: tenantForm.document,
@@ -218,7 +220,7 @@ const SaasAdmin: React.FC = () => {
               addToast('success', 'Atualizado', 'Dados da empresa atualizados.');
               setIsTenantModalOpen(false);
           } else {
-              // CREATE NEW - ATTEMPT SERVER FUNCTION
+              // ... (Logica de criação mantida) ...
               try {
                   const { data, error } = await supabase.functions.invoke('create-tenant', {
                       body: {
@@ -239,10 +241,8 @@ const SaasAdmin: React.FC = () => {
 
               } catch (serverError: any) {
                   console.warn("Edge Function falhou, usando Fallback com Convite:", serverError);
-                  
                   if (!user) throw new Error("Você precisa estar logado.");
 
-                  // 1. Criar Tenant
                   const { data: tenant, error: dbError } = await supabase.from('saas_tenants').insert([{
                       name: tenantForm.name,
                       document: tenantForm.document,
@@ -253,7 +253,6 @@ const SaasAdmin: React.FC = () => {
 
                   if (dbError) throw dbError;
 
-                  // 2. Criar Convite para o Admin (Já que não podemos criar o user diretamente aqui)
                   const token = Math.random().toString(36).substring(2) + Date.now().toString(36);
                   const inviteLink = `${window.location.origin}/register?invite=${token}`;
 
@@ -266,7 +265,6 @@ const SaasAdmin: React.FC = () => {
                       created_by: user.id
                   }]);
 
-                  // 3. Mostrar Modal com o Link
                   setCreatedCredentials({
                       email: tenantForm.adminEmail,
                       link: inviteLink
@@ -277,7 +275,6 @@ const SaasAdmin: React.FC = () => {
                   addToast('warning', 'Atenção', 'Servidor de email indisponível. Use o link gerado.');
               }
           }
-          
           loadData();
       } catch (error: any) {
           console.error(error);
@@ -287,103 +284,55 @@ const SaasAdmin: React.FC = () => {
       }
   };
 
-  const copyLink = () => {
-      if (createdCredentials?.link) {
-          navigator.clipboard.writeText(createdCredentials.link);
-          setCopiedLink(true);
-          setTimeout(() => setCopiedLink(false), 2000);
-          addToast('success', 'Copiado', 'Link copiado para área de transferência.');
-      }
+  const handleAccessTenant = (tenantId: string) => {
+      // Tenta acessar. Se falhar, é porque o Super Admin não é membro. 
+      // (O ideal seria adicionar-se como membro automaticamente, mas por enquanto tentamos o switch direto)
+      switchTenant(tenantId);
   };
 
   const openPlanModal = (plan?: SaasPlan) => {
       if (plan) {
           setEditingPlan(plan);
-          setPlanForm({ name: plan.name, price: plan.price, max_users: plan.max_users, max_events: plan.max_events, features: { ai_analysis: false, advanced_reports: false, financial_module: false, api_access: false, multi_branch: false, ...plan.features } });
+          setPlanForm({
+              name: plan.name,
+              price: plan.price,
+              max_users: plan.max_users,
+              max_events: plan.max_events,
+              features: plan.features || {
+                  ai_analysis: false,
+                  advanced_reports: false,
+                  financial_module: true,
+                  api_access: false,
+                  multi_branch: false
+              }
+          });
       } else {
           setEditingPlan(null);
-          setPlanForm({ name: '', price: 0, max_users: 5, max_events: 100, features: { ai_analysis: false, advanced_reports: false, financial_module: true, api_access: false, multi_branch: false } });
+          setPlanForm({
+              name: '',
+              price: 0,
+              max_users: 5,
+              max_events: 100,
+              features: {
+                  ai_analysis: false,
+                  advanced_reports: false,
+                  financial_module: true,
+                  api_access: false,
+                  multi_branch: false
+              }
+          });
       }
       setIsPlanModalOpen(true);
   };
 
-  const checkPlanDeletion = (plan: SaasPlan) => {
-      const usage = planUsage[plan.id] || 0;
-      if (usage > 0) {
-          addToast('warning', 'Ação Bloqueada', `Este plano possui ${usage} empresas ativas.`);
-          return;
-      }
-      setPlanToDelete(plan);
-  };
-
-  const handleDeletePlan = async () => {
-      if (!planToDelete) return;
-      setIsProcessing(true);
-      try {
-          const { error } = await supabase.from('saas_plans').delete().eq('id', planToDelete.id);
-          if (error) throw error;
-          setPlans(prev => prev.filter(p => p.id !== planToDelete.id));
-          addToast('success', 'Plano Removido', 'Pacote excluído.');
-          setPlanToDelete(null);
-      } catch (err: any) {
-          addToast('error', 'Erro', 'Falha ao excluir plano.');
-      } finally {
-          setIsProcessing(false);
-      }
-  };
-
-  const handleSavePlan = async (e: React.FormEvent) => {
-      e.preventDefault();
-      setIsProcessing(true);
-      try {
-          const payload = {
-              name: planForm.name,
-              price: Number(planForm.price),
-              max_users: Number(planForm.max_users),
-              max_events: Number(planForm.max_events),
-              features: planForm.features
-          };
-
-          if (editingPlan) {
-              const { error } = await supabase.from('saas_plans').update(payload).eq('id', editingPlan.id);
-              if (error) throw error;
-              addToast('success', 'Plano Atualizado', 'Alterações salvas.');
-          } else {
-              const { error } = await supabase.from('saas_plans').insert([payload]);
-              if (error) throw error;
-              addToast('success', 'Plano Criado', 'Novo pacote disponível.');
-          }
-          setIsPlanModalOpen(false);
-          loadData();
-      } catch (err: any) {
-          addToast('error', 'Erro', err.message);
-      } finally {
-          setIsProcessing(false);
-      }
-  };
-
-  const toggleFeature = (key: string) => {
-      setPlanForm(prev => ({ ...prev, features: { ...prev.features, [key]: !prev.features[key] } }));
-  };
-
-  const stats = useMemo(() => {
-      const activeTenantsCount = tenants.filter(t => t.status === 'active').length;
-      const totalRevenue = tenants.reduce((acc, t) => acc + (t.saas_plans?.price || 0), 0);
-      const avgTicket = activeTenantsCount > 0 ? totalRevenue / activeTenantsCount : 0;
-      const totalCapacity = tenants.reduce((acc, t) => acc + (t.saas_plans?.max_users || 0), 0);
-      return { activeTenantsCount, totalRevenue, avgTicket, totalCapacity };
-  }, [tenants]);
-
+  const copyLink = () => { if (createdCredentials?.link) { navigator.clipboard.writeText(createdCredentials.link); setCopiedLink(true); setTimeout(() => setCopiedLink(false), 2000); addToast('success', 'Copiado', 'Link copiado para área de transferência.'); } };
+  const toggleFeature = (key: string) => { setPlanForm(prev => ({ ...prev, features: { ...prev.features, [key]: !prev.features[key] } })); };
+  const checkPlanDeletion = (plan: SaasPlan) => { const usage = planUsage[plan.id] || 0; if (usage > 0) { addToast('warning', 'Ação Bloqueada', `Este plano possui ${usage} empresas ativas.`); return; } setPlanToDelete(plan); };
+  const handleDeletePlan = async () => { if (!planToDelete) return; setIsProcessing(true); try { const { error } = await supabase.from('saas_plans').delete().eq('id', planToDelete.id); if (error) throw error; setPlans(prev => prev.filter(p => p.id !== planToDelete.id)); addToast('success', 'Plano Removido', 'Pacote excluído.'); setPlanToDelete(null); } catch (err: any) { addToast('error', 'Erro', 'Falha ao excluir plano.'); } finally { setIsProcessing(false); } };
+  const handleSavePlan = async (e: React.FormEvent) => { e.preventDefault(); setIsProcessing(true); try { const payload = { name: planForm.name, price: Number(planForm.price), max_users: Number(planForm.max_users), max_events: Number(planForm.max_events), features: planForm.features }; if (editingPlan) { const { error } = await supabase.from('saas_plans').update(payload).eq('id', editingPlan.id); if (error) throw error; addToast('success', 'Plano Atualizado', 'Alterações salvas.'); } else { const { error } = await supabase.from('saas_plans').insert([payload]); if (error) throw error; addToast('success', 'Plano Criado', 'Novo pacote disponível.'); } setIsPlanModalOpen(false); loadData(); } catch (err: any) { addToast('error', 'Erro', err.message); } finally { setIsProcessing(false); } };
+  const stats = useMemo(() => { const activeTenantsCount = tenants.filter(t => t.status === 'active').length; const totalRevenue = tenants.reduce((acc, t) => acc + (t.saas_plans?.price || 0), 0); const avgTicket = activeTenantsCount > 0 ? totalRevenue / activeTenantsCount : 0; const totalCapacity = tenants.reduce((acc, t) => acc + (t.saas_plans?.max_users || 0), 0); return { activeTenantsCount, totalRevenue, avgTicket, totalCapacity }; }, [tenants]);
   const filteredTenants = tenants.filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()));
-
-  const renderPlanFeatures = (features: any) => (
-      <div className="space-y-1.5 mt-4 pt-4 border-t border-slate-50">
-          {features?.ai_analysis && <div className="flex items-center gap-2 text-[10px] font-bold text-indigo-600"><Zap size={12}/> IA Visionária</div>}
-          {features?.financial_module && <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500"><DollarSign size={12}/> Financeiro Completo</div>}
-          {features?.advanced_reports && <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500"><BarChart3 size={12}/> Relatórios BI</div>}
-          {features?.api_access && <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500"><Globe size={12}/> API de Integração</div>}
-      </div>
-  );
+  const renderPlanFeatures = (features: any) => ( <div className="space-y-1.5 mt-4 pt-4 border-t border-slate-50"> {features?.ai_analysis && <div className="flex items-center gap-2 text-[10px] font-bold text-indigo-600"><Zap size={12}/> IA Visionária</div>} {features?.financial_module && <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500"><DollarSign size={12}/> Financeiro Completo</div>} {features?.advanced_reports && <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500"><BarChart3 size={12}/> Relatórios BI</div>} {features?.api_access && <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500"><Globe size={12}/> API de Integração</div>} </div> );
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-20">
@@ -399,22 +348,11 @@ const SaasAdmin: React.FC = () => {
           <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-white p-5 rounded-[32px] border border-slate-200 shadow-sm">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">MRR (Mensal)</p>
-                    <p className="text-2xl font-black text-slate-800">R$ {stats.totalRevenue.toLocaleString('pt-BR')}</p>
-                </div>
-                <div className="bg-white p-5 rounded-[32px] border border-slate-200 shadow-sm">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Clientes Ativos</p>
-                    <p className="text-2xl font-black text-slate-800">{stats.activeTenantsCount}</p>
-                </div>
-                <div className="bg-white p-5 rounded-[32px] border border-slate-200 shadow-sm">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Ticket Médio</p>
-                    <p className="text-2xl font-black text-slate-800">R$ {stats.avgTicket.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</p>
-                </div>
-                <div className="bg-white p-5 rounded-[32px] border border-slate-200 shadow-sm">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Assinaturas</p>
-                    <p className="text-2xl font-black text-slate-800">{stats.totalCapacity}</p>
-                </div>
+                {/* ... KPIs mantidos ... */}
+                <div className="bg-white p-5 rounded-[32px] border border-slate-200 shadow-sm"> <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">MRR (Mensal)</p> <p className="text-2xl font-black text-slate-800">R$ {stats.totalRevenue.toLocaleString('pt-BR')}</p> </div>
+                <div className="bg-white p-5 rounded-[32px] border border-slate-200 shadow-sm"> <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Clientes Ativos</p> <p className="text-2xl font-black text-slate-800">{stats.activeTenantsCount}</p> </div>
+                <div className="bg-white p-5 rounded-[32px] border border-slate-200 shadow-sm"> <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Ticket Médio</p> <p className="text-2xl font-black text-slate-800">R$ {stats.avgTicket.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</p> </div>
+                <div className="bg-white p-5 rounded-[32px] border border-slate-200 shadow-sm"> <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Assinaturas</p> <p className="text-2xl font-black text-slate-800">{stats.totalCapacity}</p> </div>
             </div>
 
             {/* Lista de Empresas */}
@@ -453,6 +391,7 @@ const SaasAdmin: React.FC = () => {
                                     <p className="font-bold text-slate-700 text-sm truncate">{tenant.saas_plans?.name || '---'}</p>
                                 </div>
                                 <div className="flex gap-2">
+                                    <button onClick={(e) => { e.stopPropagation(); handleAccessTenant(tenant.id); }} className="p-2 bg-white text-slate-400 hover:text-green-600 border border-slate-200 hover:border-green-200 rounded-xl transition-all shadow-sm" title="Acessar Painel"><LogIn size={18}/></button>
                                     <button onClick={(e) => { e.stopPropagation(); openEditTenantModal(tenant); }} className="p-2 bg-white text-slate-400 hover:text-blue-600 border border-slate-200 hover:border-blue-200 rounded-xl transition-all shadow-sm"><Edit size={18}/></button>
                                     <button onClick={(e) => { e.stopPropagation(); handleRequestDelete(tenant); }} className="p-2 bg-white text-slate-400 hover:text-red-600 border border-slate-200 hover:border-red-200 rounded-xl transition-all shadow-sm"><Trash2 size={18}/></button>
                                 </div>
@@ -465,7 +404,7 @@ const SaasAdmin: React.FC = () => {
           </div>
       )}
 
-      {/* activeTab === 'plans' content omitted for brevity as it remains unchanged */}
+      {/* activeTab === 'plans' mantido igual... */}
       {activeTab === 'plans' && (
           <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
               <div className="flex justify-between items-center">
@@ -730,16 +669,16 @@ const SaasAdmin: React.FC = () => {
         confirmText="Sim, Excluir Plano"
       />
 
-      {/* Confirmação de Exclusão de Tenant */}
+      {/* Confirmação de Exclusão de Tenant - AGORA PERMISSIVA COM AVISO */}
       <ActionModal 
         isOpen={!!tenantToDelete}
         onClose={() => setTenantToDelete(null)}
-        onConfirm={verifyState.blocked ? () => setTenantToDelete(null) : handleDeleteTenant}
-        title={verifyState.loading ? 'Verificando...' : (verifyState.blocked ? 'Ação Bloqueada' : 'Excluir Empresa?')}
+        onConfirm={handleDeleteTenant}
+        title={verifyState.loading ? 'Verificando...' : (verifyState.blocked ? 'Atenção Crítica!' : 'Excluir Empresa?')}
         description={verifyState.message}
         type={verifyState.blocked ? 'warning' : 'danger'}
-        confirmText={verifyState.loading ? '...' : (verifyState.blocked ? 'Entendi' : 'Sim, Excluir')}
-        showCancel={!verifyState.blocked && !verifyState.loading}
+        confirmText={verifyState.loading ? '...' : (verifyState.blocked ? 'Sim, Apagar Tudo (Irreversível)' : 'Sim, Excluir')}
+        showCancel={!verifyState.loading}
       />
     </div>
   );
