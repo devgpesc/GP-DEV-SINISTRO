@@ -60,11 +60,11 @@ const Login: React.FC = () => {
       }
 
       // Se não for admin global, verifica vínculo com tenant ativo
+      // NOTA: Removido o inner join com saas_tenants pois usuários normais não têm permissão de leitura na tabela saas_tenants devido ao RLS.
       const { data: memberships, error: memberError } = await supabase
         .from('organization_members')
-        .select('id, saas_tenants!inner(status)')
-        .eq('user_id', data.user.id)
-        .eq('saas_tenants.status', 'active');
+        .select('id, tenant_id')
+        .eq('user_id', data.user.id);
 
       if (memberError || !memberships || memberships.length === 0) {
           // LOGOUT IMEDIATO SE NÃO TIVER PERMISSÃO

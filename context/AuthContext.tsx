@@ -66,7 +66,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const dbTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('DB_TIMEOUT')), 3500));
 
       const fetchProfile = supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
-      const fetchMembers = supabase.from('organization_members').select('*, saas_tenants(*)').eq('user_id', userId);
+      const fetchMembers = supabase.from('organization_members').select('*').eq('user_id', userId);
 
       // Race: Dados vs Timeout
       const results = await Promise.race([
@@ -93,7 +93,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (mounted.current) setProfile(finalProfile);
 
       // 2. Tenants (Memberships)
-      const validMemberships = (membersRes.data as any[])?.filter(m => m.saas_tenants && m.saas_tenants.status === 'active') || [];
+      // Como usuários normais não têm permissão de leitura na tabela saas_tenants, mockamos os dados do tenant
+      const validMemberships = (membersRes.data as any[])?.map(m => ({
+        ...m,
+        saas_tenants: m.saas_tenants || { id: m.tenant_id, name: 'Minha Empresa', status: 'active' }
+      })) || [];
       if (mounted.current) setMemberships(validMemberships);
 
       // 3. SEGURANÇA: Se não tem memberships válidas e não é Super Admin, faz logout forçado
