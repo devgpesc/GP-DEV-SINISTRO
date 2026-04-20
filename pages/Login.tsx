@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
-const { useNavigate, Link } = ReactRouterDOM as any;
+const { useNavigate, Link, useLocation } = ReactRouterDOM as any;
 import { supabase } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { 
@@ -12,6 +12,9 @@ import EscLogo from '../components/EscLogo';
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const inviteToken = searchParams.get('invite');
   const { user } = useAuth();
   
   const [email, setEmail] = useState('');
@@ -24,10 +27,34 @@ const Login: React.FC = () => {
   const [company] = useState({ name: 'Esc Solutions', product: 'EventPro' });
 
   useEffect(() => {
-    if (user) {
-      navigate('/', { replace: true });
+    // Only redirect if a user is already present when the component mounts, 
+    // or if the component is purely idle. During login, localLoading is true.
+    if (user && !localLoading) {
+      if (inviteToken) {
+         // Auto-redeem for OAuth redirects or previously logged in users
+         const redeemInvite = async () => {
+             try {
+                const { data: invite } = await supabase.from('invitations').select('*').eq('token', inviteToken).maybeSingle();
+                if (invite && invite.status === 'pending') {
+                    await supabase.from('organization_members').insert([{
+                        tenant_id: invite.tenant_id,
+                        user_id: user.id,
+                        role: invite.role || 'member'
+                    }]);
+                    await supabase.from('invitations').update({ status: 'accepted' }).eq('id', invite.id);
+                }
+             } catch (e) {
+                console.warn("Auto-redeem fail", e);
+             } finally {
+                navigate('/', { replace: true });
+             }
+         };
+         redeemInvite();
+      } else {
+         navigate('/', { replace: true });
+      }
     }
-  }, [user, navigate]);
+  }, [user, localLoading, navigate, inviteToken]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,6 +80,31 @@ const Login: React.FC = () => {
         .select('role')
         .eq('id', data.user.id)
         .single();
+        
+      // PROCESSA CONVITE SE EXISTIR
+      if (inviteToken) {
+          try {
+              const { data: invite, error: inviteErr } = await supabase
+                  .from('invitations')
+                  .select('*')
+                  .eq('token', inviteToken)
+                  .maybeSingle();
+                  
+              if (!inviteErr && invite && invite.status === 'pending') {
+                  const { error: memberError } = await supabase.from('organization_members').insert([{
+                      tenant_id: invite.tenant_id,
+                      user_id: data.user.id,
+                      role: invite.role || 'member'
+                  }]);
+                  
+                  if (!memberError) {
+                      await supabase.from('invitations').update({ status: 'accepted' }).eq('id', invite.id);
+                  }
+              }
+          } catch (e) {
+              console.warn("Erro ao processar convite no login", e);
+          }
+      }
 
       if (profile?.role === 'super_admin' || profile?.role === 'Admin') {
           // Super Admin/Admin sempre passa
@@ -69,10 +121,13 @@ const Login: React.FC = () => {
       if (memberError || !memberships || memberships.length === 0) {
           // LOGOUT IMEDIATO SE NÃO TIVER PERMISSÃO
           await (supabase.auth as any).signOut();
-          throw new Error('Acesso Negado: Este usuário não possui vínculo com uma empresa ativa.');
+          setLocalLoading(false);
+          setError('Acesso Negado: Este usuário não possui vínculo com uma empresa ativa.');
+          return;
       }
 
       // Sucesso - O AuthContext detectará a sessão e redirecionará
+      navigate('/', { replace: true });
     } catch (err: any) {
       console.error(err);
       if (err.message === 'Invalid login credentials') {
@@ -92,7 +147,7 @@ const Login: React.FC = () => {
       const { error } = await (supabase.auth as any).signInWithOAuth({
          provider: 'google',
          options: { 
-            redirectTo: window.location.origin,
+            redirectTo: inviteToken ? `${window.location.origin}/login?invite=${inviteToken}` : window.location.origin,
             queryParams: { access_type: 'offline', prompt: 'consent' },
          }
       });

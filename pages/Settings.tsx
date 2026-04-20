@@ -151,10 +151,46 @@ const Settings: React.FC = () => {
 
   // ... (Funções handleEditUser, handleDeleteUser, togglePermission, handleSaveUser, generateInviteLink, handleDeleteInvite, copyInviteLink mantidas)
   const handleEditUser = (user: any) => { setEditingUser(user); setUserForm({ id: user.id, full_name: user.full_name || '', role: user.role || 'Usuário', permissions: user.permissions || {} }); setUserModalOpen(true); };
-  const handleDeleteUser = async () => { if (!userToDelete) return; try { await supabase.from('profiles').delete().eq('id', userToDelete.id); await auditService.log('Delete User', 'User', userToDelete.id, { email: userToDelete.email }); setUsersList(prev => prev.filter(u => u.id !== userToDelete.id)); setUserToDelete(null); addToast('success', 'Removido', 'Acesso revogado.'); } catch { addToast('error', 'Erro', 'Falha ao remover.'); } };
+  const handleDeleteUser = async () => { 
+      if (!userToDelete) return; 
+      try { 
+          // Executa a função RPC para apagar o usuário de verdade da tabela auth.users
+          const { error } = await supabase.rpc('delete_user_completely', { target_user_id: userToDelete.id });
+          if (error) throw error;
+          
+          await auditService.log('Delete User', 'User', userToDelete.id, { email: userToDelete.email }); 
+          setUsersList(prev => prev.filter(u => u.id !== userToDelete.id)); 
+          setUserToDelete(null); 
+          addToast('success', 'Removido', 'Usuário excluído permanentemente.'); 
+      } catch (err: any) { 
+          console.error(err);
+          if (err.message?.includes('function') || err.code === 'PGRST202') {
+             addToast('error', 'Ops!', 'A função de Exclusão Física não foi ativada no seu Banco de Dados ainda.');
+          } else {
+             addToast('error', 'Erro', err.message || 'Falha ao remover o usuário.'); 
+          }
+      } 
+  };
   const togglePermission = (featureId: string) => { setUserForm(prev => ({ ...prev, permissions: { ...prev.permissions, [featureId]: !prev.permissions[featureId] } })); };
   const handleSaveUser = async () => { if (!editingUser) return; const updates = { full_name: userForm.full_name, role: userForm.role, permissions: userForm.permissions, updated_at: new Date().toISOString() }; const { error } = await supabase.from('profiles').update(updates).eq('id', userForm.id); if (!error) { await auditService.log('Update User', 'User', userForm.id, updates); loadUsers(); setUserModalOpen(false); addToast('success', 'Salvo', 'Usuário atualizado.'); } };
-  const generateInviteLink = async () => { if (!profile) return; const link = `${window.location.origin}/register?email=${inviteData.email}`; setGeneratedLink(link); if (inviteData.email) { await supabase.from('invitations').insert([{ email: inviteData.email, name: inviteData.name, token: link, created_by: profile.id }]); await auditService.log('Create Invite', 'Invitation', inviteData.email, { link }); loadInvitations(); } };
+  const generateInviteLink = async () => { 
+      if (!profile) return; 
+      
+      const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      const link = `${window.location.origin}/register?invite=${token}`; 
+      
+      if (inviteData.email) { 
+          await supabase.from('invitations').insert([{ 
+              email: inviteData.email, 
+              name: inviteData.name, 
+              token: token, 
+              created_by: profile.id 
+          }]); 
+          await auditService.log('Create Invite', 'Invitation', inviteData.email, { link }); 
+          loadInvitations(); 
+      }
+      setGeneratedLink(link); 
+  };
   const handleDeleteInvite = async (id: string) => { await supabase.from('invitations').delete().eq('id', id); setInvitations(prev => prev.filter(i => i.id !== id)); };
   const copyInviteLink = () => { navigator.clipboard.writeText(generatedLink); setCopied(true); setTimeout(() => setCopied(false), 2000); addToast('success', 'Copiado', 'Link na área de transferência.'); };
 

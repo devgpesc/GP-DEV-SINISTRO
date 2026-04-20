@@ -513,12 +513,12 @@ const SaasAdmin: React.FC = () => {
                         <div>
                             <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Nome Completo</label>
                             <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" 
-                                value={tenantForm.adminName} onChange={e => setTenantForm({...tenantForm, adminName: e.target.value})} placeholder="Ex: João Admin" />
+                                value={tenantForm.adminName} onChange={e => setTenantForm({...tenantForm, adminName: e.target.value})} placeholder="Ex: João Admin" autoComplete="new-admin-name" data-lpignore="true" />
                         </div>
                         <div className="mt-4">
                             <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">E-mail de Acesso</label>
                             <input required type="email" disabled={!!editingTenant} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none disabled:opacity-60 disabled:bg-slate-100" 
-                                value={tenantForm.adminEmail} onChange={e => setTenantForm({...tenantForm, adminEmail: e.target.value})} placeholder="admin@empresa.com" />
+                                value={tenantForm.adminEmail} onChange={e => setTenantForm({...tenantForm, adminEmail: e.target.value})} placeholder="admin@empresa.com" autoComplete="new-admin-email" data-lpignore="true" />
                             {editingTenant && <p className="text-[9px] text-slate-400 mt-1 pl-1 flex items-center gap-1"><AlertCircle size={10}/> Para alterar o e-mail, utilize a gestão de usuários.</p>}
                         </div>
                         {!editingTenant && (
@@ -532,6 +532,8 @@ const SaasAdmin: React.FC = () => {
                                         value={tenantForm.adminPassword} 
                                         onChange={e => setTenantForm({...tenantForm, adminPassword: e.target.value})} 
                                         placeholder="Defina uma senha" 
+                                        autoComplete="new-password"
+                                        data-lpignore="true"
                                     />
                                     <button 
                                         type="button"

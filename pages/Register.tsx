@@ -240,8 +240,8 @@ const Register: React.FC = () => {
            <h2 className="text-3xl font-black text-slate-800 tracking-tighter mt-2">EVENT<span className="text-blue-600">PRO</span></h2>
         </div>
 
-        <Link to="/login" className="inline-flex items-center gap-2 text-slate-400 hover:text-blue-600 font-bold text-xs uppercase tracking-widest mb-6 transition-colors">
-          <ArrowLeft size={16}/> Voltar ao Login
+        <Link to={inviteToken ? `/login?invite=${inviteToken}` : "/login"} className="inline-flex items-center gap-2 text-slate-400 hover:text-blue-600 font-bold text-xs uppercase tracking-widest mb-6 transition-colors">
+          <ArrowLeft size={16}/> {inviteToken ? 'Já tenho conta, entrar' : 'Voltar ao Login'}
         </Link>
 
         <div className="bg-white p-10 rounded-[48px] shadow-2xl border border-slate-100">

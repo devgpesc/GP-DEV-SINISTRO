@@ -79,6 +79,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const [profileRes, membersRes] = results;
 
+      if (membersRes.error) {
+          console.error("Erro ao buscar memberships DB:", membersRes.error);
+          throw new Error('Erro ao buscar memberships: ' + membersRes.error.message);
+      }
+
       // 1. Perfil
       const finalProfile: UserProfile = profileRes.data || {
         id: userId,
