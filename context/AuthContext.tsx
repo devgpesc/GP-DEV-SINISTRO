@@ -66,18 +66,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const dbTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('DB_TIMEOUT')), 3500));
 
       const fetchProfile = supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
-      const fetchMembers = supabase.from('organization_members').select('*').eq('user_id', userId);
+      const fetchMembers = supabase.from('organization_members').select('*, saas_tenants(*)').eq('user_id', userId);
+      // Fetch tenants where the user is just the owner (for those not in organization_members)
+      const fetchOwnedTenants = supabase.from('saas_tenants').select('*').eq('owner_id', userId);
 
       // Race: Dados vs Timeout
       const results = await Promise.race([
-          Promise.all([fetchProfile, fetchMembers]),
+          Promise.all([fetchProfile, fetchMembers, fetchOwnedTenants]),
           dbTimeout
       ]) as any;
 
       // Se for timeout, lança erro para cair no catch e liberar a UI
       if (!Array.isArray(results)) throw new Error("Dados demoraram a carregar");
 
-      const [profileRes, membersRes] = results;
+      const [profileRes, membersRes, ownedTenantsRes] = results;
 
       if (membersRes.error) {
           console.error("Erro ao buscar memberships DB:", membersRes.error);
@@ -98,35 +100,60 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (mounted.current) setProfile(finalProfile);
 
       // 2. Tenants (Memberships)
-      // Como usuários normais não têm permissão de leitura na tabela saas_tenants, mockamos os dados do tenant
-      const validMemberships = (membersRes.data as any[])?.map(m => ({
-        ...m,
-        saas_tenants: m.saas_tenants || { id: m.tenant_id, name: 'Minha Empresa', status: 'active' }
-      })) || [];
-      if (mounted.current) setMemberships(validMemberships);
+      let combinedMemberships: EnrichedMembership[] = [];
+      
+      if (membersRes.data) {
+          combinedMemberships = membersRes.data.map((m: any) => ({
+            ...m,
+            saas_tenants: m.saas_tenants || { id: m.tenant_id, name: 'Empresa do Sistema', status: 'active' }
+          }));
+      }
+
+      // 2.1 Adicionar os tenants que o usuário apenas é dono (mas não tem registro na junction table)
+      if (ownedTenantsRes?.data) {
+          ownedTenantsRes.data.forEach((tenant: any) => {
+              const alreadyExists = combinedMemberships.some(m => m.tenant_id === tenant.id);
+              if (!alreadyExists) {
+                  combinedMemberships.push({
+                      id: `owner-${tenant.id}`,
+                      tenant_id: tenant.id,
+                      user_id: userId,
+                      role: 'owner',
+                      created_at: tenant.created_at,
+                      saas_tenants: tenant
+                  });
+              }
+          });
+      }
+
+      if (mounted.current) setMemberships(combinedMemberships);
 
       // 3. SEGURANÇA: Se não tem memberships válidas e não é Super Admin, faz logout forçado
       // Isso evita o "User (Modo Rápido)" para quem não deve ter acesso
       const isSuperAdmin = finalProfile.role === 'super_admin' || finalProfile.role === 'Admin';
       
-      if (validMemberships.length === 0 && !isSuperAdmin) {
-          console.warn('[Auth] Usuário sem memberships ativas. Forçando logout.');
-          await (supabase.auth as any).signOut();
-          if (mounted.current) {
-              setSession(null);
-              setUser(null);
-              setLoading(false);
+      if (combinedMemberships.length === 0 && !isSuperAdmin) {
+          // Permitir se o usuário tem um convite na URL
+          const params = new URLSearchParams(window.location.search);
+          if (!params.get('invite') && window.location.pathname !== '/register') {
+              console.warn('[Auth] Usuário sem memberships ativas e sem convite. Forçando logout.');
+              await (supabase.auth as any).signOut();
+              if (mounted.current) {
+                  setSession(null);
+                  setUser(null);
+                  setLoading(false);
+              }
+              return;
           }
-          return;
       }
 
       // 4. Seleção de Tenant
       let selectedTenant: SaasTenant | null = null;
-      if (validMemberships.length > 0) {
+      if (combinedMemberships.length > 0) {
         const storedTenantId = localStorage.getItem(TENANT_STORAGE_KEY);
-        const targetMembership = validMemberships.find(m => m.tenant_id === storedTenantId);
+        const targetMembership = combinedMemberships.find((m: any) => m.tenant_id === storedTenantId);
         
-        selectedTenant = targetMembership ? targetMembership.saas_tenants : validMemberships[0].saas_tenants;
+        selectedTenant = targetMembership ? targetMembership.saas_tenants : combinedMemberships[0].saas_tenants;
         
         if (selectedTenant) {
             localStorage.setItem(TENANT_STORAGE_KEY, selectedTenant.id);

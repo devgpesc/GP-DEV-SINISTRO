@@ -117,8 +117,15 @@ const Login: React.FC = () => {
         .from('organization_members')
         .select('id, tenant_id')
         .eq('user_id', data.user.id);
+        
+      const { data: ownedTenants } = await supabase
+        .from('saas_tenants')
+        .select('id')
+        .eq('owner_id', data.user.id);
 
-      if (memberError || !memberships || memberships.length === 0) {
+      const hasMembership = (memberships && memberships.length > 0) || (ownedTenants && ownedTenants.length > 0);
+
+      if (memberError || !hasMembership) {
           // LOGOUT IMEDIATO SE NÃO TIVER PERMISSÃO
           await (supabase.auth as any).signOut();
           setLocalLoading(false);

@@ -112,9 +112,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const loadNotifications = async () => {
       setLoadingNotifications(true);
       const newNotifications: NotificationItem[] = [];
+      const dismissedSys = JSON.parse(sessionStorage.getItem('dismissedSysNotifs') || '[]');
 
       try {
-          if (canApprove) {
+          if (canApprove && !dismissedSys.includes('sys-po-pending')) {
               const { count } = await supabase.from('purchase_orders')
                   .select('*', { count: 'exact', head: true })
                   .eq('status', 'Gerada');
@@ -136,22 +137,24 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           const twoDaysAgo = new Date();
           twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
           
-          const { count: lateEventsCount } = await supabase.from('events')
-              .select('*', { count: 'exact', head: true })
-              .eq('status', 'Em Cotação')
-              .lt('created_at', twoDaysAgo.toISOString());
+          if (!dismissedSys.includes('sys-evt-sla')) {
+              const { count: lateEventsCount } = await supabase.from('events')
+                  .select('*', { count: 'exact', head: true })
+                  .eq('status', 'Em Cotação')
+                  .lt('created_at', twoDaysAgo.toISOString());
 
-          if (lateEventsCount && lateEventsCount > 0) {
-              newNotifications.push({
-                  id: 'sys-evt-sla',
-                  title: 'Atenção ao SLA',
-                  desc: `${lateEventsCount} eventos estão em cotação há mais de 48h.`,
-                  time: 'Urgente',
-                  icon: AlertTriangle,
-                  color: 'amber',
-                  read: false,
-                  link: '/eventos'
-              });
+              if (lateEventsCount && lateEventsCount > 0) {
+                  newNotifications.push({
+                      id: 'sys-evt-sla',
+                      title: 'Atenção ao SLA',
+                      desc: `${lateEventsCount} eventos estão em cotação há mais de 48h.`,
+                      time: 'Urgente',
+                      icon: AlertTriangle,
+                      color: 'amber',
+                      read: false,
+                      link: '/eventos'
+                  });
+              }
           }
 
           const { data: dbNotifs } = await supabase.from('notifications')
@@ -186,7 +189,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   };
 
   const markAsRead = async (id: string | number) => {
-      if (typeof id === 'string' && id.startsWith('sys-')) return;
+      if (typeof id === 'string' && id.startsWith('sys-')) {
+          const dismissedSys = JSON.parse(sessionStorage.getItem('dismissedSysNotifs') || '[]');
+          sessionStorage.setItem('dismissedSysNotifs', JSON.stringify([...dismissedSys, id]));
+          setNotifications(prev => prev.filter(n => n.id !== id));
+          return;
+      }
 
       if (typeof id === 'string') {
           await supabase.from('notifications').update({ read: true }).eq('id', id);
@@ -478,22 +486,20 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                                 <div className={`shrink-0 w-10 h-10 rounded-xl bg-${n.color}-50 text-${n.color}-600 flex items-center justify-center shadow-sm`}>
                                     <n.icon size={18} />
                                 </div>
-                                <div className="flex-1 min-w-0 pr-6">
+                                <div className="flex-1 min-w-0 pr-8">
                                     <div className="flex justify-between items-start mb-1">
                                         <p className={`font-bold text-xs truncate ${!n.read ? 'text-slate-900' : 'text-slate-600'}`}>{n.title}</p>
                                         <span className="text-[9px] font-bold text-slate-400 whitespace-nowrap bg-slate-100 px-1.5 py-0.5 rounded">{n.time}</span>
                                     </div>
                                     <p className="text-[11px] text-slate-500 leading-snug line-clamp-2">{n.desc}</p>
                                 </div>
-                                {!n.id.toString().startsWith('sys-') && (
-                                    <button 
-                                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); markAsRead(n.id); }}
-                                        className="absolute right-2 top-2 p-1.5 text-slate-300 hover:text-blue-500 hover:bg-white rounded-lg opacity-0 group-hover:opacity-100 transition-all shadow-sm"
-                                        title="Marcar como lida"
-                                    >
-                                        <CheckCheck size={14} />
-                                    </button>
-                                )}
+                                <button 
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); markAsRead(n.id); }}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all shadow-sm"
+                                    title="Arquivar notificação"
+                                >
+                                    <CheckCheck size={16} />
+                                </button>
                                 {!n.read && (
                                     <span className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
                                 )}

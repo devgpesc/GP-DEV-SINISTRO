@@ -65,6 +65,12 @@ const Register: React.FC = () => {
     setError(null);
 
     // Validação Básica
+    if (!name.trim() || !email.trim() || !password.trim()) {
+        setError("Por favor, preencha todos os campos obrigatórios (Nome, E-mail e Senha).");
+        setLoading(false);
+        return;
+    }
+
     if (!inviteToken && !companyName.trim()) {
         setError("O nome da empresa é obrigatório para criar uma nova conta.");
         setLoading(false);

@@ -68,24 +68,24 @@ const AIChatWindow: React.FC<AIChatWindowProps> = ({ isOpen, onClose }) => {
   const loadContextData = async () => {
       setContextLoading(true);
       try {
-          const [eventsRes, ordersRes, suppliersRes] = await Promise.all([
-              supabase.from('events').select('status, priority, type'),
-              supabase.from('purchase_orders').select('total, status, created_at'),
-              supabase.from('suppliers').select('id, rating, status')
+          const [eventsRes, eventsCritRes, ordersPendenteRes, suppliersRes] = await Promise.all([
+              supabase.from('events').select('*', { count: 'exact', head: true }),
+              supabase.from('events').select('*', { count: 'exact', head: true }).eq('priority', 'Urgente'),
+              supabase.from('purchase_orders').select('*', { count: 'exact', head: true }).eq('status', 'Gerada'),
+              supabase.from('suppliers').select('*', { count: 'exact', head: true }).eq('status', 'Ativo')
           ]);
 
           const snapshot = {
               timestamp: new Date().toISOString(),
               resumo_eventos: {
-                  total: eventsRes.data?.length || 0,
-                  criticos: eventsRes.data?.filter(e => e.priority === 'Urgente').length || 0,
+                  total: eventsRes.count || 0,
+                  criticos: eventsCritRes.count || 0,
               },
               resumo_financeiro: {
-                  total_gasto: ordersRes.data?.reduce((acc, o) => acc + (o.total || 0), 0) || 0,
-                  pendente_aprovacao: ordersRes.data?.filter(o => o.status === 'Gerada').length || 0,
+                  pendente_aprovacao: ordersPendenteRes.count || 0,
               },
               resumo_fornecedores: {
-                  ativos: suppliersRes.data?.filter(s => s.status === 'Ativo').length || 0,
+                  ativos: suppliersRes.count || 0,
               }
           };
           
@@ -265,8 +265,8 @@ const AIChatWindow: React.FC<AIChatWindowProps> = ({ isOpen, onClose }) => {
         </div>
 
         {/* MESSAGES AREA */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50 scroll-smooth">
-            {messages.map((msg) => (
+        <div className="flex-1 overflow-y-auto p-6 space-y-8 bg-slate-50 scroll-smooth">
+            {messages.map((msg, idx) => (
                 <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
                     
                     {msg.role === 'ai' && (
@@ -299,18 +299,35 @@ const AIChatWindow: React.FC<AIChatWindowProps> = ({ isOpen, onClose }) => {
                             </div>
                         )}
 
-                        <div className={`p-5 shadow-sm relative group ${
+                        <div className={`p-5 shadow-sm relative group pb-7 ${
                             msg.role === 'user' 
-                                ? 'bg-white text-slate-800 rounded-2xl rounded-tr-sm border border-slate-200' 
-                                : 'bg-indigo-600 text-white rounded-2xl rounded-tl-sm shadow-indigo-200'
+                                ? 'bg-white text-slate-800 rounded-[28px] rounded-tr-md rounded-br-[24px] border border-slate-200' 
+                                : 'bg-indigo-600 text-white rounded-[28px] rounded-tl-md rounded-bl-[24px] shadow-indigo-200'
                         }`}>
                             <div className={`text-sm leading-relaxed whitespace-pre-wrap font-medium ${msg.role === 'ai' ? 'prose-invert' : ''}`}>
                                 {msg.text || (msg.attachments?.length ? <i>(Mídia enviada)</i> : '')}
                             </div>
-                            <span className={`text-[9px] font-bold absolute bottom-2 right-4 opacity-60 ${msg.role === 'ai' ? 'text-indigo-100' : 'text-slate-400'}`}>
+                            <span className={`text-[9px] font-bold absolute bottom-3 right-5 opacity-60 ${msg.role === 'ai' ? 'text-indigo-200' : 'text-slate-400'}`}>
                                 {msg.time}
                             </span>
                         </div>
+
+                        {/* SUGGESTÃO CONTEXTUAL DE MÍDIA */}
+                        {msg.role === 'ai' && idx === messages.length - 1 && !loading && (
+                            <div className="mt-1 flex gap-2">
+                                {(msg.text.toLowerCase().includes('avaria') || msg.text.toLowerCase().includes('foto')) && (
+                                    <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-full border border-indigo-100 transition-colors shadow-sm">
+                                        <ImageIcon size={14} /> Enviar Foto da Avaria
+                                    </button>
+                                )}
+                                {(msg.text.toLowerCase().includes('orçament') || msg.text.toLowerCase().includes('documento')) && (
+                                    <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-full border border-indigo-100 transition-colors shadow-sm">
+                                        <FileText size={14} /> Anexar Orçamento/NF
+                                    </button>
+                                )}
+                            </div>
+                        )}
+
                     </div>
 
                     {msg.role === 'user' && (
