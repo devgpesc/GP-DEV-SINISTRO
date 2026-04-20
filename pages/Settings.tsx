@@ -456,7 +456,47 @@ const Settings: React.FC = () => {
                           <input className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-slate-700 outline-none"
                               value={userForm.full_name} onChange={e => setUserForm({...userForm, full_name: e.target.value})} />
                       </div>
-                      {/* ... (Resto do modal de user mantido) ... */}
+                      
+                      <div>
+                          <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Nível de Acesso Global</label>
+                          <select 
+                              className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-slate-700 outline-none"
+                              value={userForm.role}
+                              onChange={e => setUserForm({...userForm, role: e.target.value})}
+                          >
+                              <option value="Usuário">Usuário (Padrão)</option>
+                              <option value="Admin">Administrador (Pode ver Config e Auditoria)</option>
+                          </select>
+                      </div>
+
+                      <div>
+                          <label className="block text-[10px] font-black uppercase text-slate-400 mb-3 border-b border-slate-100 pb-2">Permissões de Módulos</label>
+                          <div className="grid grid-cols-2 gap-3 max-h-40 overflow-y-auto custom-scrollbar">
+                              {[
+                                  { id: 'dashboard', label: 'Dashboard' },
+                                  { id: 'sinistros', label: 'Sinistros' },
+                                  { id: 'cotacoes', label: 'Cotações' },
+                                  { id: 'compras', label: 'Compras' },
+                                  { id: 'entregas', label: 'Entregas' },
+                                  { id: 'associados', label: 'Associados' },
+                                  { id: 'fornecedores', label: 'Fornecedores' },
+                                  { id: 'veiculos', label: 'Veículos' },
+                                  { id: 'catalogo', label: 'Catálogo' },
+                                  { id: 'relatorios', label: 'Relatórios' }
+                              ].map(feat => (
+                                  <label key={feat.id} className="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors border border-transparent hover:border-slate-100">
+                                      <input 
+                                          type="checkbox" 
+                                          className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                                          checked={userForm.permissions[feat.id] || false}
+                                          onChange={() => togglePermission(feat.id)}
+                                      />
+                                      <span className="text-xs font-bold text-slate-600">{feat.label}</span>
+                                  </label>
+                              ))}
+                          </div>
+                      </div>
+
                       <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
                           <button onClick={() => setUserModalOpen(false)} className="px-6 py-3 text-slate-400 font-bold text-xs uppercase hover:text-slate-600">Cancelar</button>
                           <button onClick={handleSaveUser} className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold text-xs uppercase shadow-lg shadow-blue-600/20 hover:bg-blue-700">Salvar</button>

@@ -38,32 +38,17 @@ const Register: React.FC = () => {
       setVerifyingInvite(true);
       setError(null);
       try {
-          // 1. Busca o convite (SEM JOIN para evitar erro de relacionamento no PostgREST)
-          const { data: invite, error: inviteError } = await supabase
-            .from('invitations')
-            .select('*')
-            .eq('token', token)
-            .maybeSingle();
+          // Utiliza a RPC segura que fura o RLS sob medida
+          const { data: invite, error: inviteError } = await supabase.rpc('get_invite_details', { invite_token: token });
 
           if (inviteError) throw inviteError;
           if (!invite) throw new Error("Convite inválido ou expirado.");
 
-          // 2. Busca o nome da empresa separadamente (Safe Fetch)
-          let tenantName = 'Empresa Convidada';
-          if (invite.tenant_id) {
-              const { data: tenant } = await supabase
-                  .from('saas_tenants')
-                  .select('name')
-                  .eq('id', invite.tenant_id)
-                  .maybeSingle();
-              if (tenant) tenantName = tenant.name;
-          }
-
-          // 3. Monta o objeto final
-          setInviteData({ ...invite, tenant_name: tenantName });
+          // Monta o objeto com os dados recebidos via RPC
+          setInviteData({ ...invite, tenant_name: invite.tenant_name });
           setEmail(invite.email || '');
           setName(invite.name || '');
-          setCompanyName(tenantName);
+          setCompanyName(invite.tenant_name || 'Empresa Convidada');
           
       } catch (err: any) {
           console.error("Erro ao verificar convite:", err);

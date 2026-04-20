@@ -131,11 +131,30 @@ const SaasAdmin: React.FC = () => {
       if (tenant.owner_id) {
           setLoadingAdminData(true);
           try {
+              // 1. Tenta buscar o dono original no Profiles
               const { data: profile } = await supabase.from('profiles').select('full_name, email').eq('id', tenant.owner_id).single();
               if (profile) {
                   adminName = profile.full_name || '';
                   adminEmail = profile.email || '';
               }
+
+              // 2. Se for uma criação manual recente (Fallback), o owner_id ainda é do Super Admin.
+              // Vamos checar se há um convite "pending" de 'owner' para essa empresa, e usar ele como exibição real.
+              const { data: pendingInvite } = await supabase
+                  .from('invitations')
+                  .select('name, email')
+                  .eq('tenant_id', tenant.id)
+                  .eq('role', 'owner')
+                  .eq('status', 'pending')
+                  .order('created_at', { ascending: false })
+                  .limit(1)
+                  .maybeSingle();
+
+              if (pendingInvite) {
+                  adminName = pendingInvite.name || adminName;
+                  adminEmail = pendingInvite.email || adminEmail;
+              }
+
           } catch (e) { console.error(e); } finally { setLoadingAdminData(false); }
       }
 
