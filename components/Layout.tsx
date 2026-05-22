@@ -3,7 +3,7 @@ import * as ReactRouterDOM from 'react-router-dom';
 const { Link, useLocation } = ReactRouterDOM as any;
 import { 
   LayoutDashboard, FileText, ShoppingCart, Users, Truck, 
-  BarChart3, Settings, Package, Car, Bell, Search, UserCircle, X, ShoppingBag, Clock, Trash2, CheckCheck,
+  BarChart3, Package, Car, Bell, Search, UserCircle, X, ShoppingBag, Clock, Trash2, CheckCheck,
   Globe, ShieldCheck, Wifi, WifiOff, AlertTriangle, CheckCircle2, UserCheck, Mail, Phone, MapPin, Key,
   Camera, Save, Loader2, Edit3, AlertCircle, LogOut, ChevronDown, Zap, Sparkles, Info, Menu, Hexagon
 } from 'lucide-react';
@@ -41,16 +41,16 @@ const NavItem = ({ to, icon: Icon, label, active, badge, onClick }: { to: string
   <Link 
     to={to} 
     onClick={onClick}
-    className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors relative group ${
+    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all relative group min-h-[46px] ${
       active 
-        ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
-        : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+        ? 'bg-[#30394B] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]'
+        : 'text-[#A6B0C3] hover:bg-[#20293A] hover:text-white'
     }`}
   >
-    <Icon size={20} />
-    <span className="font-medium">{label}</span>
+    <Icon size={19} strokeWidth={active ? 2.3 : 1.9} className={active ? 'text-[#58A6FF]' : 'text-[#A6B0C3] group-hover:text-white'} />
+    <span className="font-semibold text-[13px]">{label}</span>
     {badge && (
-      <span className="absolute right-3 top-1/2 -translate-y-1/2 bg-amber-500 text-slate-900 text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase">
+      <span className="absolute right-3 top-1/2 -translate-y-1/2 bg-[#58A6FF] text-[#0D1424] text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase">
         {badge}
       </span>
     )}
@@ -259,7 +259,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
 
   return (
-    <div className="flex min-h-screen bg-slate-50 print:bg-white overflow-x-hidden">
+    <div className="flex min-h-screen bg-[#F4F7FB] print:bg-white overflow-x-hidden">
       <style>{`
         @keyframes bell-ring {
           0%, 100% { transform: rotate(0deg); }
@@ -294,37 +294,36 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
         <div 
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-30 md:hidden animate-in fade-in"
+          className="fixed inset-0 bg-[#0D1424]/70 backdrop-blur-sm z-30 md:hidden animate-in fade-in"
           onClick={() => setIsMobileMenuOpen(false)}
         ></div>
       )}
 
       {/* Sidebar - Responsive */}
       <aside className={`
-        fixed top-0 left-0 h-full w-64 bg-slate-900 text-white flex flex-col z-40 transition-transform duration-300 ease-in-out
+        fixed top-0 left-0 h-full w-[260px] bg-[#111827] text-white flex flex-col z-40 transition-transform duration-300 ease-in-out border-r border-white/[0.04]
         ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 print:hidden
       `}>
         {/* ... (Sidebar Content remains the same) ... */}
-        <div className="p-6">
-          <div className="flex items-center justify-between mb-8">
+        <div className="p-4">
+          <div className="flex items-center justify-between mb-7 px-1">
             
             {/* LOGO CUSTOMIZADA ESC */}
             <EscLogo className="w-8 h-8 text-white" classNameText="text-white text-lg" />
 
-            <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-white">
+            <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-[#A6B0C3] hover:text-white">
                 <X size={24}/>
             </button>
           </div>
           
-          <nav className="space-y-1 overflow-y-auto max-h-[calc(100vh-180px)] custom-scrollbar">
+          <nav className="space-y-1 overflow-y-auto max-h-[calc(100vh-210px)] pr-1 custom-scrollbar">
+            <p className="px-3 pb-2 text-[10px] font-bold text-[#738098] uppercase tracking-[0.22em]">Menu</p>
             {isSuperAdmin && (
-              <div className="mb-6 pb-6 border-b border-slate-800">
-                <p className="px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Administração Global</p>
+              <div className="mb-5 pb-5 border-b border-white/[0.06]">
                 <NavItem to="/saas-admin" icon={Globe} label="Gestão SaaS" active={location.pathname === '/saas-admin'} badge="Super" onClick={closeMobileMenu} />
               </div>
             )}
 
-            <p className="px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Operacional</p>
             <NavItem to="/" icon={LayoutDashboard} label="Dashboard" active={location.pathname === '/'} onClick={closeMobileMenu} />
             {/* MUDANÇA: Rótulo atualizado de 'Eventos' para 'Sinistros' */}
             <NavItem to="/eventos" icon={FileText} label="Sinistros" active={location.pathname === '/eventos'} onClick={closeMobileMenu} />
@@ -339,7 +338,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             
             {isManagerOrAdmin && (
                 <>
-                    <p className="px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 mt-6">Gestão</p>
+                    <div className="h-px bg-white/[0.06] my-4"></div>
                     <NavItem to="/associados" icon={UserCheck} label="Associados" active={location.pathname === '/associados'} onClick={closeMobileMenu} />
                     <NavItem to="/fornecedores" icon={Users} label="Fornecedores" active={location.pathname === '/fornecedores'} onClick={closeMobileMenu} />
                     <NavItem to="/veiculos" icon={Car} label="Veículos" active={location.pathname === '/veiculos'} onClick={closeMobileMenu} />
@@ -351,39 +350,41 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <NavItem to="/relatorios" icon={BarChart3} label="Relatórios" active={location.pathname === '/relatorios'} onClick={closeMobileMenu} />
             )}
 
-            {(isSuperAdmin || profile?.role === 'Admin') && (
-                <NavItem to="/configuracoes" icon={Settings} label="Configurações" active={location.pathname === '/configuracoes'} onClick={closeMobileMenu} />
-            )}
           </nav>
         </div>
         
-        <div className="mt-auto p-4 border-t border-slate-800">
-          <div className="flex items-center gap-3 px-2 py-3 cursor-pointer hover:bg-slate-800 rounded-lg transition-colors" onClick={() => { setShowProfileModal(true); closeMobileMenu(); }}>
-            {profile?.avatar_url ? (
-                <img src={profile.avatar_url} className="w-10 h-10 rounded-full border-2 border-slate-700 object-cover" alt="Avatar" />
-            ) : (
-                <div className="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center">
-                    <UserCircle size={24} className="text-slate-400" />
-                </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold truncate">{profile?.full_name || user?.email}</p>
-              <div className="flex items-center gap-1">
-                {isSuperAdmin ? (
-                    <span className="text-[9px] font-black bg-amber-500 text-slate-900 px-1.5 rounded uppercase tracking-wide flex items-center gap-1 w-fit">
-                        <ShieldCheck size={8}/> Super Admin
-                    </span>
-                ) : (
-                    <p className="text-xs text-slate-500 italic capitalize">{profile?.role || 'Usuário'}</p>
-                )}
-              </div>
-            </div>
-          </div>
+        <div className="mt-auto border-t border-white/[0.06] p-4 space-y-1">
+          <button
+            type="button"
+            onClick={() => { setShowProfileModal(true); closeMobileMenu(); }}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#A6B0C3] hover:bg-[#20293A] hover:text-white transition-all"
+          >
+            <Hexagon size={18} strokeWidth={1.9} />
+            <span className="font-semibold text-[13px]">Plataforma</span>
+          </button>
+          {(isSuperAdmin || profile?.role === 'Admin') && (
+            <Link
+              to="/configuracoes"
+              onClick={closeMobileMenu}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#A6B0C3] hover:bg-[#20293A] hover:text-white transition-all"
+            >
+              <ShieldCheck size={18} strokeWidth={1.9} />
+              <span className="font-semibold text-[13px]">Admin</span>
+            </Link>
+          )}
+          <button
+            type="button"
+            onClick={signOut}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#A6B0C3] hover:bg-[#20293A] hover:text-white transition-all"
+          >
+            <LogOut size={18} strokeWidth={1.9} />
+            <span className="font-semibold text-[13px]">Sair</span>
+          </button>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 md:ml-64 p-4 md:p-8 relative print:ml-0 print:p-0 print:w-full min-w-0 w-full">
+      <main className="flex-1 md:ml-[260px] p-4 md:p-8 relative print:ml-0 print:p-0 print:w-full min-w-0 w-full">
         {/* ... (Main Content Header remains the same) ... */}
         <div className="md:hidden flex justify-between items-center mb-6 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
             <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-slate-600 hover:bg-slate-50 rounded-xl">
