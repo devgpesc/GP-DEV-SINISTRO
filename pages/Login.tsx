@@ -79,28 +79,13 @@ const Login: React.FC = () => {
         .from('profiles')
         .select('role')
         .eq('id', data.user.id)
-        .single();
+        .maybeSingle();
         
       // PROCESSA CONVITE SE EXISTIR
       if (inviteToken) {
           try {
-              const { data: invite, error: inviteErr } = await supabase
-                  .from('invitations')
-                  .select('*')
-                  .eq('token', inviteToken)
-                  .maybeSingle();
-                  
-              if (!inviteErr && invite && invite.status === 'pending') {
-                  const { error: memberError } = await supabase.from('organization_members').insert([{
-                      tenant_id: invite.tenant_id,
-                      user_id: data.user.id,
-                      role: invite.role || 'member'
-                  }]);
-                  
-                  if (!memberError) {
-                      await supabase.from('invitations').update({ status: 'accepted' }).eq('id', invite.id);
-                  }
-              }
+              const { error: acceptError } = await supabase.rpc('accept_invite', { invite_token: inviteToken });
+              if (acceptError) throw acceptError;
           } catch (e) {
               console.warn("Erro ao processar convite no login", e);
           }
@@ -108,6 +93,8 @@ const Login: React.FC = () => {
 
       if (profile?.role === 'super_admin' || profile?.role === 'Admin') {
           // Super Admin/Admin sempre passa
+          setLocalLoading(false);
+          navigate('/', { replace: true });
           return; 
       }
 

@@ -9,6 +9,7 @@ type User = any;
 type Session = any;
 
 const TENANT_STORAGE_KEY = 'sb-autoclaims-tenant-id';
+const PENDING_REGISTRATION_STORAGE_KEY = 'sb-autoclaims-pending-registration';
 
 interface UserProfile {
   id: string;
@@ -57,10 +58,95 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const userRef = useRef(user);
   useEffect(() => { userRef.current = user; }, [user]);
 
+  const completePendingRegistration = useCallback(async (userId: string, userEmail?: string, userMeta?: any) => {
+    const raw = localStorage.getItem(PENDING_REGISTRATION_STORAGE_KEY);
+    if (!raw) return;
+
+    let pending: any = null;
+    try {
+      pending = JSON.parse(raw);
+    } catch {
+      localStorage.removeItem(PENDING_REGISTRATION_STORAGE_KEY);
+      return;
+    }
+
+    const normalizedPendingEmail = String(pending?.email || '').trim().toLowerCase();
+    const normalizedUserEmail = String(userEmail || '').trim().toLowerCase();
+    if (!normalizedPendingEmail || normalizedPendingEmail !== normalizedUserEmail) return;
+
+    if (pending.inviteToken) {
+      const { error } = await supabase.rpc('accept_invite', { invite_token: pending.inviteToken });
+      if (error) throw error;
+      localStorage.removeItem(PENDING_REGISTRATION_STORAGE_KEY);
+      return;
+    }
+
+    if (!pending.companyName) {
+      localStorage.removeItem(PENDING_REGISTRATION_STORAGE_KEY);
+      return;
+    }
+
+    const [{ data: existingMemberships }, { data: existingTenants }] = await Promise.all([
+      supabase.from('organization_members').select('id').eq('user_id', userId).limit(1),
+      supabase.from('saas_tenants').select('id').eq('owner_id', userId).limit(1)
+    ]);
+
+    const alreadyConfigured = (existingMemberships?.length || 0) > 0 || (existingTenants?.length || 0) > 0;
+    if (alreadyConfigured) {
+      localStorage.removeItem(PENDING_REGISTRATION_STORAGE_KEY);
+      return;
+    }
+
+    const { data: plans } = await supabase.from('saas_plans').select('id').limit(1);
+    const defaultPlanId = (plans && plans.length > 0 && plans[0].id) ? plans[0].id : null;
+
+    const { data: tenant, error: tenantError } = await supabase
+      .from('saas_tenants')
+      .insert([{
+        name: pending.companyName,
+        status: 'active',
+        owner_id: userId,
+        plan_id: defaultPlanId,
+        document: '00.000.000/0001-00',
+        subscription_status: 'trial',
+        trial_ends_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+      }])
+      .select()
+      .single();
+
+    if (tenantError) throw tenantError;
+
+    const { error: memberError } = await supabase.from('organization_members').insert([{
+      tenant_id: tenant.id,
+      user_id: userId,
+      role: 'owner'
+    }]);
+    if (memberError) throw memberError;
+
+    await supabase.from('profiles').upsert({
+      id: userId,
+      email: userEmail,
+      role: 'Admin',
+      full_name: pending.name || userMeta?.full_name || userMeta?.name || userEmail?.split('@')[0],
+      permissions: {
+        financial_view: true,
+        approve_purchases: true,
+        manage_users: true,
+        delete_records: true,
+        view_reports: true
+      },
+      updated_at: new Date().toISOString()
+    });
+
+    localStorage.removeItem(PENDING_REGISTRATION_STORAGE_KEY);
+  }, []);
+
   const loadContextData = useCallback(async (userId: string, userEmail?: string, userMeta?: any) => {
     if (!mounted.current) return;
 
     try {
+      await completePendingRegistration(userId, userEmail, userMeta);
+
       // TIMEOUT DE SEGURANÇA PARA DADOS (3.5 Segundos)
       // Se o banco demorar, não trava o login.
       const dbTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('DB_TIMEOUT')), 3500));
@@ -179,7 +265,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
       }
     }
-  }, []);
+  }, [completePendingRegistration]);
 
   useEffect(() => {
     mounted.current = true;

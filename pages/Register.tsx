@@ -8,6 +8,8 @@ import { auditService } from '../services/auditService';
 import { Mail, Lock, User, Loader2, ArrowLeft, Building, AlertCircle, Link as LinkIcon, Eye, EyeOff } from 'lucide-react';
 import EscLogo from '../components/EscLogo';
 
+const PENDING_REGISTRATION_STORAGE_KEY = 'sb-autoclaims-pending-registration';
+
 const Register: React.FC = () => {
   const { addToast } = useToast();
   const [searchParams] = useSearchParams();
@@ -83,6 +85,7 @@ const Register: React.FC = () => {
         email,
         password,
         options: {
+          emailRedirectTo: window.location.origin,
           data: { 
             full_name: name,
             name: name
@@ -102,22 +105,9 @@ const Register: React.FC = () => {
         // === FLUXO DE CONVITE (JOIN EXISTING TENANT) ===
         if (inviteToken && inviteData) {
              try {
-                 // A. Vincular Usuário à Empresa Existente
-                 const { error: memberError } = await supabase.from('organization_members').insert([{
-                     tenant_id: inviteData.tenant_id,
-                     user_id: data.user.id,
-                     role: inviteData.role || 'member'
-                 }]);
-                 
-                 if (memberError) console.warn("Membro já existe ou erro:", memberError);
-
-                 // B. Atualizar status do convite
-                 await supabase.from('invitations').update({ status: 'accepted' }).eq('id', inviteData.id);
-
-                 // C. Se for Owner, transferir propriedade (caso tenha sido criado pelo Super Admin como placeholder)
-                 if (inviteData.role === 'owner') {
-                     await supabase.from('saas_tenants').update({ owner_id: data.user.id }).eq('id', inviteData.tenant_id);
-                 }
+                 // A. Aceitar convite com RPC segura no banco
+                 const { error: acceptError } = await supabase.rpc('accept_invite', { invite_token: inviteToken });
+                 if (acceptError) throw acceptError;
 
                  // D. Auditoria
                  await auditService.log('Accept Invite', 'Invitation', inviteData.id, { tenant: inviteData.tenant_id });
@@ -177,7 +167,9 @@ const Register: React.FC = () => {
                  }
 
                  // D. Atualizar Perfil para Admin
-                 await supabase.from('profiles').update({
+                 await supabase.from('profiles').upsert({
+                     id: data.user.id,
+                     email: data.user.email,
                      role: 'Admin',
                      full_name: name,
                      permissions: {
@@ -186,8 +178,9 @@ const Register: React.FC = () => {
                         manage_users: true, 
                         delete_records: true,
                         view_reports: true
-                     }
-                 }).eq('id', data.user.id);
+                     },
+                     updated_at: new Date().toISOString()
+                 });
 
                  // E. Auditoria e Toast
                  await auditService.log('Register', 'User', data.user.id, { email: data.user.email, company: companyName });
@@ -203,6 +196,13 @@ const Register: React.FC = () => {
              }
         } else {
              // Caso exija confirmação de email
+             localStorage.setItem(PENDING_REGISTRATION_STORAGE_KEY, JSON.stringify({
+                email,
+                name,
+                companyName: inviteToken ? undefined : companyName,
+                inviteToken: inviteToken || undefined,
+                createdAt: new Date().toISOString()
+             }));
              addToast('success', 'Cadastro Realizado!', 'Verifique seu e-mail para confirmar a conta.');
              setError("Conta criada! Por favor, verifique sua caixa de entrada (e spam) para confirmar o e-mail.");
              setLoading(false); 
