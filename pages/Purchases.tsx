@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   ShoppingCart, Search, Filter, CheckCircle2, XCircle, Printer, MoreVertical, 
-  DollarSign, UserCheck, X, Eye, EyeOff, Loader2, Info, Trash2, ShieldCheck, AlertTriangle, Truck, Calendar
+  DollarSign, UserCheck, X, Eye, EyeOff, Loader2, Info, Trash2, ShieldCheck, AlertTriangle, Truck, Calendar, User, Car
 } from 'lucide-react';
 import { PurchaseOrder } from '../types';
 import { supabase } from '../services/supabaseClient';
@@ -57,10 +57,53 @@ const Purchases: React.FC = () => {
         console.error("Erro ao carregar compras:", error);
         setToast({ show: true, title: 'Erro', message: 'Falha ao buscar OCs.', type: 'info' });
     } else {
-        const mappedOrders = data?.map((o: any) => ({
+        const quoteIds = [...new Set((data || []).map((o: any) => o.quotation_id).filter(Boolean))];
+        const directEventIds = [...new Set((data || []).map((o: any) => o.event_id).filter(Boolean))];
+
+        const { data: quoteRows } = quoteIds.length > 0
+            ? await supabase.from('quotations').select('id, code, eventRef, eventId').in('id', quoteIds)
+            : { data: [] as any[] };
+
+        const quoteById = new Map((quoteRows || []).map((quote: any) => [quote.id, quote]));
+        const quoteEventIds = (quoteRows || []).map((quote: any) => quote.eventId).filter(Boolean);
+        const eventIds = [...new Set([...directEventIds, ...quoteEventIds])];
+
+        const { data: eventRows } = eventIds.length > 0
+            ? await supabase.from('events').select('id, protocol, associateId, vehicleId').in('id', eventIds)
+            : { data: [] as any[] };
+
+        const eventById = new Map((eventRows || []).map((event: any) => [event.id, event]));
+        const associateIds = [...new Set((eventRows || []).map((event: any) => event.associateId).filter(Boolean))];
+        const vehicleIds = [...new Set((eventRows || []).map((event: any) => event.vehicleId).filter(Boolean))];
+
+        const [{ data: associateRows }, { data: vehicleRows }] = await Promise.all([
+            associateIds.length > 0
+                ? supabase.from('associates').select('id, name, document, type').in('id', associateIds)
+                : Promise.resolve({ data: [] as any[] }),
+            vehicleIds.length > 0
+                ? supabase.from('vehicles').select('id, brand, model, plate, year_fab, year_model').in('id', vehicleIds)
+                : Promise.resolve({ data: [] as any[] })
+        ]);
+
+        const associateById = new Map((associateRows || []).map((associate: any) => [associate.id, associate]));
+        const vehicleById = new Map((vehicleRows || []).map((vehicle: any) => [vehicle.id, vehicle]));
+
+        const mappedOrders = data?.map((o: any) => {
+            const quote = quoteById.get(o.quotation_id);
+            const event = eventById.get(o.event_id || quote?.eventId);
+            const associate = event?.associateId ? associateById.get(event.associateId) : null;
+            const vehicle = event?.vehicleId ? vehicleById.get(event.vehicleId) : null;
+
+            return {
             id: o.id,
             code: o.code,
             eventId: o.event_id,
+            quotationId: o.quotation_id,
+            quotationCode: quote?.code || null,
+            eventProtocol: event?.protocol || quote?.eventRef || null,
+            customerName: associate?.name || 'Cliente nao vinculado',
+            customerDocument: associate?.document || null,
+            vehicleLabel: vehicle ? `${vehicle.brand || ''} ${vehicle.model || ''}${vehicle.plate ? ` - ${vehicle.plate}` : ''}`.trim() : null,
             supplierId: o.supplier_id,
             supplierName: o.suppliers?.name || 'Fornecedor Desconhecido',
             items: o.purchase_order_items?.map((poi: any) => ({
@@ -73,7 +116,8 @@ const Purchases: React.FC = () => {
             total: o.total || 0,
             status: o.status,
             createdAt: o.created_at
-        })) || [];
+            };
+        }) || [];
         setOrders(mappedOrders);
     }
     setLoading(false);
@@ -168,6 +212,10 @@ const Purchases: React.FC = () => {
         <head><title>Ordem de Compra ${order.code}</title></head>
         <body style="font-family: Arial, sans-serif; padding: 40px;">
           <h1 style="color: #2563eb;">Ordem de Compra: ${order.code}</h1>
+          <p><strong>Cliente:</strong> ${order.customerName || 'Cliente nao vinculado'}</p>
+          ${order.customerDocument ? `<p><strong>Documento:</strong> ${order.customerDocument}</p>` : ''}
+          ${order.vehicleLabel ? `<p><strong>Veiculo:</strong> ${order.vehicleLabel}</p>` : ''}
+          ${order.eventProtocol ? `<p><strong>Sinistro:</strong> ${order.eventProtocol}</p>` : ''}
           <p><strong>Fornecedor:</strong> ${order.supplierName}</p>
           <p><strong>Data:</strong> ${new Date(order.createdAt).toLocaleDateString()}</p>
           <hr/>
@@ -198,8 +246,11 @@ const Purchases: React.FC = () => {
 
   const filteredOrders = useMemo(() => {
     return orders.filter(o => {
-      const matchSearch = o.code.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          o.supplierName.toLowerCase().includes(searchTerm.toLowerCase());
+      const term = searchTerm.toLowerCase();
+      const matchSearch = o.code.toLowerCase().includes(term) ||
+                          o.supplierName.toLowerCase().includes(term) ||
+                          (o.customerName || '').toLowerCase().includes(term) ||
+                          (o.eventProtocol || '').toLowerCase().includes(term);
       const matchStatus = filterStatus === 'Todos' || o.status === filterStatus;
       return matchSearch && matchStatus;
     });
@@ -234,7 +285,7 @@ const Purchases: React.FC = () => {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
           <input 
             className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none" 
-            placeholder="Buscar OC ou Fornecedor..." 
+            placeholder="Buscar OC, fornecedor, cliente ou sinistro..."
             value={searchTerm} 
             onChange={e => setSearchTerm(e.target.value)}
           />
@@ -279,6 +330,21 @@ const Purchases: React.FC = () => {
                                     <span className="flex items-center gap-1"><Calendar size={12}/> {new Date(order.createdAt).toLocaleDateString()}</span>
                                     <span className="hidden md:inline w-1 h-1 rounded-full bg-slate-300"></span>
                                     <span>{order.items.length} itens</span>
+                                </div>
+                                <div className="mt-2 flex flex-col md:flex-row md:items-center gap-1 md:gap-4 text-xs font-bold text-slate-500">
+                                    <span className="flex items-center gap-1 text-slate-800 truncate max-w-[260px]"><User size={12} className="text-blue-500"/> {order.customerName}</span>
+                                    {order.vehicleLabel && (
+                                        <>
+                                            <span className="hidden md:inline w-1 h-1 rounded-full bg-slate-300"></span>
+                                            <span className="flex items-center gap-1 truncate max-w-[260px]"><Car size={12} className="text-slate-400"/> {order.vehicleLabel}</span>
+                                        </>
+                                    )}
+                                    {order.eventProtocol && (
+                                        <>
+                                            <span className="hidden md:inline w-1 h-1 rounded-full bg-slate-300"></span>
+                                            <span>{order.eventProtocol}</span>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -329,6 +395,18 @@ const Purchases: React.FC = () => {
                     <button onClick={() => setViewOrder(null)}><X size={20}/></button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-6">
+                    <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="p-4 rounded-2xl bg-blue-50 border border-blue-100">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-1">Cliente</p>
+                            <p className="text-sm font-black text-slate-800">{viewOrder.customerName}</p>
+                            {viewOrder.customerDocument && <p className="text-xs font-bold text-slate-500 mt-1">{viewOrder.customerDocument}</p>}
+                        </div>
+                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Sinistro / Veiculo</p>
+                            <p className="text-sm font-black text-slate-800">{viewOrder.eventProtocol || 'Sinistro nao vinculado'}</p>
+                            {viewOrder.vehicleLabel && <p className="text-xs font-bold text-slate-500 mt-1">{viewOrder.vehicleLabel}</p>}
+                        </div>
+                    </div>
                     <table className="w-full text-left">
                         <thead><tr><th className="pb-2 text-xs font-black text-slate-400 uppercase">Item</th><th className="pb-2 text-center text-xs font-black text-slate-400 uppercase">Qtd</th><th className="pb-2 text-right text-xs font-black text-slate-400 uppercase">Total</th></tr></thead>
                         <tbody className="divide-y divide-slate-100">

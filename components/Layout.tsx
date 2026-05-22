@@ -318,12 +318,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           
           <nav className="space-y-1 overflow-y-auto max-h-[calc(100vh-210px)] pr-1 custom-scrollbar">
             <p className="px-3 pb-2 text-[10px] font-bold text-[#738098] uppercase tracking-[0.22em]">Menu</p>
-            {isSuperAdmin && (
-              <div className="mb-5 pb-5 border-b border-white/[0.06]">
-                <NavItem to="/saas-admin" icon={Globe} label="Gestão SaaS" active={location.pathname === '/saas-admin'} badge="Super" onClick={closeMobileMenu} />
-              </div>
-            )}
-
             <NavItem to="/" icon={LayoutDashboard} label="Dashboard" active={location.pathname === '/'} onClick={closeMobileMenu} />
             {/* MUDANÇA: Rótulo atualizado de 'Eventos' para 'Sinistros' */}
             <NavItem to="/eventos" icon={FileText} label="Sinistros" active={location.pathname === '/eventos'} onClick={closeMobileMenu} />
@@ -354,6 +348,23 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </div>
         
         <div className="mt-auto border-t border-white/[0.06] p-4 space-y-1">
+          {isSuperAdmin && (
+            <Link
+              to="/saas-admin"
+              onClick={closeMobileMenu}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all relative ${
+                location.pathname === '/saas-admin'
+                  ? 'bg-[#30394B] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]'
+                  : 'text-[#A6B0C3] hover:bg-[#20293A] hover:text-white'
+              }`}
+            >
+              <Globe size={18} strokeWidth={location.pathname === '/saas-admin' ? 2.3 : 1.9} className={location.pathname === '/saas-admin' ? 'text-[#58A6FF]' : 'text-[#A6B0C3]'} />
+              <span className="font-semibold text-[13px]">Gestão SaaS</span>
+              <span className="ml-auto bg-[#58A6FF] text-[#0D1424] text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase">
+                Super
+              </span>
+            </Link>
+          )}
           <button
             type="button"
             onClick={() => { setShowProfileModal(true); closeMobileMenu(); }}
