@@ -131,7 +131,21 @@ export interface SupplierPrice {
   price: number;
   obs?: string;
   availability: boolean;
+  delivery_days?: number | null;
   is_winner?: boolean;
+}
+
+export interface PurchaseSelection {
+  id: string;
+  quotation_id: string;
+  quotation_item_id: string;
+  supplier_id: string;
+  selected_price: number;
+  quantity: number;
+  justification?: string;
+  status: 'Selecionado' | 'Processado' | 'Cancelado';
+  selected_by?: string;
+  selected_at: string;
 }
 
 export interface CatalogItem {

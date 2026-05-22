@@ -1,12 +1,20 @@
-
 import { supabase } from './supabaseClient';
-import { QuotationItem, SupplierPrice } from '../types';
+import { PurchaseSelection, QuotationItem, SupplierPrice } from '../types';
+
+export interface ManualPurchaseSelection {
+  supplierId: string;
+  quantity: number;
+  justification?: string;
+}
 
 export const quotationService = {
-  /**
-   * Busca dados completos para montar a Matriz de Decisão
-   */
-  async getMatrixData(quotationId: string): Promise<{ items: QuotationItem[], prices: SupplierPrice[], suppliers: any[] }> {
+  async getMatrixData(quotationId: string): Promise<{
+    items: QuotationItem[];
+    prices: SupplierPrice[];
+    suppliers: any[];
+    selections: PurchaseSelection[];
+    processedItemIds: string[];
+  }> {
     const { data: items, error: itemsError } = await supabase
       .from('quotation_items')
       .select('*')
@@ -15,216 +23,317 @@ export const quotationService = {
 
     if (itemsError) throw itemsError;
 
-    const itemIds = items.map(i => i.id);
+    const safeItems = items || [];
+    const itemIds = safeItems.map((item) => item.id);
     let prices: SupplierPrice[] = [];
-    
+
     if (itemIds.length > 0) {
-        const { data: pricesData, error: pricesError } = await supabase
+      const { data: pricesData, error: pricesError } = await supabase
         .from('quotation_supplier_prices')
         .select('*')
         .in('quotation_item_id', itemIds);
-        
-        if (pricesError) throw pricesError;
-        prices = pricesData || [];
+
+      if (pricesError) throw pricesError;
+      prices = pricesData || [];
     }
 
-    const { data: qSuppliers, error: qsError } = await supabase
-        .from('quotation_suppliers')
-        .select('supplier_id, suppliers(id, name, rating, city)')
-        .eq('quotation_id', quotationId);
+    const { data: qSuppliers, error: suppliersError } = await supabase
+      .from('quotation_suppliers')
+      .select('supplier_id, suppliers(id, name, rating, city)')
+      .eq('quotation_id', quotationId);
 
-    if (qsError) throw qsError;
+    if (suppliersError) throw suppliersError;
 
-    const suppliers = qSuppliers.map((qs: any) => qs.suppliers);
+    const suppliers = (qSuppliers || []).map((row: any) => row.suppliers).filter(Boolean);
+    const selections = await this.getPurchaseSelections(quotationId);
+    const processedItemIds = await this.getProcessedItemIds(quotationId);
 
-    return { items, prices, suppliers };
+    return { items: safeItems, prices, suppliers, selections, processedItemIds };
   },
 
-  /**
-   * Salva ou atualiza um preço individual na matriz
-   */
-  async savePrice(payload: { quotation_item_id: string, supplier_id: string, price: number, obs?: string }) {
-      const { error } = await supabase
-          .from('quotation_supplier_prices')
-          .upsert({
-              ...payload,
-              availability: true,
-              is_winner: false, 
-              created_at: new Date().toISOString()
-          }, { onConflict: 'quotation_item_id, supplier_id' });
-      
-      if (error) throw error;
+  async getPurchaseSelections(quotationId: string): Promise<PurchaseSelection[]> {
+    const { data, error } = await supabase
+      .from('quotation_purchase_selections')
+      .select('*')
+      .eq('quotation_id', quotationId);
+
+    if (error) {
+      console.warn('[quotationService] Selecoes manuais indisponiveis:', error.message);
+      return [];
+    }
+
+    return data || [];
   },
 
-  /**
-   * Simula a resposta de fornecedores
-   */
+  async getProcessedItemIds(quotationId: string): Promise<string[]> {
+    const { data, error } = await supabase
+      .from('purchase_order_items')
+      .select('quotation_item_id, purchase_orders!inner(quotation_id)')
+      .eq('purchase_orders.quotation_id', quotationId)
+      .not('quotation_item_id', 'is', null);
+
+    if (error) {
+      console.warn('[quotationService] Nao foi possivel validar itens processados:', error.message);
+      return [];
+    }
+
+    return [...new Set((data || []).map((item: any) => item.quotation_item_id).filter(Boolean))];
+  },
+
+  async savePrice(payload: {
+    quotation_item_id: string;
+    supplier_id: string;
+    price: number;
+    obs?: string;
+    availability?: boolean;
+    delivery_days?: number | null;
+  }) {
+    const { error } = await supabase
+      .from('quotation_supplier_prices')
+      .upsert(
+        {
+          ...payload,
+          availability: payload.availability ?? true,
+          is_winner: false,
+          created_at: new Date().toISOString(),
+        },
+        { onConflict: 'quotation_item_id, supplier_id' }
+      );
+
+    if (error && payload.delivery_days !== undefined) {
+      const { delivery_days, ...legacyPayload } = payload;
+      const { error: fallbackError } = await supabase
+        .from('quotation_supplier_prices')
+        .upsert(
+          {
+            ...legacyPayload,
+            availability: legacyPayload.availability ?? true,
+            is_winner: false,
+            created_at: new Date().toISOString(),
+          },
+          { onConflict: 'quotation_item_id, supplier_id' }
+        );
+
+      if (fallbackError) throw fallbackError;
+      return;
+    }
+
+    if (error) throw error;
+  },
+
   async simulateSupplierResponses(quotationId: string) {
-      const { items, suppliers } = await this.getMatrixData(quotationId);
-      if (items.length === 0 || suppliers.length === 0) return;
+    const { items, suppliers } = await this.getMatrixData(quotationId);
+    if (items.length === 0 || suppliers.length === 0) return;
 
-      const newPrices = [];
-      for (const item of items) {
-          for (const supplier of suppliers) {
-              const { data: existing } = await supabase.from('quotation_supplier_prices')
-                .select('id')
-                .eq('quotation_item_id', item.id)
-                .eq('supplier_id', supplier.id)
-                .maybeSingle();
+    const newPrices = [];
+    for (const item of items) {
+      for (const supplier of suppliers) {
+        const { data: existing } = await supabase
+          .from('quotation_supplier_prices')
+          .select('id')
+          .eq('quotation_item_id', item.id)
+          .eq('supplier_id', supplier.id)
+          .maybeSingle();
 
-              if (!existing) {
-                  const basePrice = Math.random() * 500 + 100; 
-                  const variation = (Math.random() - 0.5) * 50; 
-                  newPrices.push({
-                      quotation_item_id: item.id,
-                      supplier_id: supplier.id,
-                      price: Number((basePrice + variation).toFixed(2)),
-                      availability: Math.random() > 0.1,
-                      is_winner: false
-                  });
-              }
-          }
+        if (!existing) {
+          const basePrice = Math.random() * 500 + 100;
+          const variation = (Math.random() - 0.5) * 50;
+          newPrices.push({
+            quotation_item_id: item.id,
+            supplier_id: supplier.id,
+            price: Number((basePrice + variation).toFixed(2)),
+            availability: Math.random() > 0.1,
+            delivery_days: Math.floor(Math.random() * 7) + 1,
+            is_winner: false,
+          });
+        }
       }
-      if (newPrices.length > 0) {
-          await supabase.from('quotation_supplier_prices').insert(newPrices);
-      }
+    }
+
+    if (newPrices.length > 0) {
+      await supabase.from('quotation_supplier_prices').insert(newPrices);
+    }
   },
 
-  /**
-   * PROCESSA A COMPRA: GERA OCS NO BANCO (MODELO RELACIONAL)
-   * Passo 1: Cria Purchase Order (Header)
-   * Passo 2: Cria Purchase Order Items (Detail)
-   */
-  async processPurchase(quotationId: string, selections: Record<string, string>, eventId?: string) {
-      console.log('>>> Iniciando processPurchase (Relacional)', { quotationId, selectionsCount: Object.keys(selections).length });
+  async savePurchaseSelection(
+    quotationId: string,
+    item: QuotationItem,
+    price: SupplierPrice,
+    selection: ManualPurchaseSelection
+  ) {
+    const { data: { user } } = await (supabase.auth as any).getUser();
+    const payload = {
+      quotation_id: quotationId,
+      quotation_item_id: item.id,
+      supplier_id: selection.supplierId,
+      selected_price: price.price,
+      quantity: selection.quantity || item.quantity || 1,
+      justification: selection.justification || null,
+      status: 'Selecionado',
+      selected_by: user?.id || null,
+      selected_at: new Date().toISOString(),
+    };
 
-      // 1. Validar Usuário
-      // Casting supabase.auth to any to avoid missing getUser error
-      const { data: { user }, error: authError } = await (supabase.auth as any).getUser();
-      if (authError || !user) {
-          throw new Error("Sessão expirada. Faça login novamente para aprovar.");
+    const { error } = await supabase
+      .from('quotation_purchase_selections')
+      .upsert(payload, { onConflict: 'quotation_id, quotation_item_id' });
+
+    if (error) {
+      console.warn('[quotationService] Falha ao persistir selecao manual:', error.message);
+    }
+  },
+
+  async removePurchaseSelection(quotationId: string, itemId: string) {
+    const { error } = await supabase
+      .from('quotation_purchase_selections')
+      .delete()
+      .eq('quotation_id', quotationId)
+      .eq('quotation_item_id', itemId);
+
+    if (error) {
+      console.warn('[quotationService] Falha ao remover selecao manual:', error.message);
+    }
+  },
+
+  async saveDecisionHistory(quotationId: string, action: string, details: any) {
+    const { data: { user } } = await (supabase.auth as any).getUser();
+    const { error } = await supabase.from('quotation_decision_history').insert([{
+      quotation_id: quotationId,
+      action,
+      details,
+      user_id: user?.id || null,
+      created_at: new Date().toISOString(),
+    }]);
+
+    if (error) {
+      console.warn('[quotationService] Historico indisponivel:', error.message);
+    }
+  },
+
+  async processPurchase(
+    quotationId: string,
+    selections: Record<string, ManualPurchaseSelection>,
+    eventId?: string
+  ) {
+    const { data: { user }, error: authError } = await (supabase.auth as any).getUser();
+    if (authError || !user) {
+      throw new Error('Sessao expirada. Faca login novamente para processar compras.');
+    }
+
+    if (Object.keys(selections).length === 0) {
+      throw new Error('Selecione pelo menos um item para compra.');
+    }
+
+    const { items, prices, processedItemIds } = await this.getMatrixData(quotationId);
+    const duplicateItems = Object.keys(selections).filter((itemId) => processedItemIds.includes(itemId));
+    if (duplicateItems.length > 0) {
+      throw new Error('Existem itens ja processados. Atualize a matriz antes de continuar.');
+    }
+
+    const itemIds = items.map((item) => item.id);
+    const ordersBySupplier: Record<string, any[]> = {};
+    const winnerUpdates: PromiseLike<any>[] = [];
+
+    await supabase
+      .from('quotation_supplier_prices')
+      .update({ is_winner: false })
+      .in('quotation_item_id', itemIds);
+
+    for (const [itemId, selection] of Object.entries(selections)) {
+      const item = items.find((candidate) => candidate.id === itemId);
+      if (!item) throw new Error(`Item nao encontrado na cotacao: ${itemId}`);
+      if (!selection.supplierId) throw new Error(`Item sem fornecedor selecionado: ${item.name}`);
+
+      const price = prices.find(
+        (candidate) => candidate.quotation_item_id === itemId && candidate.supplier_id === selection.supplierId
+      );
+      if (!price || price.price === null || price.price === undefined) {
+        throw new Error(`Item selecionado sem valor cotado: ${item.name}`);
       }
 
-      // 2. Buscar dados da matriz para enriquecer a OC
-      const { items, prices } = await this.getMatrixData(quotationId);
-      
-      // Agrupamento de itens por fornecedor
-      const ordersBySupplier: Record<string, any[]> = {};
-      const itemIds = items.map(i => i.id);
+      const quantity = Number(selection.quantity || item.quantity || 1);
+      if (!quantity || quantity <= 0) throw new Error(`Quantidade invalida para o item: ${item.name}`);
 
-      // 3. Atualizar vencedores na matriz (Auditoria)
-      await supabase.from('quotation_supplier_prices')
-          .update({ is_winner: false })
-          .in('quotation_item_id', itemIds);
+      winnerUpdates.push(
+        supabase
+          .from('quotation_supplier_prices')
+          .update({ is_winner: true })
+          .match({ quotation_item_id: itemId, supplier_id: selection.supplierId })
+      );
 
-      const winnersToUpdate: any[] = [];
-
-      // 4. Agrupar Itens por Fornecedor Vencedor
-      Object.entries(selections).forEach(([itemId, supplierId]) => {
-          const item = items.find(i => i.id === itemId);
-          const priceObj = prices.find(p => p.quotation_item_id === itemId && p.supplier_id === supplierId);
-          
-          if (item && priceObj) {
-              // Auditoria de Vencedor
-              winnersToUpdate.push(
-                  supabase.from('quotation_supplier_prices')
-                      .update({ is_winner: true })
-                      .match({ quotation_item_id: itemId, supplier_id: supplierId })
-              );
-
-              // Estrutura do Item para Tabela Relacional
-              if (!ordersBySupplier[supplierId]) {
-                  ordersBySupplier[supplierId] = [];
-              }
-              
-              ordersBySupplier[supplierId].push({
-                  quotation_item_id: item.id,
-                  catalog_item_id: item.catalog_item_id || null,
-                  name: item.name,
-                  quantity: item.quantity,
-                  unit: item.unit || 'UN',
-                  unit_price: priceObj.price,
-                  total_price: priceObj.price * item.quantity
-              });
-          }
+      if (!ordersBySupplier[selection.supplierId]) ordersBySupplier[selection.supplierId] = [];
+      ordersBySupplier[selection.supplierId].push({
+        quotation_item_id: item.id,
+        catalog_item_id: item.catalog_item_id || null,
+        name: item.name,
+        quantity,
+        unit: item.unit || 'UN',
+        unit_price: price.price,
+        total_price: price.price * quantity,
+        justification: selection.justification || null,
       });
+    }
 
-      if (Object.keys(ordersBySupplier).length === 0) {
-          throw new Error("Nenhum item selecionado ou preços não encontrados.");
+    await Promise.all(winnerUpdates);
+
+    const createdOrders = await Promise.all(Object.entries(ordersBySupplier).map(async ([supplierId, cartItems]) => {
+      const totalOrder = cartItems.reduce((sum, item) => sum + item.total_price, 0);
+      const code = `OC-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
+
+      const { data: order, error: orderError } = await supabase
+        .from('purchase_orders')
+        .insert([{
+          code,
+          event_id: eventId || null,
+          supplier_id: supplierId,
+          quotation_id: quotationId,
+          total: totalOrder,
+          status: 'Gerada',
+          created_at: new Date().toISOString(),
+          created_by: user.id,
+        }])
+        .select()
+        .single();
+
+      if (orderError) throw new Error(`Erro ao criar OC: ${orderError.message}`);
+
+      const { error: itemsError } = await supabase.from('purchase_order_items').insert(
+        cartItems.map((item) => ({
+          purchase_order_id: order.id,
+          quotation_item_id: item.quotation_item_id,
+          catalog_item_id: item.catalog_item_id,
+          name: item.name,
+          quantity: item.quantity,
+          unit: item.unit,
+          unit_price: item.unit_price,
+          total_price: item.total_price,
+        }))
+      );
+
+      if (itemsError) {
+        await supabase.from('purchase_orders').delete().eq('id', order.id);
+        throw new Error(`Erro ao salvar itens da OC: ${itemsError.message}`);
       }
 
-      // Salva Vencedores
-      await Promise.all(winnersToUpdate);
+      return { ...order, itemsCount: cartItems.length };
+    }));
 
-      // 5. TRANSAÇÃO DE CRIAÇÃO (Order + Items)
-      const creationPromises = Object.keys(ordersBySupplier).map(async (supplierId) => {
-          const cartItems = ordersBySupplier[supplierId];
-          const totalOrder = cartItems.reduce((acc, i) => acc + i.total_price, 0);
-          
-          const code = `OC-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
-          
-          // A) Criar HEADER (Purchase Order)
-          // NÃO INCLUIR COLUNA 'items' (JSONB) AQUI
-          const orderPayload = {
-              code: code,
-              event_id: eventId || null,
-              supplier_id: supplierId,
-              quotation_id: quotationId,
-              total: totalOrder,
-              status: 'Gerada',
-              created_at: new Date().toISOString(),
-              created_by: user.id
-          };
+    await supabase
+      .from('quotation_purchase_selections')
+      .update({ status: 'Processado' })
+      .eq('quotation_id', quotationId)
+      .in('quotation_item_id', Object.keys(selections));
 
-          const { data: orderData, error: orderError } = await supabase
-              .from('purchase_orders')
-              .insert([orderPayload])
-              .select()
-              .single();
+    await this.saveDecisionHistory(quotationId, 'process_purchase', {
+      selections,
+      purchase_orders: createdOrders.map((order: any) => ({ id: order.id, code: order.code, itemsCount: order.itemsCount })),
+    });
 
-          if (orderError) {
-              console.error(`Falha ao criar OC Header ${code}:`, orderError);
-              throw new Error(`Erro ao criar OC: ${orderError.message}`);
-          }
+    await supabase.from('quotations').update({ status: 'Aguardando Aprovação' }).eq('id', quotationId);
+    if (eventId) {
+      await supabase.from('events').update({ status: 'Aguardando Aprovação' }).eq('id', eventId);
+    }
 
-          const orderId = orderData.id;
-
-          // B) Criar ITEMS (Purchase Order Items)
-          const itemsPayload = cartItems.map(item => ({
-              purchase_order_id: orderId,
-              quotation_item_id: item.quotation_item_id,
-              catalog_item_id: item.catalog_item_id,
-              name: item.name,
-              quantity: item.quantity,
-              unit: item.unit,
-              unit_price: item.unit_price,
-              total_price: item.total_price
-          }));
-
-          const { error: itemsError } = await supabase
-              .from('purchase_order_items')
-              .insert(itemsPayload);
-
-          if (itemsError) {
-              console.error(`Falha ao inserir itens da OC ${code}:`, itemsError);
-              // Opcional: Rollback da OC se falhar itens (delete orderId)
-              await supabase.from('purchase_orders').delete().eq('id', orderId);
-              throw new Error(`Erro ao salvar itens da OC: ${itemsError.message}`);
-          }
-          
-          return { ...orderData, itemsCount: itemsPayload.length };
-      });
-
-      const results = await Promise.all(creationPromises);
-      console.log(">>> Processo de Compra Finalizado. OCs:", results);
-
-      // 6. Finalizar Cotação
-      await supabase.from('quotations').update({ status: 'Finalizada' }).eq('id', quotationId);
-      
-      if (eventId) {
-          await supabase.from('events').update({ status: 'Aprovado' }).eq('id', eventId);
-      }
-
-      return results;
-  }
+    return createdOrders;
+  },
 };
