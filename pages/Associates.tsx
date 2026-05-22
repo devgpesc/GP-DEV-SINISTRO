@@ -23,7 +23,7 @@ interface Associate {
 const Associates: React.FC = () => {
   const { addToast } = useToast();
   const [associates, setAssociates] = useState<Associate[]>([]);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);

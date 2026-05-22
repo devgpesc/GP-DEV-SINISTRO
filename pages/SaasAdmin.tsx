@@ -480,24 +480,24 @@ const SaasAdmin: React.FC = () => {
       {isTenantModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => !isProcessing && setIsTenantModalOpen(false)}></div>
-          <div className="relative bg-white w-full max-w-lg rounded-[40px] shadow-2xl p-8 animate-in zoom-in duration-300 max-h-[90vh] overflow-y-auto">
+          <div className="relative bg-white w-full max-w-2xl rounded-[40px] shadow-2xl p-8 animate-in zoom-in duration-300 max-h-[90vh] overflow-y-auto">
             <h3 className="text-2xl font-black text-slate-800 mb-6">{editingTenant ? 'Editar Empresa' : 'Criar Nova Empresa'}</h3>
             <form onSubmit={handleSaveTenant} className="space-y-6">
-                <div className="space-y-4">
+                <div className="space-y-4 bg-slate-50/70 border border-slate-100 rounded-3xl p-5">
                     <h4 className="text-[10px] font-black uppercase text-blue-600 tracking-widest mb-2 flex items-center gap-2"><Building size={14}/> Dados da Empresa</h4>
                     <div>
                         <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Nome da Empresa</label>
-                        <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" 
+                        <input required className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-bold outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-100/40 transition-all" 
                             value={tenantForm.name} onChange={e => setTenantForm({...tenantForm, name: e.target.value})} placeholder="Ex: Transportadora X" />
                     </div>
                     <div>
                         <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">CNPJ / Documento</label>
-                        <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" 
+                        <input required className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-bold outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-100/40 transition-all" 
                             value={tenantForm.document} onChange={e => setTenantForm({...tenantForm, document: e.target.value})} placeholder="00.000.000/0001-00" />
                     </div>
                     <div>
                         <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Status</label>
-                        <select className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none"
+                        <select className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-bold outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-100/40 transition-all"
                             value={tenantForm.status} onChange={e => setTenantForm({...tenantForm, status: e.target.value as any})}>
                             <option value="active">Ativo</option>
                             <option value="blocked">Bloqueado</option>
@@ -509,7 +509,7 @@ const SaasAdmin: React.FC = () => {
                         <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
                             {plans.map(plan => (
                                 <div key={plan.id} onClick={() => setTenantForm({...tenantForm, plan_id: plan.id})}
-                                    className={`p-3 rounded-2xl border-2 cursor-pointer flex justify-between items-center transition-all ${tenantForm.plan_id === plan.id ? 'border-blue-600 bg-blue-50' : 'border-slate-100 hover:border-slate-200'}`}>
+                                    className={`p-3 rounded-2xl border-2 cursor-pointer flex justify-between items-center transition-all ${tenantForm.plan_id === plan.id ? 'border-blue-600 bg-blue-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
                                     <div>
                                         <p className="font-bold text-slate-800 text-sm">{plan.name}</p>
                                         <p className="text-[10px] font-bold text-slate-400">{plan.max_users} usuários</p>
@@ -521,7 +521,7 @@ const SaasAdmin: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="space-y-4 pt-4 border-t border-slate-100">
+                <div className="space-y-4 pt-4 border-t border-slate-100 bg-slate-50/70 border rounded-3xl p-5">
                     <h4 className="text-[10px] font-black uppercase text-blue-600 tracking-widest mb-2 flex items-center gap-2">
                         <User size={14}/> 
                         {editingTenant ? 'Administrador da Conta' : 'Administrador Inicial'}
@@ -531,12 +531,12 @@ const SaasAdmin: React.FC = () => {
                     <div className={`transition-opacity ${loadingAdminData ? 'opacity-50' : 'opacity-100'}`}>
                         <div>
                             <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Nome Completo</label>
-                            <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" 
+                            <input required className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-bold outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-100/40 transition-all" 
                                 value={tenantForm.adminName} onChange={e => setTenantForm({...tenantForm, adminName: e.target.value})} placeholder="Ex: João Admin" autoComplete="new-admin-name" data-lpignore="true" />
                         </div>
                         <div className="mt-4">
                             <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">E-mail de Acesso</label>
-                            <input required type="email" disabled={!!editingTenant} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none disabled:opacity-60 disabled:bg-slate-100" 
+                            <input required type="email" disabled={!!editingTenant} className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-bold outline-none disabled:opacity-60 disabled:bg-slate-100 focus:border-blue-300 focus:ring-4 focus:ring-blue-100/40 transition-all" 
                                 value={tenantForm.adminEmail} onChange={e => setTenantForm({...tenantForm, adminEmail: e.target.value})} placeholder="admin@empresa.com" autoComplete="new-admin-email" data-lpignore="true" />
                             {editingTenant && <p className="text-[9px] text-slate-400 mt-1 pl-1 flex items-center gap-1"><AlertCircle size={10}/> Para alterar o e-mail, utilize a gestão de usuários.</p>}
                         </div>
@@ -547,7 +547,7 @@ const SaasAdmin: React.FC = () => {
                                     <input 
                                         required 
                                         type={showPassword ? "text" : "password"} 
-                                        className="w-full p-4 pr-12 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" 
+                                        className="w-full p-4 pr-12 bg-white border border-slate-200 rounded-2xl font-bold outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-100/40 transition-all" 
                                         value={tenantForm.adminPassword} 
                                         onChange={e => setTenantForm({...tenantForm, adminPassword: e.target.value})} 
                                         placeholder="Defina uma senha" 
@@ -562,6 +562,7 @@ const SaasAdmin: React.FC = () => {
                                         {showPassword ? <EyeOff size={18}/> : <Eye size={18}/>}
                                     </button>
                                 </div>
+                                <p className="text-[10px] text-slate-500 mt-2 pl-1">Use pelo menos 8 caracteres, com letras e números.</p>
                             </div>
                         )}
                     </div>

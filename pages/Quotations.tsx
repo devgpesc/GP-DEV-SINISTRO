@@ -10,7 +10,7 @@ import ActionModal from '../components/ActionModal';
 const Quotations: React.FC = () => {
   const { addToast } = useToast();
   const [step, setStep] = useState(1); // 1: List, 2: Wizard, 3: Matrix
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [wizardStep, setWizardStep] = useState(1);
   const [realEvents, setRealEvents] = useState<Event[]>([]);
   const [realSuppliers, setRealSuppliers] = useState<Supplier[]>([]);
@@ -50,6 +50,7 @@ const Quotations: React.FC = () => {
   // Estado para passar para a Matriz
   const [activeQuoteId, setActiveQuoteId] = useState<string | null>(null);
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
+  const selectedEvent = realEvents.find(ev => ev.id === newQuote.eventId);
 
   useEffect(() => {
     loadData();
@@ -241,6 +242,13 @@ const Quotations: React.FC = () => {
       setShowCatalogDropdown(false);
   };
 
+  const updateWizardItem = (index: number, patch: Partial<WizardItem>) => {
+      setNewQuote(prev => ({
+          ...prev,
+          items: prev.items.map((item, idx) => (idx === index ? { ...item, ...patch } : item))
+      }));
+  };
+
   const createAndAddCatalogItem = async () => {
       if (!itemSearch.trim()) return;
       
@@ -409,12 +417,47 @@ const Quotations: React.FC = () => {
                     <option value="">Selecione...</option>
                     {realEvents.map(e => <option key={e.id} value={e.id}>{e.protocol} - {e.category} ({e.status})</option>)}
                   </select>
+                  {selectedEvent && (
+                    <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <p className="text-slate-400 font-bold uppercase tracking-wider">Protocolo</p>
+                          <p className="text-slate-700 font-black">{selectedEvent.protocol}</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-400 font-bold uppercase tracking-wider">Status</p>
+                          <p className="text-slate-700 font-black">{selectedEvent.status || 'N/A'}</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-400 font-bold uppercase tracking-wider">Tipo</p>
+                          <p className="text-slate-700 font-black">{selectedEvent.category || 'N/A'}</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-400 font-bold uppercase tracking-wider">Data</p>
+                          <p className="text-slate-700 font-black">{selectedEvent.createdAt ? new Date(selectedEvent.createdAt).toLocaleDateString('pt-BR') : 'N/A'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                </div>
             </div>
 
             <div className="bg-white p-10 rounded-[48px] shadow-sm border border-slate-200 h-full flex flex-col relative">
                <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2"><List size={20} className="text-blue-600"/> 2. Defina os Itens</h3>
                <div className="flex-1 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-[10px] font-black uppercase tracking-widest">
+                      {newQuote.items.length} item(ns)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setNewQuote(prev => ({ ...prev, items: [] }))}
+                      disabled={newQuote.items.length === 0}
+                      className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-red-600 disabled:opacity-40"
+                    >
+                      Limpar Lista
+                    </button>
+                  </div>
                   
                   {/* Busca Inteligente (Step 2 Melhorado) */}
                   <div className="relative z-20">
@@ -432,7 +475,7 @@ const Quotations: React.FC = () => {
                                   {isSearchingCatalog ? <Loader2 className="animate-spin" size={20}/> : <Search size={20}/>}
                               </div>
                           </div>
-                          <input type="number" className="w-20 p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-medium text-center" value={manualQty} onChange={e => setManualQty(Number(e.target.value))} min={1} />
+                          <input type="number" className="w-20 p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-medium text-center" value={manualQty} onChange={e => setManualQty(Math.max(1, Number(e.target.value) || 1))} min={1} />
                           <button onClick={addManualItem} className="bg-slate-900 text-white p-4 rounded-2xl shadow-lg hover:scale-105 transition-all"><Plus size={20}/></button>
                       </div>
 

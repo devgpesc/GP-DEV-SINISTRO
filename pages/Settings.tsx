@@ -18,7 +18,7 @@ const SYSTEM_FEATURES = [
 
 const Settings: React.FC = () => {
   const { addToast } = useToast();
-  const { profile } = useAuth();
+  const { profile, currentTenant } = useAuth();
   const [activeTab, setActiveTab] = useState('ai_config');
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -50,9 +50,11 @@ const Settings: React.FC = () => {
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
   const [userForm, setUserForm] = useState({ id: '', full_name: '', role: 'Usuário', permissions: {} as Record<string, boolean> });
-  const [inviteData, setInviteData] = useState({ name: '', email: '' });
+  const [inviteData, setInviteData] = useState({ name: '', email: '', role: 'member' });
   const [generatedLink, setGeneratedLink] = useState('');
   const [copied, setCopied] = useState(false);
+  const [isGeneratingInvite, setIsGeneratingInvite] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
@@ -71,8 +73,10 @@ const Settings: React.FC = () => {
   }, [activeTab]);
 
   useEffect(() => {
-    if (inviteModalOpen && !generatedLink) {
-        setGeneratedLink(`${window.location.origin}/register`);
+    if (inviteModalOpen) {
+        setGeneratedLink('');
+        setCopied(false);
+        setInviteError(null);
         loadInvitations();
     }
   }, [inviteModalOpen]);
@@ -174,22 +178,42 @@ const Settings: React.FC = () => {
   const togglePermission = (featureId: string) => { setUserForm(prev => ({ ...prev, permissions: { ...prev.permissions, [featureId]: !prev.permissions[featureId] } })); };
   const handleSaveUser = async () => { if (!editingUser) return; const updates = { full_name: userForm.full_name, role: userForm.role, permissions: userForm.permissions, updated_at: new Date().toISOString() }; const { error } = await supabase.from('profiles').update(updates).eq('id', userForm.id); if (!error) { await auditService.log('Update User', 'User', userForm.id, updates); loadUsers(); setUserModalOpen(false); addToast('success', 'Salvo', 'Usuário atualizado.'); } };
   const generateInviteLink = async () => { 
-      if (!profile) return; 
-      
-      const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-      const link = `${window.location.origin}/register?invite=${token}`; 
-      
-      if (inviteData.email) { 
-          await supabase.from('invitations').insert([{ 
-              email: inviteData.email, 
-              name: inviteData.name, 
-              token: token, 
-              created_by: profile.id 
-          }]); 
-          await auditService.log('Create Invite', 'Invitation', inviteData.email, { link }); 
-          loadInvitations(); 
+      if (!profile) return;
+
+      const trimmedName = inviteData.name.trim();
+      const trimmedEmail = inviteData.email.trim().toLowerCase();
+      const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail);
+      if (!trimmedName || !trimmedEmail || !isValidEmail) {
+          setInviteError('Preencha nome e e-mail válido para gerar o convite.');
+          return;
       }
-      setGeneratedLink(link); 
+
+      setIsGeneratingInvite(true);
+      setInviteError(null);
+
+      try {
+          const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+          const link = `${window.location.origin}/register?invite=${token}`;
+
+          const { error } = await supabase.from('invitations').insert([{ 
+              email: trimmedEmail,
+              name: trimmedName,
+              role: inviteData.role || 'member',
+              tenant_id: currentTenant?.id || null,
+              token: token,
+              created_by: profile.id
+          }]);
+          if (error) throw error;
+
+          await auditService.log('Create Invite', 'Invitation', trimmedEmail, { link, role: inviteData.role || 'member' }); 
+          await loadInvitations();
+          setGeneratedLink(link);
+          addToast('success', 'Convite gerado', 'Link pronto para envio.');
+      } catch (err: any) {
+          setInviteError(err.message || 'Não foi possível gerar o convite.');
+      } finally {
+          setIsGeneratingInvite(false);
+      }
   };
   const handleDeleteInvite = async (id: string) => { await supabase.from('invitations').delete().eq('id', id); setInvitations(prev => prev.filter(i => i.id !== id)); };
   const copyInviteLink = () => { navigator.clipboard.writeText(generatedLink); setCopied(true); setTimeout(() => setCopied(false), 2000); addToast('success', 'Copiado', 'Link na área de transferência.'); };
@@ -520,20 +544,43 @@ const Settings: React.FC = () => {
                       <button onClick={() => setInviteModalOpen(false)}><X className="text-slate-400 hover:text-slate-600"/></button>
                   </div>
                   <div className="flex-1 overflow-y-auto pr-1">
-                      <div className="space-y-6">
-                          <div className="space-y-4">
-                              <div>
-                                  <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Nome</label>
-                                  <input className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-slate-700 outline-none" value={inviteData.name} onChange={e => setInviteData({...inviteData, name: e.target.value})} />
-                              </div>
-                              <div>
-                                  <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">E-mail</label>
-                                  <input className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-slate-700 outline-none" value={inviteData.email} onChange={e => setInviteData({...inviteData, email: e.target.value})} />
+                      <div className="space-y-5">
+                          <div>
+                              <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Nome</label>
+                              <div className="relative">
+                                  <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
+                                  <input className="w-full pl-10 pr-3 py-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-slate-700 outline-none focus:border-blue-200 focus:bg-white transition-all" value={inviteData.name} onChange={e => setInviteData({...inviteData, name: e.target.value})} placeholder="Nome completo do membro" />
                               </div>
                           </div>
-                          <button onClick={generateInviteLink} className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold text-xs uppercase hover:bg-slate-900 transition-all flex items-center justify-center gap-2"><LinkIcon size={16}/> Gerar Link</button>
+                          <div>
+                              <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">E-mail</label>
+                              <div className="relative">
+                                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
+                                  <input type="email" className="w-full pl-10 pr-3 py-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-slate-700 outline-none focus:border-blue-200 focus:bg-white transition-all" value={inviteData.email} onChange={e => setInviteData({...inviteData, email: e.target.value})} placeholder="usuario@empresa.com" />
+                              </div>
+                          </div>
+                          <div>
+                              <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Perfil de acesso</label>
+                              <select className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-slate-700 outline-none focus:border-blue-200 focus:bg-white transition-all" value={inviteData.role} onChange={e => setInviteData({...inviteData, role: e.target.value})}>
+                                  <option value="member">Membro</option>
+                                  <option value="admin">Administrador</option>
+                                  <option value="owner">Proprietário</option>
+                              </select>
+                          </div>
+
+                          {inviteError && (
+                              <div className="p-3 rounded-xl bg-red-50 text-red-600 border border-red-100 text-xs font-bold flex items-center gap-2">
+                                  <AlertTriangle size={14}/> {inviteError}
+                              </div>
+                          )}
+
+                          <button onClick={generateInviteLink} disabled={isGeneratingInvite} className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold text-xs uppercase hover:bg-slate-900 transition-all flex items-center justify-center gap-2 disabled:opacity-60">
+                              {isGeneratingInvite ? <Loader2 size={16} className="animate-spin"/> : <LinkIcon size={16}/>} 
+                              {isGeneratingInvite ? 'Gerando...' : 'Gerar Link'}
+                          </button>
                           {generatedLink && (
                               <div className="animate-in fade-in slide-in-from-top-2">
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Link do convite</p>
                                   <div className="flex items-center gap-2">
                                       <input readOnly className="flex-1 p-3 bg-green-50 border border-green-200 text-green-800 rounded-xl text-xs font-mono outline-none" value={generatedLink} />
                                       <button onClick={copyInviteLink} className="p-3 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-colors">{copied ? <Check size={18}/> : <Copy size={18}/>}</button>

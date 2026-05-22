@@ -432,7 +432,7 @@ const Events: React.FC = () => {
               <section className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm relative overflow-hidden">
                  <div className="absolute top-0 left-0 w-1.5 h-full bg-blue-600"></div>
                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-6 flex items-center gap-2"><User size={16} className="text-blue-600"/> 1. Definição de Vínculo (Obrigatório)</h4>
-                 <div className="grid grid-cols-2 gap-6">
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                     <div>
                         <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Associado / Proprietário</label>
                         <select className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none" value={formData.associateId} onChange={e => { setFormData({ ...formData, associateId: e.target.value, vehicleId: '' }); }} disabled={!!eventToEdit}>
@@ -455,7 +455,7 @@ const Events: React.FC = () => {
               <section className={`bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm transition-all duration-300 ${isFormLocked ? 'opacity-50 grayscale pointer-events-none' : ''}`}>
                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-6 flex items-center gap-2"><FileText size={16} className="text-blue-600"/> 2. Detalhes do Evento {isFormLocked && <Lock size={14} className="text-slate-400"/>}</h4>
                  <div className="space-y-6">
-                    <div className="p-5 bg-blue-50/50 rounded-3xl border border-blue-100 flex gap-4">
+                    <div className="p-5 bg-blue-50/50 rounded-3xl border border-blue-100 flex flex-col md:flex-row gap-4">
                       <div className="flex-1">
                         <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Modo de Geração</label>
                         <div className="flex bg-white p-1 rounded-xl">
@@ -468,7 +468,7 @@ const Events: React.FC = () => {
                         <input disabled={formData.protocolMode === 'auto'} className="w-full p-3 bg-white border border-slate-200 rounded-xl font-black outline-none text-slate-700" value={formData.protocolMode === 'auto' ? (eventToEdit ? eventToEdit.protocol : nextAutoProtocol) : formData.manualProtocol} onChange={e => setFormData({...formData, manualProtocol: e.target.value})} />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                         <div><label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Tipo</label><select className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 font-bold text-slate-700" value={formData.type} onChange={e => setFormData({...formData, type: e.target.value as any})}>{Object.values(EventType).map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                         <div><label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Categoria</label><select required className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 font-bold text-slate-700" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}><option value="">Selecione...</option>{PREDEFINED_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                     </div>
@@ -519,7 +519,7 @@ const Events: React.FC = () => {
             </div>
             <div className="p-6 bg-white border-t border-slate-100 flex justify-end gap-3 sticky bottom-0 z-10">
               <button type="button" onClick={() => setIsModalOpen(false)} className="px-8 py-3 text-slate-400 font-black uppercase text-[10px]">Cancelar</button>
-              <button type="submit" onClick={handleSave} disabled={isFormLocked || isSaving} className="px-12 py-4 bg-blue-600 text-white rounded-[20px] font-black text-xs uppercase tracking-widest shadow-xl flex items-center gap-2 disabled:opacity-50">
+              <button type="submit" onClick={handleSave} disabled={isFormLocked || isSaving} className="px-8 md:px-12 py-4 bg-blue-600 text-white rounded-[20px] font-black text-xs uppercase tracking-widest shadow-xl flex items-center gap-2 disabled:opacity-50">
                   {isSaving ? <Loader2 className="animate-spin" size={16}/> : (isFormLocked ? <Lock size={14}/> : <ShieldAlert size={16}/>)}
                   {isSaving ? 'Salvando...' : 'Salvar Sinistro'}
               </button>

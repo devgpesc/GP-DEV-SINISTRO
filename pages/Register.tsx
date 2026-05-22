@@ -94,6 +94,12 @@ const Register: React.FC = () => {
       });
 
       if (signUpError) {
+        const signUpMessage = (signUpError.message || '').toLowerCase();
+        if (signUpMessage.includes('error sending confirmation email') || signUpMessage.includes('error sending confirmation mail')) {
+            throw new Error(
+              'Não foi possível enviar o e-mail de confirmação. Verifique no Supabase: Authentication > Email (SMTP) e URL de redirecionamento do projeto.'
+            );
+        }
         if (signUpError.message.includes("unique")) {
             throw new Error("Este e-mail já está cadastrado. Tente fazer login.");
         } else {

@@ -56,7 +56,7 @@ const Suppliers: React.FC = () => {
   const { addToast } = useToast();
   const { user } = useAuth();
   
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [searchTerm, setSearchTerm] = useState('');
   
   const [isModalOpen, setIsModalOpen] = useState(false);

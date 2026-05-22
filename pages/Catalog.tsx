@@ -8,7 +8,7 @@ import { useToast } from '../context/ToastContext';
 const Catalog: React.FC = () => {
   const { addToast } = useToast();
   const [activeTab, setActiveTab] = useState<'Peça' | 'Serviço'>('Peça');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [searchTerm, setSearchTerm] = useState('');
   
   // States para CRUD
