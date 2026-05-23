@@ -34,6 +34,8 @@ const Reports: React.FC = () => {
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [events, setEvents] = useState<any[]>([]);
   const [releases, setReleases] = useState<any[]>([]);
+  const [poItems, setPoItems] = useState<any[]>([]);
+  const [suppliersMap, setSuppliersMap] = useState<Record<string, string>>({});
 
   useEffect(() => {
     loadData();
@@ -46,11 +48,19 @@ const Reports: React.FC = () => {
         const { data: dels } = await supabase.from('deliveries').select('*');
         const { data: evts } = await supabase.from('events').select('*');
         const { data: rels } = await supabase.from('quotation_item_releases').select('*');
+        const { data: poi } = await supabase
+          .from('purchase_order_items')
+          .select('quotation_item_id, purchase_orders!inner(id, supplier_id, created_at)');
+        const { data: sups } = await supabase.from('suppliers').select('id, name');
         
         setOrders(pos || []);
         setDeliveries(dels || []);
         setEvents(evts || []);
         setReleases(rels || []);
+        setPoItems(poi || []);
+        setSuppliersMap(
+          Object.fromEntries((sups || []).map((s: any) => [s.id, s.name]))
+        );
     } catch (e) {
         console.error("Erro ao carregar dados", e);
     } finally {
@@ -162,6 +172,46 @@ const Reports: React.FC = () => {
       .map(([reason, count]) => ({ reason, count }));
     return { total, topReasons };
   }, [releases]);
+
+  const supplierSwitchStats = useMemo(() => {
+    const releaseItemIds = new Set((releases || []).map((r: any) => r.quotation_item_id));
+    const itemOrdersMap: Record<string, Array<{ supplier_id: string; created_at: string }>> = {};
+
+    (poItems || []).forEach((row: any) => {
+      const itemId = row.quotation_item_id;
+      if (!itemId || !releaseItemIds.has(itemId)) return;
+      const order = row.purchase_orders;
+      if (!order?.supplier_id) return;
+      if (!itemOrdersMap[itemId]) itemOrdersMap[itemId] = [];
+      itemOrdersMap[itemId].push({ supplier_id: order.supplier_id, created_at: order.created_at });
+    });
+
+    const comparisons = Object.entries(itemOrdersMap).map(([itemId, rows]) => {
+      const sorted = [...rows].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      const original = sorted[0];
+      const latest = sorted[sorted.length - 1];
+      const changed = original?.supplier_id && latest?.supplier_id && original.supplier_id !== latest.supplier_id;
+      return {
+        itemId,
+        changed: !!changed,
+        originalSupplierId: original?.supplier_id || null,
+        latestSupplierId: latest?.supplier_id || null,
+      };
+    });
+
+    const switchedCount = comparisons.filter(c => c.changed).length;
+    const sameSupplierCount = comparisons.filter(c => !c.changed).length;
+    const examples = comparisons
+      .filter(c => c.changed)
+      .slice(0, 5)
+      .map(c => ({
+        itemId: c.itemId,
+        originalSupplier: c.originalSupplierId ? (suppliersMap[c.originalSupplierId] || c.originalSupplierId) : 'N/A',
+        newSupplier: c.latestSupplierId ? (suppliersMap[c.latestSupplierId] || c.latestSupplierId) : 'N/A',
+      }));
+
+    return { switchedCount, sameSupplierCount, analyzedItems: comparisons.length, examples };
+  }, [releases, poItems, suppliersMap]);
 
   // --- DADOS DOS GRÁFICOS ---
   const chartData = useMemo(() => {
@@ -295,6 +345,45 @@ const Reports: React.FC = () => {
               </div>
             ))}
           </div>
+        )}
+      </div>
+
+      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">Fornecedor Original x Recompra</h3>
+          <span className="px-3 py-1 rounded-xl bg-blue-100 text-blue-700 text-xs font-black">{supplierSwitchStats.analyzedItems} item(ns) analisado(s)</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100">
+            <p className="text-[10px] font-black uppercase text-slate-400 mb-1">Trocaram fornecedor</p>
+            <p className="text-2xl font-black text-amber-700">{supplierSwitchStats.switchedCount}</p>
+          </div>
+          <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100">
+            <p className="text-[10px] font-black uppercase text-slate-400 mb-1">Sem troca</p>
+            <p className="text-2xl font-black text-slate-700">{supplierSwitchStats.sameSupplierCount}</p>
+          </div>
+          <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100">
+            <p className="text-[10px] font-black uppercase text-slate-400 mb-1">Taxa de troca</p>
+            <p className="text-2xl font-black text-blue-700">
+              {supplierSwitchStats.analyzedItems > 0
+                ? `${((supplierSwitchStats.switchedCount / supplierSwitchStats.analyzedItems) * 100).toFixed(0)}%`
+                : '0%'}
+            </p>
+          </div>
+        </div>
+        {supplierSwitchStats.examples.length > 0 ? (
+          <div className="space-y-2">
+            {supplierSwitchStats.examples.map((ex, idx) => (
+              <div key={`${ex.itemId}-${idx}`} className="p-3 rounded-xl border border-slate-100 bg-white flex items-center justify-between gap-3">
+                <span className="text-xs font-bold text-slate-500">Item {ex.itemId.slice(0, 8)}...</span>
+                <span className="text-xs font-black text-slate-700">{ex.originalSupplier}</span>
+                <span className="text-xs font-bold text-slate-400">→</span>
+                <span className="text-xs font-black text-blue-700">{ex.newSupplier}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs font-medium text-slate-400">Sem trocas de fornecedor registradas nas liberações de recompra.</p>
         )}
       </div>
 
