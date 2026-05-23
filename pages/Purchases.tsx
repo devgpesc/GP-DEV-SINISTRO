@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   ShoppingCart, Search, Filter, CheckCircle2, XCircle, Printer, MoreVertical, 
@@ -132,10 +132,52 @@ const Purchases: React.FC = () => {
 
   const canApprove = currentUserRole === 'Admin' || currentUserRole === 'Gerente';
 
-  const updateOrderStatus = async (id: string, newStatus: PurchaseOrder['status']) => {
+  const syncWorkflowStatus = async (orderContext: any, forcedOrderStatus?: PurchaseOrder['status']) => {
+    if (!orderContext?.quotationId && !orderContext?.eventId) return;
+    try {
+      if (orderContext?.quotationId) {
+        const { data: relatedOrders } = await supabase
+          .from('purchase_orders')
+          .select('status')
+          .eq('quotation_id', orderContext.quotationId);
+
+        const statuses = (relatedOrders || []).map((row: any) => row.status);
+        let quotationStatus = 'Aguardando Aprovação';
+        if (statuses.length > 0) {
+          const allCanceled = statuses.every((status: string) => status === 'Cancelada');
+          const hasPendingApproval = statuses.some((status: string) => status === 'Gerada');
+          const hasReceived = statuses.some((status: string) => status === 'Recebida');
+          const allApprovedOrReceived = statuses.every((status: string) => status === 'Aprovada' || status === 'Recebida');
+          if (allCanceled) quotationStatus = 'Cancelada';
+          else if (hasPendingApproval) quotationStatus = 'Aguardando Aprovação';
+          else if (hasReceived) quotationStatus = 'Compra Realizada';
+          else if (allApprovedOrReceived) quotationStatus = 'Compra Autorizada';
+        } else if (forcedOrderStatus === 'Cancelada') {
+          quotationStatus = 'Cancelada';
+        }
+
+        await supabase.from('quotations').update({ status: quotationStatus }).eq('id', orderContext.quotationId);
+        if (orderContext?.eventId) {
+          let eventStatus = 'Aguardando Aprovação';
+          if (quotationStatus === 'Cancelada') eventStatus = 'Reprovado';
+          else if (quotationStatus === 'Compra Realizada') eventStatus = 'Concluído';
+          else if (quotationStatus === 'Compra Autorizada') eventStatus = 'Aprovado';
+          await supabase.from('events').update({ status: eventStatus }).eq('id', orderContext.eventId);
+        }
+      } else if (orderContext?.eventId) {
+        const mapped = forcedOrderStatus === 'Aprovada' ? 'Aprovado' : forcedOrderStatus === 'Recebida' ? 'Concluído' : forcedOrderStatus === 'Cancelada' ? 'Reprovado' : 'Aguardando Aprovação';
+        await supabase.from('events').update({ status: mapped }).eq('id', orderContext.eventId);
+      }
+    } catch (statusError) {
+      console.warn('Falha ao sincronizar status do fluxo:', statusError);
+    }
+  };
+
+  const updateOrderStatus = async (id: string, newStatus: PurchaseOrder['status'], orderContext?: any) => {
     const { error } = await supabase.from('purchase_orders').update({ status: newStatus }).eq('id', id);
     if (!error) {
         setOrders(prev => prev.map(o => o.id === id ? { ...o, status: newStatus } : o));
+        await syncWorkflowStatus(orderContext, newStatus);
     } else {
         setToast({ show: true, title: 'Erro', message: 'Falha ao atualizar status.', type: 'info' });
     }
@@ -177,15 +219,19 @@ const Purchases: React.FC = () => {
   const executeAction = async () => {
     if (confirmModal.orderId && confirmModal.type) {
       if (confirmModal.type === 'approve') {
-        await updateOrderStatus(confirmModal.orderId, 'Aprovada');
+        const order = orders.find(o => o.id === confirmModal.orderId);
+        await updateOrderStatus(confirmModal.orderId, 'Aprovada', order);
         setToast({ show: true, title: 'Sucesso', message: `Ordem ${confirmModal.orderCode} aprovada.`, type: 'success' });
       } else if (confirmModal.type === 'cancel') {
-        await updateOrderStatus(confirmModal.orderId, 'Cancelada');
+        const order = orders.find(o => o.id === confirmModal.orderId);
+        await updateOrderStatus(confirmModal.orderId, 'Cancelada', order);
         setToast({ show: true, title: 'Cancelado', message: `Ordem ${confirmModal.orderCode} foi cancelada.`, type: 'info' });
       } else if (confirmModal.type === 'delete') {
+        const order = orders.find(o => o.id === confirmModal.orderId);
         const { error } = await supabase.from('purchase_orders').delete().eq('id', confirmModal.orderId);
         if (!error) {
             setOrders(prev => prev.filter(o => o.id !== confirmModal.orderId));
+            await syncWorkflowStatus(order, 'Cancelada');
             setToast({ show: true, title: 'Excluído', message: `Ordem ${confirmModal.orderCode} removida.`, type: 'success' });
         } else {
             setToast({ show: true, title: 'Erro', message: 'Não foi possível excluir.', type: 'info' });
@@ -549,3 +595,5 @@ const Purchases: React.FC = () => {
 };
 
 export default Purchases;
+
+

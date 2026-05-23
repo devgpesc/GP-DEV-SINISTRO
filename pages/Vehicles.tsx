@@ -192,10 +192,22 @@ const Vehicles: React.FC = () => {
     if (!formData.plate || formData.plate.length < 7) return;
     setIsSearchingPlate(true);
     setLookupError(null);
+    const requestPlate = (formData.plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
     
     try {
-      const data = await lookupService.fetchPlate(formData.plate);
+      const data = await lookupService.fetchPlate(requestPlate);
+      const currentPlate = (formData.plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+      // Evita condição de corrida: se o usuário alterou a placa antes da resposta,
+      // ignoramos o resultado antigo para não preencher veículo incorreto.
+      if (currentPlate !== requestPlate) return;
+
       if (data) {
+        const returnedPlate = (data.plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        if (returnedPlate && returnedPlate !== requestPlate) {
+          setLookupError('A API retornou dados de outra placa. Confira e tente novamente.');
+          return;
+        }
         setFormData(prev => ({ 
             ...prev, 
             ...data

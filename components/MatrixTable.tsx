@@ -22,6 +22,7 @@ import { quotationService, ManualPurchaseSelection } from '../services/quotation
 import { QuotationItem, Supplier, SupplierPrice } from '../types';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../services/supabaseClient';
+import * as XLSX from 'xlsx';
 
 interface MatrixProps {
   quotationId?: string;
@@ -50,12 +51,16 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
   const [filterText, setFilterText] = useState('');
   const [filterSupplier, setFilterSupplier] = useState('');
   const [filterStatus, setFilterStatus] = useState('Todos');
+  const [filterVersion, setFilterVersion] = useState('Todas as versões');
+  const [itemsPerPage, setItemsPerPage] = useState(15);
+  const [currentPage, setCurrentPage] = useState(1);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [editPrice, setEditPrice] = useState('');
   const [editObs, setEditObs] = useState('');
   const [editDeliveryDays, setEditDeliveryDays] = useState('');
   const [editAvailability, setEditAvailability] = useState(true);
   const [isSavingPrice, setIsSavingPrice] = useState(false);
+  const [expandedSupplierIds, setExpandedSupplierIds] = useState<string[]>([]);
   const [headerMeta, setHeaderMeta] = useState<{
     quotationCode?: string;
     eventProtocol?: string;
@@ -67,6 +72,10 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
   useEffect(() => {
     if (quotationId) loadData();
   }, [quotationId]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterText, filterStatus, filterSupplier, filterVersion, itemsPerPage]);
 
   const loadData = async () => {
     if (!quotationId) return;
@@ -279,9 +288,21 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
     return { totalItems, quotedItems, selectedItems, selectedTotal, avgItemValue, coverage, responsesCount: prices.length };
   }, [items, prices, selections, selectedGroups]);
 
-  const filteredItems = items.filter((item) => {
+  const versionOptions = useMemo(() => {
+    const values = new Set<string>();
+    items.forEach((item: any) => {
+      const raw = item.complement || item.version || item.variant;
+      if (raw) values.add(String(raw));
+    });
+    return ['Todas as versões', ...Array.from(values)];
+  }, [items]);
+
+  const filteredItems = items.filter((item: any) => {
     const matchesText = item.name.toLowerCase().includes(filterText.toLowerCase());
     const hasPrice = prices.some((price) => price.quotation_item_id === item.id);
+    const complement = item.complement || item.version || item.variant || '';
+    const matchesVersion = filterVersion === 'Todas as versões' || String(complement) === filterVersion;
+    if (!matchesVersion) return false;
     if (filterStatus === 'Sem Cotacao') return matchesText && !hasPrice;
     if (filterStatus === 'Cotado') return matchesText && hasPrice;
     if (filterStatus === 'Selecionado') return matchesText && !!selections[item.id];
@@ -290,6 +311,8 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
   });
 
   const filteredSuppliers = suppliers.filter((supplier) => !filterSupplier || supplier.id === filterSupplier);
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / itemsPerPage));
+  const paginatedItems = filteredItems.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const handleProcessPurchase = async () => {
     if (!quotationId) return;
@@ -347,6 +370,34 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
     link.download = `matriz-cotacao-${quotationId}.csv`;
     link.click();
     URL.revokeObjectURL(url);
+  };
+
+  const exportXlsx = () => {
+    const rows = items.flatMap((item: any) => suppliers.map((supplier) => {
+      const price = prices.find((candidate) => candidate.quotation_item_id === item.id && candidate.supplier_id === supplier.id);
+      const selection = selections[item.id];
+      return {
+        Item: item.name,
+        Quantidade: item.quantity,
+        Unidade: item.unit,
+        VersaoComplemento: item.complement || item.version || item.variant || '',
+        Fornecedor: supplier.name,
+        Valor: price?.price ?? '',
+        PrazoDias: price?.delivery_days ?? '',
+        Disponivel: price ? (price.availability === false ? 'Não' : 'Sim') : '',
+        Selecionado: selection?.supplierId === supplier.id ? 'Sim' : 'Não',
+        Justificativa: selection?.supplierId === supplier.id ? selection.justification || '' : '',
+      };
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'MatrizCotacao');
+    XLSX.writeFile(wb, `matriz-cotacao-${quotationId}.xlsx`);
+  };
+
+  const toggleSupplierDetails = (supplierId: string) => {
+    setExpandedSupplierIds((prev) => prev.includes(supplierId) ? prev.filter((id) => id !== supplierId) : [...prev, supplierId]);
   };
 
   if (loading) {
@@ -435,10 +486,17 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
             <option>Selecionado</option>
             <option>Processado</option>
           </select>
+          <select className="px-4 py-2 bg-white rounded-xl text-sm font-bold text-slate-600 outline-none" value={filterVersion} onChange={(event) => setFilterVersion(event.target.value)}>
+            {versionOptions.map((version) => <option key={version} value={version}>{version}</option>)}
+          </select>
+          <select className="px-4 py-2 bg-white rounded-xl text-sm font-bold text-slate-600 outline-none" value={itemsPerPage} onChange={(event) => setItemsPerPage(Number(event.target.value))}>
+            {[10, 15, 20, 30, 50].map((qty) => <option key={qty} value={qty}>{qty} itens/página</option>)}
+          </select>
         </div>
         <div className="flex gap-2">
           <button onClick={handlePrint} className="p-2 bg-white text-slate-600 hover:text-blue-600 rounded-xl transition-all shadow-sm" title="Imprimir/PDF"><FileText size={18} /></button>
           <button onClick={exportCsv} className="p-2 bg-white text-slate-600 hover:text-green-600 rounded-xl transition-all shadow-sm" title="Exportar CSV/Excel"><Download size={18} /></button>
+          <button onClick={exportXlsx} className="px-3 py-2 bg-white text-slate-600 hover:text-emerald-700 rounded-xl transition-all shadow-sm text-xs font-black uppercase tracking-wider" title="Exportar XLSX">XLSX</button>
         </div>
       </div>
 
@@ -456,7 +514,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {filteredItems.map((item) => {
+            {paginatedItems.map((item) => {
               const isProcessed = processedItemIds.includes(item.id);
               return (
                 <tr key={item.id} className={isProcessed ? 'bg-slate-50/80' : 'hover:bg-slate-50/50'}>
@@ -520,6 +578,15 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
         </table>
       </div>
 
+      <div className="flex items-center justify-between text-xs font-bold text-slate-500 print:hidden">
+        <span>Mostrando {paginatedItems.length} de {filteredItems.length} item(ns)</span>
+        <div className="flex items-center gap-2">
+          <button disabled={currentPage <= 1} onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} className="px-3 py-1.5 rounded-lg bg-slate-100 disabled:opacity-40">Anterior</button>
+          <span>Página {currentPage} de {totalPages}</span>
+          <button disabled={currentPage >= totalPages} onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} className="px-3 py-1.5 rounded-lg bg-slate-100 disabled:opacity-40">Próxima</button>
+        </div>
+      </div>
+
       {selectedGroups.length > 0 && (
         <div className="bg-white border border-slate-200 rounded-[32px] shadow-sm p-6 print:break-before-page">
           <div className="flex items-center justify-between gap-4 mb-5">
@@ -532,14 +599,24 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {selectedGroups.map((group) => (
               <div key={group.supplier.id} className="border border-slate-100 rounded-2xl p-4">
-                <div className="flex items-center justify-between mb-3"><h4 className="font-black text-slate-800">{group.supplier.name}</h4><span className="font-black text-blue-600">R$ {money(group.total)}</span></div>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-black text-slate-800">{group.supplier.name}</h4>
+                  <span className="font-black text-blue-600">R$ {money(group.total)}</span>
+                </div>
                 <p className="text-[10px] text-slate-400 font-black uppercase mb-3">{group.rows.length} item(ns) selecionado(s)</p>
+                <button onClick={() => toggleSupplierDetails(group.supplier.id)} className="mb-3 px-3 py-1.5 rounded-lg bg-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-600 print:hidden">
+                  {expandedSupplierIds.includes(group.supplier.id) ? 'Ocultar detalhes' : 'Ver detalhes'}
+                </button>
                 <div className="space-y-3">
                   {group.rows.map(({ item, price, selection }) => {
                     const isNotBest = bestPriceByItem[item.id] !== undefined && price.price > bestPriceByItem[item.id];
+                    const showDetails = expandedSupplierIds.includes(group.supplier.id);
                     return (
                       <div key={item.id} className="bg-slate-50 rounded-xl p-3">
                         <div className="flex justify-between gap-3"><span className="text-sm font-bold text-slate-700">{item.name}</span><span className="text-sm font-black text-slate-800">R$ {money(price.price * selection.quantity)}</span></div>
+                        {showDetails && (
+                          <p className="mt-1 text-[11px] text-slate-500 font-medium">Unitário: R$ {money(price.price)} • Prazo: {price.delivery_days ? `${price.delivery_days} dia(s)` : 'não informado'} • Disponível: {price.availability === false ? 'Não' : 'Sim'}</p>
+                        )}
                         <div className="flex items-center gap-2 mt-2 print:hidden">
                           <label className="text-[10px] font-black uppercase text-slate-400">Qtd</label>
                           <input type="number" min={1} value={selection.quantity} onChange={(event) => updateSelection(item, { quantity: Number(event.target.value) })} className="w-20 px-2 py-1 rounded-lg border border-slate-200 text-xs font-bold" />
