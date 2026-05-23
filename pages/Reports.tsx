@@ -36,6 +36,7 @@ const Reports: React.FC = () => {
   const [releases, setReleases] = useState<any[]>([]);
   const [poItems, setPoItems] = useState<any[]>([]);
   const [suppliersMap, setSuppliersMap] = useState<Record<string, string>>({});
+  const [repurchasePeriodDays, setRepurchasePeriodDays] = useState<30 | 60 | 90>(30);
 
   useEffect(() => {
     loadData();
@@ -160,9 +161,16 @@ const Reports: React.FC = () => {
   }, [filteredOrders, orders]);
 
   const repurchaseStats = useMemo(() => {
-    const total = releases.length;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - repurchasePeriodDays);
+    const releasesInPeriod = (releases || []).filter((r: any) => {
+      if (!r?.created_at) return false;
+      return new Date(r.created_at) >= cutoff;
+    });
+
+    const total = releasesInPeriod.length;
     const reasonsCount: Record<string, number> = {};
-    releases.forEach((r: any) => {
+    releasesInPeriod.forEach((r: any) => {
       const reason = (r.reason || 'Sem motivo').trim();
       reasonsCount[reason] = (reasonsCount[reason] || 0) + 1;
     });
@@ -171,10 +179,16 @@ const Reports: React.FC = () => {
       .slice(0, 3)
       .map(([reason, count]) => ({ reason, count }));
     return { total, topReasons };
-  }, [releases]);
+  }, [releases, repurchasePeriodDays]);
 
   const supplierSwitchStats = useMemo(() => {
-    const releaseItemIds = new Set((releases || []).map((r: any) => r.quotation_item_id));
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - repurchasePeriodDays);
+    const releasesInPeriod = (releases || []).filter((r: any) => {
+      if (!r?.created_at) return false;
+      return new Date(r.created_at) >= cutoff;
+    });
+    const releaseItemIds = new Set(releasesInPeriod.map((r: any) => r.quotation_item_id));
     const itemOrdersMap: Record<string, Array<{ supplier_id: string; created_at: string }>> = {};
 
     (poItems || []).forEach((row: any) => {
@@ -211,7 +225,7 @@ const Reports: React.FC = () => {
       }));
 
     return { switchedCount, sameSupplierCount, analyzedItems: comparisons.length, examples };
-  }, [releases, poItems, suppliersMap]);
+  }, [releases, poItems, suppliersMap, repurchasePeriodDays]);
 
   // --- DADOS DOS GRÁFICOS ---
   const chartData = useMemo(() => {
@@ -326,6 +340,22 @@ const Reports: React.FC = () => {
            <h3 className="text-2xl font-black text-slate-800 mt-2">{strategicKPIs.conversionRate.toFixed(1)}%</h3>
            <p className="text-[10px] font-bold text-slate-400 mt-1">{strategicKPIs.volume} OCs totais</p>
         </div>
+      </div>
+
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Janela Gerencial de Recompra</p>
+          <p className="text-xs font-medium text-slate-500">Aplicado em recompra/estorno e comparação de troca de fornecedor.</p>
+        </div>
+        <select
+          value={repurchasePeriodDays}
+          onChange={(e) => setRepurchasePeriodDays(Number(e.target.value) as 30 | 60 | 90)}
+          className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-black text-slate-600"
+        >
+          <option value={30}>Últimos 30 dias</option>
+          <option value={60}>Últimos 60 dias</option>
+          <option value={90}>Últimos 90 dias</option>
+        </select>
       </div>
 
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">

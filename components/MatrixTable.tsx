@@ -61,6 +61,8 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
   const [editAvailability, setEditAvailability] = useState(true);
   const [isSavingPrice, setIsSavingPrice] = useState(false);
   const [releasingItemId, setReleasingItemId] = useState<string | null>(null);
+  const [releaseModalItem, setReleaseModalItem] = useState<QuotationItem | null>(null);
+  const [releaseReason, setReleaseReason] = useState('');
   const [expandedSupplierIds, setExpandedSupplierIds] = useState<string[]>([]);
   const [headerMeta, setHeaderMeta] = useState<{
     quotationCode?: string;
@@ -264,18 +266,29 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
     setSelections({});
   };
 
-  const releaseForRepurchase = async (item: QuotationItem) => {
-    if (!quotationId) return;
-    const reason = window.prompt(`Informe o motivo da liberação de recompra para "${item.name}":`);
-    if (!reason || !reason.trim()) {
+  const openReleaseModal = (item: QuotationItem) => {
+    setReleaseModalItem(item);
+    setReleaseReason('');
+  };
+
+  const closeReleaseModal = () => {
+    setReleaseModalItem(null);
+    setReleaseReason('');
+  };
+
+  const releaseForRepurchase = async () => {
+    if (!quotationId || !releaseModalItem) return;
+    const reason = releaseReason.trim();
+    if (!reason) {
       addToast('warning', 'Motivo obrigatório', 'A liberação exige justificativa.');
       return;
     }
 
-    setReleasingItemId(item.id);
+    setReleasingItemId(releaseModalItem.id);
     try {
-      await quotationService.releaseItemForRepurchase(quotationId, item.id, reason);
+      await quotationService.releaseItemForRepurchase(quotationId, releaseModalItem.id, reason);
       addToast('success', 'Item liberado', 'O item voltou para compra com histórico da justificativa.');
+      closeReleaseModal();
       await loadData();
     } catch (error: any) {
       addToast('error', 'Erro ao liberar', error.message || 'Não foi possível liberar item para recompra.');
@@ -549,7 +562,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
                     {isProcessed && (
                       <button
                         type="button"
-                        onClick={() => releaseForRepurchase(item)}
+                        onClick={() => openReleaseModal(item)}
                         disabled={releasingItemId === item.id}
                         className="mt-2 px-2.5 py-1 rounded-lg bg-amber-100 text-amber-700 text-[10px] font-black uppercase tracking-wider disabled:opacity-50 print:hidden"
                       >
@@ -673,6 +686,51 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
       {selectedGroups.length === 0 && (
         <div className="flex justify-end pt-2 pb-20 print:hidden">
           <button disabled className="px-8 py-4 bg-slate-200 text-slate-400 rounded-[20px] font-black text-xs uppercase tracking-widest flex items-center gap-3"><XCircle size={18} /> Nenhum item selecionado</button>
+        </div>
+      )}
+
+      {releaseModalItem && (
+        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-[2px] flex items-center justify-center p-4 print:hidden">
+          <div className="w-full max-w-xl bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden">
+            <div className="px-6 py-5 border-b border-slate-100 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-widest text-amber-600 mb-1">Liberar Recompra</p>
+                <h3 className="text-xl font-black text-slate-800 leading-tight">{releaseModalItem.name}</h3>
+              </div>
+              <button onClick={closeReleaseModal} className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-6 space-y-3">
+              <p className="text-sm text-slate-600 font-medium">
+                Informe o motivo da liberação. Isso ficará registrado no histórico e no relatório gerencial.
+              </p>
+              <textarea
+                value={releaseReason}
+                onChange={(event) => setReleaseReason(event.target.value)}
+                maxLength={280}
+                placeholder="Ex.: peça devolvida por defeito, estorno confirmado e nova compra necessária."
+                className="w-full min-h-[120px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-300"
+              />
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-400 font-bold">Motivo obrigatório</span>
+                <span className="text-slate-400 font-bold">{releaseReason.trim().length}/280</span>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-3">
+              <button onClick={closeReleaseModal} className="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider text-slate-600 bg-white border border-slate-200">
+                Cancelar
+              </button>
+              <button
+                onClick={releaseForRepurchase}
+                disabled={releasingItemId === releaseModalItem.id || !releaseReason.trim()}
+                className="px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {releasingItemId === releaseModalItem.id ? <Loader2 size={14} className="animate-spin" /> : null}
+                Confirmar Liberação
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

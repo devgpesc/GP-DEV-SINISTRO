@@ -7,6 +7,11 @@ export interface ManualPurchaseSelection {
   justification?: string;
 }
 
+const isMissingTableError = (error: any, tableName: string) => {
+  const message = String(error?.message || '').toLowerCase();
+  return message.includes(`'public.${tableName}'`) && message.includes('schema cache');
+};
+
 export const quotationService = {
   async getMatrixData(quotationId: string): Promise<{
     items: QuotationItem[];
@@ -86,8 +91,19 @@ export const quotationService = {
       .eq('status', 'released');
 
     if (releaseError) {
-      // Se a tabela ainda não existir em algum ambiente, mantém comportamento atual sem quebrar.
-      return processedIds;
+      if (!isMissingTableError(releaseError, 'quotation_item_releases')) return processedIds;
+      const { data: fallbackRows, error: fallbackError } = await supabase
+        .from('quotation_decision_history')
+        .select('details')
+        .eq('quotation_id', quotationId)
+        .eq('action', 'release_repurchase');
+      if (fallbackError) return processedIds;
+      const releasedFallbackIds = new Set(
+        (fallbackRows || [])
+          .map((row: any) => row?.details?.quotation_item_id)
+          .filter(Boolean)
+      );
+      return processedIds.filter((id) => !releasedFallbackIds.has(id));
     }
 
     const releasedIds = new Set((releasedRows || []).map((row: any) => row.quotation_item_id).filter(Boolean));
@@ -101,16 +117,19 @@ export const quotationService = {
     const { data: { user } } = await (supabase.auth as any).getUser();
     const userId = user?.id || null;
 
-    const { error } = await supabase.from('quotation_item_releases').upsert({
-      quotation_id: quotationId,
-      quotation_item_id: itemId,
-      reason: trimmedReason,
-      status: 'released',
-      created_by: userId,
-      created_at: new Date().toISOString(),
-    }, { onConflict: 'quotation_id, quotation_item_id' });
+    const { error } = await supabase.from('quotation_item_releases').upsert(
+      {
+        quotation_id: quotationId,
+        quotation_item_id: itemId,
+        reason: trimmedReason,
+        status: 'released',
+        created_by: userId,
+        created_at: new Date().toISOString(),
+      },
+      { onConflict: 'quotation_id, quotation_item_id' }
+    );
 
-    if (error) throw error;
+    if (error && !isMissingTableError(error, 'quotation_item_releases')) throw error;
 
     await supabase
       .from('quotation_purchase_selections')
@@ -122,6 +141,7 @@ export const quotationService = {
       quotation_item_id: itemId,
       reason: trimmedReason,
       user_id: userId,
+      source: error ? 'fallback_decision_history' : 'quotation_item_releases',
     });
   },
 
