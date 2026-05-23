@@ -56,13 +56,12 @@ const Events: React.FC = () => {
   const [filters, setFilters] = useState({
     status: '',
     priority: '',
-    category: '',
+    type: '',
     responsible: '',
     startDate: '',
     endDate: ''
   });
 
-  const PREDEFINED_CATEGORIES = ['Mecânica', 'Elétrica', 'Funilaria', 'Seguro', 'Outros'];
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
@@ -70,7 +69,6 @@ const Events: React.FC = () => {
     manualProtocol: '',
     type: EventType.COLLISION,
     priority: Priority.MEDIUM,
-    category: '',
     vehicleId: '',
     associateId: '',
     description: '',
@@ -115,7 +113,6 @@ const Events: React.FC = () => {
       manualProtocol: evt.protocol,
       type: evt.type,
       priority: evt.priority,
-      category: evt.category,
       vehicleId: evt.vehicleId,
       associateId: evt.associateId,
       description: evt.description,
@@ -131,7 +128,6 @@ const Events: React.FC = () => {
         manualProtocol: '',
         type: EventType.COLLISION,
         priority: Priority.MEDIUM,
-        category: '',
         vehicleId: '',
         associateId: '',
         description: '',
@@ -184,7 +180,7 @@ const Events: React.FC = () => {
             protocol,
             type: formData.type,
             priority: formData.priority,
-            category: formData.category || 'Não categorizado',
+            category: formData.type,
             vehicleId: formData.vehicleId,
             associateId: formData.associateId,
             description: formData.description,
@@ -230,7 +226,7 @@ const Events: React.FC = () => {
     setFilters({
       status: '',
       priority: '',
-      category: '',
+      type: '',
       responsible: '',
       startDate: '',
       endDate: ''
@@ -254,7 +250,7 @@ const Events: React.FC = () => {
     // Filtros Específicos
     if (filters.status && e.status !== filters.status) return false;
     if (filters.priority && e.priority !== filters.priority) return false;
-    if (filters.category && e.category !== filters.category) return false;
+    if (filters.type && e.type !== filters.type) return false;
     
     // Filtro de Datas
     if (filters.startDate) {
@@ -329,10 +325,10 @@ const Events: React.FC = () => {
                </select>
              </div>
              <div>
-               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Categoria</label>
-               <select className="w-full p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm outline-none" value={filters.category} onChange={e => setFilters({...filters, category: e.target.value})}>
-                 <option value="">Todas</option>
-                 {PREDEFINED_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Tipo</label>
+               <select className="w-full p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm outline-none" value={filters.type} onChange={e => setFilters({...filters, type: e.target.value})}>
+                 <option value="">Todos</option>
+                 {Object.values(EventType).map(t => <option key={t} value={t}>{t}</option>)}
                </select>
              </div>
              <div>
@@ -468,9 +464,8 @@ const Events: React.FC = () => {
                         <input disabled={formData.protocolMode === 'auto'} className="w-full p-3 bg-white border border-slate-200 rounded-xl font-black outline-none text-slate-700" value={formData.protocolMode === 'auto' ? (eventToEdit ? eventToEdit.protocol : nextAutoProtocol) : formData.manualProtocol} onChange={e => setFormData({...formData, manualProtocol: e.target.value})} />
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+                    <div className="grid grid-cols-1 gap-4 md:gap-6">
                         <div><label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Tipo</label><select className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 font-bold text-slate-700" value={formData.type} onChange={e => setFormData({...formData, type: e.target.value as any})}>{Object.values(EventType).map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                        <div><label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Categoria</label><select required className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 font-bold text-slate-700" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}><option value="">Selecione...</option>{PREDEFINED_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                     </div>
                     <div><label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Descrição do Ocorrido</label><textarea className="w-full p-5 bg-slate-50 rounded-3xl border border-slate-100 h-28 outline-none font-medium resize-none text-slate-700" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} /></div>
                  </div>

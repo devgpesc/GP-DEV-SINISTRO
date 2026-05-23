@@ -21,6 +21,7 @@ import {
 import { quotationService, ManualPurchaseSelection } from '../services/quotationService';
 import { QuotationItem, Supplier, SupplierPrice } from '../types';
 import { useToast } from '../context/ToastContext';
+import { supabase } from '../services/supabaseClient';
 
 interface MatrixProps {
   quotationId?: string;
@@ -55,6 +56,13 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
   const [editDeliveryDays, setEditDeliveryDays] = useState('');
   const [editAvailability, setEditAvailability] = useState(true);
   const [isSavingPrice, setIsSavingPrice] = useState(false);
+  const [headerMeta, setHeaderMeta] = useState<{
+    quotationCode?: string;
+    eventProtocol?: string;
+    associateName?: string;
+    vehicleLabel?: string;
+    createdAt?: string;
+  } | null>(null);
 
   useEffect(() => {
     if (quotationId) loadData();
@@ -81,6 +89,48 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
           };
         });
       setSelections(persistedSelections);
+
+      const { data: quotationRow } = await supabase
+        .from('quotations')
+        .select('id, code, eventRef, eventId, created_at')
+        .eq('id', quotationId)
+        .maybeSingle();
+
+      const eventRefId = eventId || quotationRow?.eventId || null;
+      let associateName = '';
+      let vehicleLabel = '';
+      let eventProtocol = quotationRow?.eventRef || '';
+
+      if (eventRefId) {
+        const { data: eventRow } = await supabase
+          .from('events')
+          .select('id, protocol, associateId, vehicleId')
+          .eq('id', eventRefId)
+          .maybeSingle();
+
+        if (eventRow) {
+          eventProtocol = eventRow.protocol || eventProtocol;
+
+          const [{ data: associateRow }, { data: vehicleRow }] = await Promise.all([
+            eventRow.associateId ? supabase.from('associates').select('name').eq('id', eventRow.associateId).maybeSingle() : Promise.resolve({ data: null as any }),
+            eventRow.vehicleId ? supabase.from('vehicles').select('brand, model, plate, year_fab, year_model').eq('id', eventRow.vehicleId).maybeSingle() : Promise.resolve({ data: null as any }),
+          ]);
+
+          associateName = associateRow?.name || '';
+          if (vehicleRow) {
+            const yearLabel = vehicleRow.year_model || vehicleRow.year_fab;
+            vehicleLabel = `${vehicleRow.brand || ''} ${vehicleRow.model || ''}${yearLabel ? ` (${yearLabel})` : ''}${vehicleRow.plate ? ` - ${vehicleRow.plate}` : ''}`.trim();
+          }
+        }
+      }
+
+      setHeaderMeta({
+        quotationCode: quotationRow?.code || undefined,
+        eventProtocol: eventProtocol || undefined,
+        associateName: associateName || undefined,
+        vehicleLabel: vehicleLabel || undefined,
+        createdAt: quotationRow?.created_at || undefined,
+      });
     } catch (error) {
       console.error('Erro Matrix:', error);
       addToast('error', 'Erro ao carregar matriz', 'Nao foi possivel buscar os dados.');
@@ -315,6 +365,27 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
           <div>
             <p className="font-black text-sm uppercase tracking-widest">Decisao de compra manual</p>
             <p className="text-sm font-medium">O menor preco e apenas destacado. O sistema nao seleciona fornecedor automaticamente. Clique no valor desejado para escolher onde comprar cada item.</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-[24px] p-5 shadow-sm">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Pré-Orçamento</p>
+            <p className="font-black text-slate-800">{headerMeta?.quotationCode || quotationId}</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Sinistro</p>
+            <p className="font-black text-slate-800">{headerMeta?.eventProtocol || 'Não vinculado'}</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Cliente</p>
+            <p className="font-black text-slate-800">{headerMeta?.associateName || 'Não identificado'}</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Veículo</p>
+            <p className="font-black text-slate-800">{headerMeta?.vehicleLabel || 'Não identificado'}</p>
           </div>
         </div>
       </div>

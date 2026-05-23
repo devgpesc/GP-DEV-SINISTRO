@@ -395,7 +395,7 @@ const Purchases: React.FC = () => {
                     <button onClick={() => setViewOrder(null)}><X size={20}/></button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-6">
-                    <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-3">
                         <div className="p-4 rounded-2xl bg-blue-50 border border-blue-100">
                             <p className="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-1">Cliente</p>
                             <p className="text-sm font-black text-slate-800">{viewOrder.customerName}</p>
@@ -406,19 +406,34 @@ const Purchases: React.FC = () => {
                             <p className="text-sm font-black text-slate-800">{viewOrder.eventProtocol || 'Sinistro nao vinculado'}</p>
                             {viewOrder.vehicleLabel && <p className="text-xs font-bold text-slate-500 mt-1">{viewOrder.vehicleLabel}</p>}
                         </div>
+                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Fornecedor / Status</p>
+                            <p className="text-sm font-black text-slate-800">{viewOrder.supplierName}</p>
+                            <p className="text-xs font-bold text-slate-500 mt-1">{new Date(viewOrder.createdAt).toLocaleDateString('pt-BR')} • {viewOrder.status}</p>
+                        </div>
                     </div>
                     <table className="w-full text-left">
-                        <thead><tr><th className="pb-2 text-xs font-black text-slate-400 uppercase">Item</th><th className="pb-2 text-center text-xs font-black text-slate-400 uppercase">Qtd</th><th className="pb-2 text-right text-xs font-black text-slate-400 uppercase">Total</th></tr></thead>
+                        <thead><tr><th className="pb-2 text-xs font-black text-slate-400 uppercase">Item</th><th className="pb-2 text-center text-xs font-black text-slate-400 uppercase">Qtd</th><th className="pb-2 text-right text-xs font-black text-slate-400 uppercase">Unit.</th><th className="pb-2 text-right text-xs font-black text-slate-400 uppercase">Total</th></tr></thead>
                         <tbody className="divide-y divide-slate-100">
                             {viewOrder.items?.map((item: any, idx: number) => (
                                 <tr key={idx}>
                                     <td className="py-3 text-sm font-bold text-slate-700">{item.name}</td>
                                     <td className="py-3 text-center text-sm font-medium text-slate-500">{item.quantity} {item.unit || ''}</td>
+                                    <td className="py-3 text-right text-sm font-medium text-slate-600">R$ {(item.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                                     <td className="py-3 text-right text-sm font-bold text-slate-800">R$ {(item.total || (item.price * item.quantity)).toFixed(2)}</td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
+                    <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
+                        <p className="text-xs font-black uppercase tracking-widest text-slate-400">{viewOrder.items?.length || 0} item(ns)</p>
+                        <p className="text-xl font-black text-slate-800">R$ {viewOrder.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                    </div>
+                </div>
+                <div className="p-4 border-t border-slate-100 bg-white flex justify-end">
+                    <button onClick={() => handlePrint(viewOrder)} className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700">
+                        <Printer size={14}/> Imprimir
+                    </button>
                 </div>
             </div>
         </div>
