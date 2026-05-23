@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Truck, CheckCircle, AlertTriangle, Clock, Archive, BarChart3, PackageCheck, ClipboardList, Route, Search, UserCheck, BriefcaseBusiness } from 'lucide-react';
+import { Truck, CheckCircle, AlertTriangle, Clock, Archive, BarChart3, PackageCheck, ClipboardList, Route, Search, UserCheck, BriefcaseBusiness, LayoutGrid, List } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 
 type DeliveryStatus = 'Pendente' | 'Em Separacao' | 'Despachado' | 'Conforme' | 'Divergente';
@@ -42,6 +42,7 @@ const Deliveries: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards');
 
   useEffect(() => {
     loadDeliveries();
@@ -210,6 +211,8 @@ const Deliveries: React.FC = () => {
   const historyDeliveries = filteredDeliveries.filter(delivery => ['Conforme', 'Divergente'].includes(delivery.status));
   const delayedCount = activeDeliveries.filter(delivery => new Date(delivery.date).getTime() < Date.now() - 24 * 60 * 60 * 1000).length;
   const totalPendingValue = activeDeliveries.reduce((sum, delivery) => sum + delivery.amount, 0);
+  const divergentCount = historyDeliveries.filter(delivery => delivery.status === 'Divergente').length;
+  const visibleDeliveries = activeTab === 'operacao' ? activeDeliveries : historyDeliveries;
 
   if (loading) return <div className="text-center py-20 text-slate-400">Carregando entregas...</div>;
 
@@ -237,8 +240,8 @@ const Deliveries: React.FC = () => {
           <p className="text-2xl font-black text-slate-800 mt-2">R$ {totalPendingValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-3xl p-5">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Com alerta</p>
-          <p className="text-3xl font-black text-red-500 mt-2">{delayedCount}</p>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Alertas / diverg.</p>
+          <p className="text-3xl font-black text-red-500 mt-2">{delayedCount + divergentCount}</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-3xl p-5">
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Concluidas</p>
@@ -246,9 +249,17 @@ const Deliveries: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white p-5 rounded-3xl border border-slate-200 flex items-center gap-3">
-        <Search className="text-slate-400" size={20} />
-        <input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} className="w-full outline-none bg-transparent text-sm font-bold text-slate-700" placeholder="Buscar por OC, fornecedor, sinistro ou cliente..." />
+      <div className="bg-white p-5 rounded-3xl border border-slate-200 flex flex-col lg:flex-row gap-4">
+        <div className="flex items-center gap-3 flex-1">
+          <Search className="text-slate-400" size={20} />
+          <input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} className="w-full outline-none bg-transparent text-sm font-bold text-slate-700" placeholder="Buscar por OC, fornecedor, sinistro ou cliente..." />
+        </div>
+        {activeTab !== 'gestao' && (
+          <div className="flex bg-slate-100 p-1 rounded-2xl self-start">
+            <button onClick={() => setViewMode('cards')} className={`p-3 rounded-xl transition-all ${viewMode === 'cards' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`} title="Ver em cards"><LayoutGrid size={18} /></button>
+            <button onClick={() => setViewMode('list')} className={`p-3 rounded-xl transition-all ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`} title="Ver em lista"><List size={18} /></button>
+          </div>
+        )}
       </div>
 
       {activeTab === 'gestao' && (
@@ -256,7 +267,7 @@ const Deliveries: React.FC = () => {
           <div className="bg-white border border-slate-200 rounded-3xl p-6">
             <BarChart3 className="text-blue-600 mb-4" size={24} />
             <h3 className="font-black text-slate-800 mb-2">Prioridade do gestor</h3>
-            <p className="text-sm text-slate-500 font-medium">Ataque primeiro pedidos atrasados, divergentes e OCs de maior valor em aberto.</p>
+            <p className="text-sm text-slate-500 font-medium">Ataque primeiro pedidos atrasados, divergentes e OCs de maior valor em aberto. Divergente fica no Historico como pendencia de tratativa.</p>
           </div>
           <div className="bg-white border border-slate-200 rounded-3xl p-6">
             <UserCheck className="text-green-600 mb-4" size={24} />
@@ -272,9 +283,59 @@ const Deliveries: React.FC = () => {
       )}
 
       {activeTab !== 'gestao' && (
+        viewMode === 'list' && visibleDeliveries.length > 0 ? (
+          <div className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm animate-in fade-in duration-300">
+            <table className="w-full text-left">
+              <thead className="bg-slate-50 border-b border-slate-100">
+                <tr>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">OC / Status</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Fornecedor</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Sinistro / Cliente</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Itens</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Valor</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Acoes</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {visibleDeliveries.map(delivery => (
+                  <tr key={delivery.id} className="hover:bg-slate-50/70 transition-colors">
+                    <td className="px-6 py-5">
+                      <p className="font-black text-slate-800 text-sm">{delivery.po}</p>
+                      <span className={`inline-flex mt-1 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${statusStyle[delivery.status]}`}>
+                        {delivery.status === 'Divergente' ? 'Divergente - tratar' : statusLabel[delivery.status]}
+                      </span>
+                    </td>
+                    <td className="px-6 py-5 text-xs font-bold text-slate-700">{delivery.supplier}</td>
+                    <td className="px-6 py-5">
+                      <p className="text-xs font-black text-blue-700">{delivery.event}</p>
+                      {delivery.customer && <p className="text-[11px] font-bold text-slate-500 mt-1">{delivery.customer}</p>}
+                      {delivery.vehicle && <p className="text-[11px] font-bold text-slate-400 mt-1">{delivery.vehicle}</p>}
+                    </td>
+                    <td className="px-6 py-5 text-center text-xs font-black text-slate-700">{delivery.items}</td>
+                    <td className="px-6 py-5 text-right text-sm font-black text-slate-800">R$ {delivery.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                    <td className="px-6 py-5">
+                      {activeTab === 'operacao' ? (
+                        <div className="flex justify-end gap-2">
+                          <button disabled={updatingId === delivery.id} onClick={() => persistDelivery(delivery, 'Em Separacao')} className="px-3 py-2 rounded-xl bg-blue-50 text-blue-700 text-[10px] font-black uppercase">Separar</button>
+                          <button disabled={updatingId === delivery.id} onClick={() => persistDelivery(delivery, 'Despachado')} className="px-3 py-2 rounded-xl bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase">Despachar</button>
+                          <button disabled={updatingId === delivery.id} onClick={() => persistDelivery(delivery, 'Conforme')} className="px-3 py-2 rounded-xl bg-green-600 text-white text-[10px] font-black uppercase">Conforme</button>
+                          <button disabled={updatingId === delivery.id} onClick={() => persistDelivery(delivery, 'Divergente')} className="px-3 py-2 rounded-xl bg-white border border-red-200 text-red-600 text-[10px] font-black uppercase">Divergente</button>
+                        </div>
+                      ) : (
+                        <p className="text-right text-[10px] font-black uppercase tracking-widest text-slate-400">
+                          {delivery.status === 'Divergente' ? 'Revisar fornecedor/itens' : 'Recebimento fechado'}
+                        </p>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 animate-in fade-in duration-300">
-          {(activeTab === 'operacao' ? activeDeliveries : historyDeliveries).length > 0 ? (
-            (activeTab === 'operacao' ? activeDeliveries : historyDeliveries).map(delivery => (
+          {visibleDeliveries.length > 0 ? (
+            visibleDeliveries.map(delivery => (
               <div key={delivery.id} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 hover:border-blue-200 transition-all">
                 <div className="flex flex-col md:flex-row justify-between gap-4 mb-5">
                   <div className="flex items-start gap-4">
@@ -284,7 +345,9 @@ const Deliveries: React.FC = () => {
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="text-lg font-black text-slate-800">{delivery.po}</h3>
-                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${statusStyle[delivery.status]}`}>{statusLabel[delivery.status]}</span>
+                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${statusStyle[delivery.status]}`}>
+                          {delivery.status === 'Divergente' ? 'Divergente - tratar' : statusLabel[delivery.status]}
+                        </span>
                       </div>
                       <p className="text-xs text-slate-500 font-bold mt-1">{delivery.supplier}</p>
                     </div>
@@ -334,6 +397,7 @@ const Deliveries: React.FC = () => {
             </div>
           )}
         </div>
+        )
       )}
     </div>
   );
