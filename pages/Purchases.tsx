@@ -7,6 +7,8 @@ import {
 import { PurchaseOrder } from '../types';
 import { supabase } from '../services/supabaseClient';
 
+type PrintOrientation = 'portrait' | 'landscape';
+
 const Purchases: React.FC = () => {
   const [currentUserRole] = useState<'Admin' | 'Gerente' | 'User'>('Admin');
   
@@ -301,8 +303,9 @@ const Purchases: React.FC = () => {
     }
   };
 
-  const handlePrintEnhanced = (order: any) => {
+  const handlePrintEnhanced = (order: any, orientation: PrintOrientation = 'portrait') => {
     setToast({ show: true, title: 'Imprimindo', message: 'Gerando visualização...', type: 'loading' });
+    const isLandscape = orientation === 'landscape';
 
     const itemsHtml = order.items?.map((item: any) => `
       <tr>
@@ -318,13 +321,13 @@ const Purchases: React.FC = () => {
         <head>
           <title>Ordem de Compra ${order.code}</title>
           <style>
-            @page { size: A4; margin: 18mm; }
+            @page { size: A4 ${orientation}; margin: ${isLandscape ? '12mm' : '18mm'}; }
             * { box-sizing: border-box; }
             body { font-family: Inter, "Segoe UI", Arial, sans-serif; margin: 0; color: #0f172a; }
-            .topbar { display: flex; justify-content: space-between; font-size: 11px; color: #64748b; margin-bottom: 14px; }
-            .title { font-size: 34px; font-weight: 900; color: #1d4ed8; line-height: 1.05; margin: 8px 0 16px 0; }
+            .topbar { display: flex; justify-content: space-between; font-size: 11px; color: #64748b; margin-bottom: ${isLandscape ? '8px' : '14px'}; }
+            .title { font-size: ${isLandscape ? '28px' : '34px'}; font-weight: 900; color: #1d4ed8; line-height: 1.05; margin: 8px 0 ${isLandscape ? '10px' : '16px'} 0; }
             .subtitle { font-size: 12px; color: #64748b; margin-bottom: 14px; }
-            .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+            .meta-grid { display: grid; grid-template-columns: ${isLandscape ? 'repeat(3, 1fr)' : '1fr 1fr'}; gap: 10px; margin-bottom: 16px; }
             .meta-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px 12px; }
             .meta-label { font-size: 10px; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 4px; }
             .meta-value { font-size: 14px; font-weight: 700; color: #0f172a; }
@@ -381,7 +384,7 @@ const Purchases: React.FC = () => {
       </html>
     `;
 
-    const win = window.open('', '', 'width=900,height=700');
+    const win = window.open('', '', isLandscape ? 'width=1200,height=800' : 'width=900,height=700');
     if (win) {
       win.document.write(printContent);
       win.document.close();
@@ -512,13 +515,14 @@ const Purchases: React.FC = () => {
                                     </button>
                                 )}
                                 <button onClick={() => setViewOrder(order)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-blue-600 rounded-xl hover:border-blue-200 transition-all shadow-sm" title="Ver Detalhes"><Eye size={18}/></button>
-                                <button onClick={() => handlePrintEnhanced(order)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-blue-600 rounded-xl hover:border-blue-200 transition-all shadow-sm hidden sm:block" title="Imprimir"><Printer size={18}/></button>
+                                <button onClick={() => handlePrintEnhanced(order)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-blue-600 rounded-xl hover:border-blue-200 transition-all shadow-sm hidden sm:block" title="Imprimir em retrato"><Printer size={18}/></button>
                                 
                                 <div className="relative">
                                     <button onClick={() => setOpenMenuId(openMenuId === order.id ? null : order.id)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-50 transition-all shadow-sm"><MoreVertical size={18}/></button>
                                     {openMenuId === order.id && (
                                         <div className="absolute right-0 bottom-full md:bottom-auto md:top-full mb-2 md:mb-0 md:mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-20 animate-in fade-in zoom-in duration-200">
                                             {order.status !== 'Cancelada' && <button onClick={() => handleRequestCancel(order)} className="w-full text-left px-4 py-3 text-xs font-bold text-amber-600 hover:bg-amber-50 border-b border-slate-50">Cancelar OC</button>}
+                                            <button onClick={() => { setOpenMenuId(null); handlePrintEnhanced(order, 'landscape'); }} className="w-full text-left px-4 py-3 text-xs font-bold text-blue-600 hover:bg-blue-50 border-b border-slate-50">Imprimir paisagem</button>
                                             <button onClick={() => handleRequestDelete(order)} className="w-full text-left px-4 py-3 text-xs font-bold text-red-600 hover:bg-red-50">Excluir Registro</button>
                                         </div>
                                     )}
@@ -588,9 +592,12 @@ const Purchases: React.FC = () => {
                         <p className="text-xl font-black text-slate-800">R$ {viewOrder.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                     </div>
                 </div>
-                <div className="p-4 border-t border-slate-100 bg-white flex justify-end">
-                    <button onClick={() => handlePrintEnhanced(viewOrder)} className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700">
-                        <Printer size={14}/> Imprimir
+                <div className="p-4 border-t border-slate-100 bg-white flex flex-col sm:flex-row justify-end gap-2">
+                    <button onClick={() => handlePrintEnhanced(viewOrder)} className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-blue-700">
+                        <Printer size={14}/> Imprimir retrato
+                    </button>
+                    <button onClick={() => handlePrintEnhanced(viewOrder, 'landscape')} className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-slate-800">
+                        <Printer size={14}/> Imprimir paisagem
                     </button>
                 </div>
             </div>

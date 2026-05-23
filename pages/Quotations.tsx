@@ -99,6 +99,14 @@ const Quotations: React.FC = () => {
     q.eventRef?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const getQuoteStatusClass = (status: string) => {
+    if (status === 'Compra Autorizada') return 'bg-green-50 text-green-700 border-green-200';
+    if (status === 'Compra Realizada') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    if (status === 'Cancelada') return 'bg-red-50 text-red-600 border-red-100';
+    if (status === 'Finalizada') return 'bg-indigo-50 text-indigo-600 border-indigo-100';
+    return 'bg-amber-50 text-amber-600 border-amber-100';
+  };
+
   const handleEditQuote = async (quote: any) => {
       setEditingQuoteId(quote.id);
       
@@ -318,7 +326,7 @@ const Quotations: React.FC = () => {
                   <div className="flex justify-between items-start mb-6">
                     <div className="bg-blue-50 text-blue-600 p-4 rounded-3xl shadow-sm"><BarChart3 size={28} /></div>
                     <div className="flex flex-col items-end gap-2">
-                        <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-[0.2em] border ${quote.status === 'Finalizada' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
+                        <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-[0.2em] border ${getQuoteStatusClass(quote.status)}`}>
                         {quote.status}
                         </span>
                     </div>
@@ -374,7 +382,7 @@ const Quotations: React.FC = () => {
                        </div>
                     </td>
                     <td className="px-8 py-5 text-center">
-                        <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${quote.status === 'Finalizada' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
+                        <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${getQuoteStatusClass(quote.status)}`}>
                         {quote.status}
                         </span>
                     </td>
