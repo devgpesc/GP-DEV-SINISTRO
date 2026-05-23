@@ -33,6 +33,7 @@ const Reports: React.FC = () => {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [events, setEvents] = useState<any[]>([]);
+  const [releases, setReleases] = useState<any[]>([]);
 
   useEffect(() => {
     loadData();
@@ -44,10 +45,12 @@ const Reports: React.FC = () => {
         const { data: pos } = await supabase.from('purchase_orders').select('*');
         const { data: dels } = await supabase.from('deliveries').select('*');
         const { data: evts } = await supabase.from('events').select('*');
+        const { data: rels } = await supabase.from('quotation_item_releases').select('*');
         
         setOrders(pos || []);
         setDeliveries(dels || []);
         setEvents(evts || []);
+        setReleases(rels || []);
     } catch (e) {
         console.error("Erro ao carregar dados", e);
     } finally {
@@ -145,6 +148,20 @@ const Reports: React.FC = () => {
       conversionRate: orders.length > 0 ? (completedOrders.length / orders.length) * 100 : 0
     };
   }, [filteredOrders, orders]);
+
+  const repurchaseStats = useMemo(() => {
+    const total = releases.length;
+    const reasonsCount: Record<string, number> = {};
+    releases.forEach((r: any) => {
+      const reason = (r.reason || 'Sem motivo').trim();
+      reasonsCount[reason] = (reasonsCount[reason] || 0) + 1;
+    });
+    const topReasons = Object.entries(reasonsCount)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([reason, count]) => ({ reason, count }));
+    return { total, topReasons };
+  }, [releases]);
 
   // --- DADOS DOS GRÁFICOS ---
   const chartData = useMemo(() => {
@@ -259,6 +276,26 @@ const Reports: React.FC = () => {
            <h3 className="text-2xl font-black text-slate-800 mt-2">{strategicKPIs.conversionRate.toFixed(1)}%</h3>
            <p className="text-[10px] font-bold text-slate-400 mt-1">{strategicKPIs.volume} OCs totais</p>
         </div>
+      </div>
+
+      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">Recompras / Estornos</h3>
+          <span className="px-3 py-1 rounded-xl bg-amber-100 text-amber-700 text-xs font-black">{repurchaseStats.total} liberações</span>
+        </div>
+        {repurchaseStats.topReasons.length === 0 ? (
+          <p className="text-xs font-medium text-slate-400">Sem registros de recompra até o momento.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {repurchaseStats.topReasons.map((r, idx) => (
+              <div key={`${r.reason}-${idx}`} className="p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Motivo {idx + 1}</p>
+                <p className="text-sm font-bold text-slate-700 line-clamp-2">{r.reason}</p>
+                <p className="text-xs font-black text-amber-700 mt-2">{r.count} ocorrência(s)</p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* AI Analysis Block */}

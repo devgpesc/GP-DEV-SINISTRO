@@ -44,6 +44,7 @@ const Purchases: React.FC = () => {
                 email
             ),
             purchase_order_items (
+                quotation_item_id,
                 name,
                 quantity,
                 unit,
@@ -88,6 +89,14 @@ const Purchases: React.FC = () => {
         const associateById = new Map((associateRows || []).map((associate: any) => [associate.id, associate]));
         const vehicleById = new Map((vehicleRows || []).map((vehicle: any) => [vehicle.id, vehicle]));
 
+        const quoteReleaseRows = quoteIds.length > 0
+            ? await supabase.from('quotation_item_releases').select('quotation_id, quotation_item_id, reason, status, created_at').in('quotation_id', quoteIds)
+            : { data: [] as any[] };
+
+        const releaseByQuoteItem = new Map(
+          (quoteReleaseRows.data || []).map((row: any) => [`${row.quotation_id}:${row.quotation_item_id}`, row])
+        );
+
         const mappedOrders = data?.map((o: any) => {
             const quote = quoteById.get(o.quotation_id);
             const event = eventById.get(o.event_id || quote?.eventId);
@@ -107,11 +116,13 @@ const Purchases: React.FC = () => {
             supplierId: o.supplier_id,
             supplierName: o.suppliers?.name || 'Fornecedor Desconhecido',
             items: o.purchase_order_items?.map((poi: any) => ({
+                quotation_item_id: poi.quotation_item_id,
                 name: poi.name,
                 quantity: poi.quantity,
                 unit: poi.unit,
                 price: poi.unit_price,
-                total: poi.total_price
+                total: poi.total_price,
+                repurchaseRelease: releaseByQuoteItem.get(`${o.quotation_id}:${poi.quotation_item_id}`) || null
             })) || [],
             total: o.total || 0,
             status: o.status,
@@ -552,7 +563,19 @@ const Purchases: React.FC = () => {
                         <tbody className="divide-y divide-slate-100">
                             {viewOrder.items?.map((item: any, idx: number) => (
                                 <tr key={idx}>
-                                    <td className="py-3 text-sm font-bold text-slate-700">{item.name}</td>
+                                    <td className="py-3 text-sm font-bold text-slate-700">
+                                      <div className="flex items-center gap-2">
+                                        <span>{item.name}</span>
+                                        {item.repurchaseRelease && (
+                                          <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-700">
+                                            Recompra
+                                          </span>
+                                        )}
+                                      </div>
+                                      {item.repurchaseRelease?.reason && (
+                                        <p className="text-[10px] font-medium text-amber-700 mt-1">Motivo: {item.repurchaseRelease.reason}</p>
+                                      )}
+                                    </td>
                                     <td className="py-3 text-center text-sm font-medium text-slate-500">{item.quantity} {item.unit || ''}</td>
                                     <td className="py-3 text-right text-sm font-medium text-slate-600">R$ {(item.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                                     <td className="py-3 text-right text-sm font-bold text-slate-800">R$ {(item.total || (item.price * item.quantity)).toFixed(2)}</td>
