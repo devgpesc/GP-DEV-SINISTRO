@@ -77,7 +77,52 @@ export const quotationService = {
       return [];
     }
 
-    return [...new Set((data || []).map((item: any) => item.quotation_item_id).filter(Boolean))];
+    const processedIds = [...new Set((data || []).map((item: any) => item.quotation_item_id).filter(Boolean))];
+
+    const { data: releasedRows, error: releaseError } = await supabase
+      .from('quotation_item_releases')
+      .select('quotation_item_id')
+      .eq('quotation_id', quotationId)
+      .eq('status', 'released');
+
+    if (releaseError) {
+      // Se a tabela ainda não existir em algum ambiente, mantém comportamento atual sem quebrar.
+      return processedIds;
+    }
+
+    const releasedIds = new Set((releasedRows || []).map((row: any) => row.quotation_item_id).filter(Boolean));
+    return processedIds.filter((id) => !releasedIds.has(id));
+  },
+
+  async releaseItemForRepurchase(quotationId: string, itemId: string, reason: string) {
+    const trimmedReason = (reason || '').trim();
+    if (!trimmedReason) throw new Error('Motivo é obrigatório para liberar recompra.');
+
+    const { data: { user } } = await (supabase.auth as any).getUser();
+    const userId = user?.id || null;
+
+    const { error } = await supabase.from('quotation_item_releases').upsert({
+      quotation_id: quotationId,
+      quotation_item_id: itemId,
+      reason: trimmedReason,
+      status: 'released',
+      created_by: userId,
+      created_at: new Date().toISOString(),
+    }, { onConflict: 'quotation_id, quotation_item_id' });
+
+    if (error) throw error;
+
+    await supabase
+      .from('quotation_purchase_selections')
+      .update({ status: 'Cancelado' })
+      .eq('quotation_id', quotationId)
+      .eq('quotation_item_id', itemId);
+
+    await this.saveDecisionHistory(quotationId, 'release_repurchase', {
+      quotation_item_id: itemId,
+      reason: trimmedReason,
+      user_id: userId,
+    });
   },
 
   async savePrice(payload: {

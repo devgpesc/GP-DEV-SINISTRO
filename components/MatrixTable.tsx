@@ -60,6 +60,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
   const [editDeliveryDays, setEditDeliveryDays] = useState('');
   const [editAvailability, setEditAvailability] = useState(true);
   const [isSavingPrice, setIsSavingPrice] = useState(false);
+  const [releasingItemId, setReleasingItemId] = useState<string | null>(null);
   const [expandedSupplierIds, setExpandedSupplierIds] = useState<string[]>([]);
   const [headerMeta, setHeaderMeta] = useState<{
     quotationCode?: string;
@@ -261,6 +262,26 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
     if (!quotationId) return;
     await Promise.all(Object.keys(selections).map((itemId) => quotationService.removePurchaseSelection(quotationId, itemId)));
     setSelections({});
+  };
+
+  const releaseForRepurchase = async (item: QuotationItem) => {
+    if (!quotationId) return;
+    const reason = window.prompt(`Informe o motivo da liberação de recompra para "${item.name}":`);
+    if (!reason || !reason.trim()) {
+      addToast('warning', 'Motivo obrigatório', 'A liberação exige justificativa.');
+      return;
+    }
+
+    setReleasingItemId(item.id);
+    try {
+      await quotationService.releaseItemForRepurchase(quotationId, item.id, reason);
+      addToast('success', 'Item liberado', 'O item voltou para compra com histórico da justificativa.');
+      await loadData();
+    } catch (error: any) {
+      addToast('error', 'Erro ao liberar', error.message || 'Não foi possível liberar item para recompra.');
+    } finally {
+      setReleasingItemId(null);
+    }
   };
 
   const selectedGroups = useMemo(() => {
@@ -525,6 +546,16 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
                       {isProcessed && <span className="text-[9px] font-black uppercase text-slate-500 bg-slate-200 px-2 py-0.5 rounded">Processado</span>}
                       {selections[item.id] && !isProcessed && <CheckCircle2 size={16} className="text-blue-600" />}
                     </div>
+                    {isProcessed && (
+                      <button
+                        type="button"
+                        onClick={() => releaseForRepurchase(item)}
+                        disabled={releasingItemId === item.id}
+                        className="mt-2 px-2.5 py-1 rounded-lg bg-amber-100 text-amber-700 text-[10px] font-black uppercase tracking-wider disabled:opacity-50 print:hidden"
+                      >
+                        {releasingItemId === item.id ? 'Liberando...' : 'Liberar Recompra'}
+                      </button>
+                    )}
                   </td>
                   {filteredSuppliers.map((supplier) => {
                     const price = prices.find((candidate) => candidate.quotation_item_id === item.id && candidate.supplier_id === supplier.id);
