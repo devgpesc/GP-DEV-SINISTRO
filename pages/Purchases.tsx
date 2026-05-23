@@ -16,6 +16,7 @@ const Purchases: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<string>('Todos');
   const [orders, setOrders] = useState<any[]>([]); 
   const [loading, setLoading] = useState(true);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [viewOrder, setViewOrder] = useState<any | null>(null);
@@ -64,7 +65,7 @@ const Purchases: React.FC = () => {
         const directEventIds = [...new Set((data || []).map((o: any) => o.event_id).filter(Boolean))];
 
         const { data: quoteRows } = quoteIds.length > 0
-            ? await supabase.from('quotations').select('id, code, eventRef, eventId').in('id', quoteIds)
+            ? await supabase.from('quotations').select('id, code, eventRef, eventId, status, created_at').in('id', quoteIds)
             : { data: [] as any[] };
 
         const quoteById = new Map((quoteRows || []).map((quote: any) => [quote.id, quote]));
@@ -95,15 +96,22 @@ const Purchases: React.FC = () => {
             ? await supabase.from('quotation_item_releases').select('quotation_id, quotation_item_id, reason, status, created_at').in('quotation_id', quoteIds)
             : { data: [] as any[] };
 
+        const creatorIds = [...new Set((data || []).map((o: any) => o.created_by).filter(Boolean))];
+        const { data: creatorRows } = creatorIds.length > 0
+            ? await supabase.from('profiles').select('id, full_name, email').in('id', creatorIds)
+            : { data: [] as any[] };
+
         const releaseByQuoteItem = new Map(
           (quoteReleaseRows.data || []).map((row: any) => [`${row.quotation_id}:${row.quotation_item_id}`, row])
         );
+        const creatorById = new Map((creatorRows || []).map((profile: any) => [profile.id, profile]));
 
         const mappedOrders = data?.map((o: any) => {
             const quote = quoteById.get(o.quotation_id);
             const event = eventById.get(o.event_id || quote?.eventId);
             const associate = event?.associateId ? associateById.get(event.associateId) : null;
             const vehicle = event?.vehicleId ? vehicleById.get(event.vehicleId) : null;
+            const creator = o.created_by ? creatorById.get(o.created_by) : null;
 
             return {
             id: o.id,
@@ -111,10 +119,13 @@ const Purchases: React.FC = () => {
             eventId: o.event_id,
             quotationId: o.quotation_id,
             quotationCode: quote?.code || null,
+            quotationStatus: quote?.status || null,
+            quotationCreatedAt: quote?.created_at || null,
             eventProtocol: event?.protocol || quote?.eventRef || null,
             customerName: associate?.name || 'Cliente nao vinculado',
             customerDocument: associate?.document || null,
             vehicleLabel: vehicle ? `${vehicle.brand || ''} ${vehicle.model || ''}${vehicle.plate ? ` - ${vehicle.plate}` : ''}`.trim() : null,
+            createdByName: creator?.full_name || creator?.email || 'Colaborador nao identificado',
             supplierId: o.supplier_id,
             supplierName: o.suppliers?.name || 'Fornecedor Desconhecido',
             items: o.purchase_order_items?.map((poi: any) => ({
@@ -405,6 +416,48 @@ const Purchases: React.FC = () => {
     });
   }, [orders, searchTerm, filterStatus]);
 
+  const getStatusClass = (status: string) => {
+    if (status === 'Aprovada' || status === 'Recebida') return 'bg-green-50 text-green-700 border-green-100';
+    if (status === 'Cancelada') return 'bg-red-50 text-red-600 border-red-100';
+    return 'bg-slate-50 text-slate-500 border-slate-100';
+  };
+
+  const groupedOrders = useMemo(() => {
+    const groups = new Map<string, any>();
+    filteredOrders.forEach(order => {
+      const key = `${order.customerName || 'Cliente nao vinculado'}|${order.eventProtocol || order.eventId || 'Sem sinistro'}`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          id: key,
+          customerName: order.customerName || 'Cliente nao vinculado',
+          customerDocument: order.customerDocument,
+          eventProtocol: order.eventProtocol || 'Sinistro nao vinculado',
+          vehicleLabel: order.vehicleLabel,
+          orders: [],
+          total: 0,
+          itemCount: 0,
+          statuses: new Set<string>(),
+          quotations: new Set<string>(),
+          collaborators: new Set<string>(),
+          createdAt: order.createdAt
+        });
+      }
+      const group = groups.get(key);
+      group.orders.push(order);
+      group.total += Number(order.total || 0);
+      group.itemCount += order.items?.length || 0;
+      group.statuses.add(order.status);
+      if (order.quotationCode) group.quotations.add(order.quotationCode);
+      if (order.createdByName) group.collaborators.add(order.createdByName);
+      if (new Date(order.createdAt).getTime() > new Date(group.createdAt).getTime()) group.createdAt = order.createdAt;
+    });
+    return Array.from(groups.values());
+  }, [filteredOrders]);
+
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
+  };
+
   if (loading) return <div className="text-center py-20"><Loader2 className="animate-spin mx-auto text-blue-600" size={32}/></div>;
 
   return (
@@ -424,7 +477,7 @@ const Purchases: React.FC = () => {
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-3xl font-black text-slate-800">Ordens de Compra</h2>
-          <p className="text-sm text-slate-500">Pedidos gerados via matriz de cotação.</p>
+          <p className="text-sm text-slate-500">Organizadas por associado e sinistro, com as OCs e cotações dentro de cada caso.</p>
         </div>
       </div>
 
@@ -448,88 +501,117 @@ const Purchases: React.FC = () => {
 
       {/* Lista */}
       <div className="space-y-4">
-        {filteredOrders.length === 0 ? (
+        {groupedOrders.length === 0 ? (
             <div className="py-20 text-center bg-slate-50 rounded-[40px] border-2 border-dashed border-slate-200">
                 <ShoppingCart className="mx-auto text-slate-300 mb-2" size={40}/>
                 <p className="text-slate-400 font-bold uppercase tracking-widest">Nenhuma compra encontrada</p>
             </div>
         ) : (
-            filteredOrders.map(order => (
-                <div key={order.id} className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm hover:border-blue-200 transition-all group">
-                    <div className="flex flex-col md:flex-row items-start md:items-center gap-4 md:gap-4">
-                        
-                        {/* 1. IDENTIFICAÇÃO DO PEDIDO (TOPO NO MOBILE) */}
-                        <div className="flex items-center gap-4 w-full md:w-auto md:flex-1 min-w-0 pr-4">
+            groupedOrders.map(group => (
+                <div key={group.id} className="bg-white rounded-[32px] border border-slate-100 shadow-sm hover:border-blue-200 transition-all overflow-hidden">
+                    <button type="button" onClick={() => toggleGroup(group.id)} className="w-full p-6 text-left">
+                        <div className="flex flex-col xl:flex-row items-start xl:items-center gap-5">
                             <div className="w-16 h-16 rounded-2xl flex-shrink-0 flex items-center justify-center text-2xl font-black bg-blue-50 text-blue-600">
-                                {order.status === 'Cancelada' ? <XCircle className="text-red-400"/> : <ShoppingCart/>}
+                                <User size={28} />
                             </div>
-                            
                             <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-3 mb-1 flex-wrap">
-                                    <h3 className="text-lg font-black text-slate-800 whitespace-nowrap">{order.code}</h3>
-                                    <span className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black uppercase border flex-shrink-0 ${
-                                        order.status === 'Aprovada' ? 'bg-green-50 text-green-600 border-green-100' : 
-                                        order.status === 'Cancelada' ? 'bg-red-50 text-red-600 border-red-100' : 
-                                        'bg-slate-50 text-slate-500 border-slate-100'
-                                    }`}>{order.status}</span>
+                                <div className="flex flex-wrap items-center gap-3 mb-2">
+                                    <h3 className="text-xl font-black text-slate-800">{group.customerName}</h3>
+                                    <span className="px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest bg-slate-100 text-slate-500">{group.orders.length} OC(s)</span>
+                                    <span className="px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest bg-blue-50 text-blue-600">{group.quotations.size || 1} cotacao(oes)</span>
                                 </div>
-                                <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-4 text-xs text-slate-500 font-bold">
-                                    <span className="flex items-center gap-1 text-slate-700 truncate max-w-[200px]"><Truck size={12} className="text-blue-400"/> {order.supplierName}</span>
-                                    <span className="hidden md:inline w-1 h-1 rounded-full bg-slate-300"></span>
-                                    <span className="flex items-center gap-1"><Calendar size={12}/> {new Date(order.createdAt).toLocaleDateString()}</span>
-                                    <span className="hidden md:inline w-1 h-1 rounded-full bg-slate-300"></span>
-                                    <span>{order.items.length} itens</span>
-                                </div>
-                                <div className="mt-2 flex flex-col md:flex-row md:items-center gap-1 md:gap-4 text-xs font-bold text-slate-500">
-                                    <span className="flex items-center gap-1 text-slate-800 truncate max-w-[260px]"><User size={12} className="text-blue-500"/> {order.customerName}</span>
-                                    {order.vehicleLabel && (
+                                <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-4 text-xs font-bold text-slate-500">
+                                    <span className="flex items-center gap-1 text-slate-800"><ShoppingCart size={12} className="text-blue-500"/> {group.eventProtocol}</span>
+                                    {group.vehicleLabel && (
                                         <>
                                             <span className="hidden md:inline w-1 h-1 rounded-full bg-slate-300"></span>
-                                            <span className="flex items-center gap-1 truncate max-w-[260px]"><Car size={12} className="text-slate-400"/> {order.vehicleLabel}</span>
+                                            <span className="flex items-center gap-1 truncate max-w-[320px]"><Car size={12} className="text-slate-400"/> {group.vehicleLabel}</span>
                                         </>
                                     )}
-                                    {order.eventProtocol && (
-                                        <>
-                                            <span className="hidden md:inline w-1 h-1 rounded-full bg-slate-300"></span>
-                                            <span>{order.eventProtocol}</span>
-                                        </>
-                                    )}
+                                    <span className="hidden md:inline w-1 h-1 rounded-full bg-slate-300"></span>
+                                    <span className="flex items-center gap-1"><Calendar size={12}/> {new Date(group.createdAt).toLocaleDateString('pt-BR')}</span>
+                                </div>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                    {Array.from(group.collaborators).slice(0, 3).map((name: any) => (
+                                        <span key={name} className="px-2 py-1 rounded-lg bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">Colaborador: {name}</span>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="w-full xl:w-auto flex items-center justify-between xl:justify-end gap-5">
+                                <div className="text-left xl:text-right">
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Total do caso</p>
+                                    <p className="text-2xl font-black text-slate-800 leading-none">R$ {group.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                                </div>
+                                <div className="text-left xl:text-right">
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Itens</p>
+                                    <p className="text-lg font-black text-slate-700">{group.itemCount}</p>
+                                </div>
+                                <div className="px-4 py-3 rounded-2xl bg-slate-50 text-xs font-black uppercase tracking-widest text-blue-600">
+                                    {expandedGroups[group.id] ? 'Fechar' : 'Abrir'}
                                 </div>
                             </div>
                         </div>
+                    </button>
 
-                        {/* 2. CONTAINER DE VALOR E AÇÕES (RODAPÉ NO MOBILE) */}
-                        <div className="w-full md:w-auto flex flex-row items-center justify-between md:justify-end gap-0 md:gap-0 mt-2 md:mt-0 pt-4 md:pt-0 border-t md:border-t-0 border-slate-50 md:border-none">
-                            
-                            {/* VALOR TOTAL */}
-                            <div className="flex flex-col items-start md:items-end justify-center px-0 md:px-8 md:border-l md:border-r border-slate-50 h-auto md:h-12 min-w-[120px] md:min-w-[200px]">
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Valor Total</p>
-                                <p className="text-xl md:text-2xl font-black text-slate-800 leading-none">R$ {order.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-                            </div>
-
-                            {/* AÇÕES */}
-                            <div className="flex gap-2 pl-0 md:pl-2 flex-shrink-0">
-                                {order.status === 'Gerada' && canApprove && (
-                                    <button onClick={() => handleRequestApprove(order)} className="bg-green-600 text-white px-4 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-600/20 flex items-center gap-2" title="Aprovar OC">
-                                        <ShieldCheck size={16}/>
-                                    </button>
-                                )}
-                                <button onClick={() => setViewOrder(order)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-blue-600 rounded-xl hover:border-blue-200 transition-all shadow-sm" title="Ver Detalhes"><Eye size={18}/></button>
-                                <button onClick={() => handlePrintEnhanced(order)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-blue-600 rounded-xl hover:border-blue-200 transition-all shadow-sm hidden sm:block" title="Imprimir em retrato"><Printer size={18}/></button>
-                                
-                                <div className="relative">
-                                    <button onClick={() => setOpenMenuId(openMenuId === order.id ? null : order.id)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-50 transition-all shadow-sm"><MoreVertical size={18}/></button>
-                                    {openMenuId === order.id && (
-                                        <div className="absolute right-0 bottom-full md:bottom-auto md:top-full mb-2 md:mb-0 md:mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-20 animate-in fade-in zoom-in duration-200">
-                                            {order.status !== 'Cancelada' && <button onClick={() => handleRequestCancel(order)} className="w-full text-left px-4 py-3 text-xs font-bold text-amber-600 hover:bg-amber-50 border-b border-slate-50">Cancelar OC</button>}
-                                            <button onClick={() => { setOpenMenuId(null); handlePrintEnhanced(order, 'landscape'); }} className="w-full text-left px-4 py-3 text-xs font-bold text-blue-600 hover:bg-blue-50 border-b border-slate-50">Imprimir paisagem</button>
-                                            <button onClick={() => handleRequestDelete(order)} className="w-full text-left px-4 py-3 text-xs font-bold text-red-600 hover:bg-red-50">Excluir Registro</button>
+                    {expandedGroups[group.id] && (
+                        <div className="px-6 pb-6 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                            {group.orders.map((order: any) => (
+                                <div key={order.id} className="rounded-3xl border border-slate-100 bg-slate-50/60 p-5">
+                                    <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+                                        <div className="flex items-start gap-4 flex-1 min-w-0">
+                                            <div className="w-12 h-12 rounded-2xl flex-shrink-0 flex items-center justify-center bg-white text-blue-600 border border-slate-100">
+                                                {order.status === 'Cancelada' ? <XCircle className="text-red-400"/> : <ShoppingCart/>}
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex flex-wrap items-center gap-2 mb-1">
+                                                    <h4 className="text-base font-black text-slate-800">{order.code}</h4>
+                                                    <span className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black uppercase border ${getStatusClass(order.status)}`}>{order.status}</span>
+                                                    {order.quotationCode && <span className="px-2.5 py-0.5 rounded-lg text-[9px] font-black uppercase border bg-white text-blue-600 border-blue-100">{order.quotationCode}</span>}
+                                                </div>
+                                                <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-4 text-xs text-slate-500 font-bold">
+                                                    <span className="flex items-center gap-1 text-slate-700 truncate max-w-[260px]"><Truck size={12} className="text-blue-400"/> {order.supplierName}</span>
+                                                    <span className="hidden md:inline w-1 h-1 rounded-full bg-slate-300"></span>
+                                                    <span>Feita por {order.createdByName}</span>
+                                                    <span className="hidden md:inline w-1 h-1 rounded-full bg-slate-300"></span>
+                                                    <span>{order.items.length} itens</span>
+                                                </div>
+                                                {order.quotationStatus && (
+                                                    <p className="mt-2 text-[10px] font-black uppercase tracking-widest text-slate-400">Status da cotacao: {order.quotationStatus}</p>
+                                                )}
+                                            </div>
                                         </div>
-                                    )}
+
+                                        <div className="flex items-center justify-between lg:justify-end gap-4">
+                                            <div className="text-left lg:text-right min-w-[140px]">
+                                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Valor da OC</p>
+                                                <p className="text-xl font-black text-slate-800 leading-none">R$ {order.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                                            </div>
+
+                                            <div className="flex gap-2 flex-shrink-0">
+                                                {order.status === 'Gerada' && canApprove && (
+                                                    <button onClick={() => handleRequestApprove(order)} className="bg-green-600 text-white px-4 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-600/20 flex items-center gap-2" title="Aprovar OC">
+                                                        <ShieldCheck size={16}/>
+                                                    </button>
+                                                )}
+                                                <button onClick={() => setViewOrder(order)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-blue-600 rounded-xl hover:border-blue-200 transition-all shadow-sm" title="Ver Detalhes"><Eye size={18}/></button>
+                                                <button onClick={() => handlePrintEnhanced(order)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-blue-600 rounded-xl hover:border-blue-200 transition-all shadow-sm hidden sm:block" title="Imprimir em retrato"><Printer size={18}/></button>
+                                                <div className="relative">
+                                                    <button onClick={() => setOpenMenuId(openMenuId === order.id ? null : order.id)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-50 transition-all shadow-sm"><MoreVertical size={18}/></button>
+                                                    {openMenuId === order.id && (
+                                                        <div className="absolute right-0 bottom-full lg:bottom-auto lg:top-full mb-2 lg:mb-0 lg:mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-20 animate-in fade-in zoom-in duration-200">
+                                                            {order.status !== 'Cancelada' && <button onClick={() => handleRequestCancel(order)} className="w-full text-left px-4 py-3 text-xs font-bold text-amber-600 hover:bg-amber-50 border-b border-slate-50">Cancelar OC</button>}
+                                                            <button onClick={() => { setOpenMenuId(null); handlePrintEnhanced(order, 'landscape'); }} className="w-full text-left px-4 py-3 text-xs font-bold text-blue-600 hover:bg-blue-50 border-b border-slate-50">Imprimir paisagem</button>
+                                                            <button onClick={() => handleRequestDelete(order)} className="w-full text-left px-4 py-3 text-xs font-bold text-red-600 hover:bg-red-50">Excluir Registro</button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
+                            ))}
                         </div>
-                    </div>
+                    )}
                 </div>
             ))
         )}
