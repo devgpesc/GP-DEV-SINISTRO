@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 // import { Session, User } from '@supabase/supabase-js'; // Removed to avoid export errors
 import { supabase } from '../services/supabaseClient';
+import { getAuthRedirectUrl } from '../services/authRedirect';
 import { SaasTenant, OrganizationMember } from '../types';
 
 // Workaround for missing types in @supabase/supabase-js
@@ -97,46 +98,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    const { data: plans } = await supabase.from('saas_plans').select('id').limit(1);
-    const defaultPlanId = (plans && plans.length > 0 && plans[0].id) ? plans[0].id : null;
-
-    const { data: tenant, error: tenantError } = await supabase
-      .from('saas_tenants')
-      .insert([{
-        name: pending.companyName,
-        status: 'active',
-        owner_id: userId,
-        plan_id: defaultPlanId,
-        document: '00.000.000/0001-00',
-        subscription_status: 'trial',
-        trial_ends_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
-      }])
-      .select()
-      .single();
-
-    if (tenantError) throw tenantError;
-
-    const { error: memberError } = await supabase.from('organization_members').insert([{
-      tenant_id: tenant.id,
-      user_id: userId,
-      role: 'owner'
-    }]);
-    if (memberError) throw memberError;
-
-    await supabase.from('profiles').upsert({
-      id: userId,
-      email: userEmail,
-      role: 'Admin',
-      full_name: pending.name || userMeta?.full_name || userMeta?.name || userEmail?.split('@')[0],
-      permissions: {
-        financial_view: true,
-        approve_purchases: true,
-        manage_users: true,
-        delete_records: true,
-        view_reports: true
-      },
-      updated_at: new Date().toISOString()
+    const { error: registrationError } = await supabase.rpc('complete_registration', {
+      company_name: pending.companyName,
+      full_name: pending.name || userMeta?.full_name || userMeta?.name || userEmail?.split('@')[0]
     });
+    if (registrationError) throw registrationError;
 
     localStorage.removeItem(PENDING_REGISTRATION_STORAGE_KEY);
   }, []);
@@ -347,7 +313,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { error } = await (supabase.auth as any).signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin, 
+        redirectTo: getAuthRedirectUrl('/auth/callback'), 
         queryParams: { access_type: 'offline', prompt: 'consent' },
       },
     });

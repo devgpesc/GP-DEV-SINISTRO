@@ -19,6 +19,7 @@ import Reports from './pages/Reports.tsx';
 import Settings from './pages/Settings.tsx';
 import Login from './pages/Login.tsx';
 import Register from './pages/Register.tsx';
+import AuthCallback from './pages/AuthCallback.tsx';
 import SaasAdmin from './pages/SaasAdmin.tsx';
 import Associates from './pages/Associates.tsx';
 import Notifications from './pages/Notifications.tsx';
@@ -37,6 +38,7 @@ const App: React.FC = () => {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
             
             <Route path="/*" element={
                <PrivateRoute>

@@ -11,7 +11,7 @@ const getEnv = (key: string) => {
 };
 
 const envUrl = getEnv('VITE_SUPABASE_URL');
-const envKey = getEnv('VITE_SUPABASE_ANON_KEY');
+const envKey = getEnv('VITE_SUPABASE_PUBLISHABLE_KEY') || getEnv('VITE_SUPABASE_ANON_KEY');
 
 if (!envUrl || !envKey) {
   console.warn('[AutoClaims] Variáveis de ambiente Supabase não detectadas.');

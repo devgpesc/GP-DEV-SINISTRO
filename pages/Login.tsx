@@ -4,6 +4,7 @@ import * as ReactRouterDOM from 'react-router-dom';
 const { useNavigate, Link, useLocation } = ReactRouterDOM as any;
 import { supabase } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
+import { getAuthRedirectUrl } from '../services/authRedirect';
 import { 
   Loader2, ArrowRight, ShieldCheck, Mail, Lock, 
   LayoutDashboard, Zap, Globe, AlertCircle, Eye, EyeOff
@@ -34,15 +35,8 @@ const Login: React.FC = () => {
          // Auto-redeem for OAuth redirects or previously logged in users
          const redeemInvite = async () => {
              try {
-                const { data: invite } = await supabase.from('invitations').select('*').eq('token', inviteToken).maybeSingle();
-                if (invite && invite.status === 'pending') {
-                    await supabase.from('organization_members').insert([{
-                        tenant_id: invite.tenant_id,
-                        user_id: user.id,
-                        role: invite.role || 'member'
-                    }]);
-                    await supabase.from('invitations').update({ status: 'accepted' }).eq('id', invite.id);
-                }
+                const { error: acceptError } = await supabase.rpc('accept_invite', { invite_token: inviteToken });
+                if (acceptError) throw acceptError;
              } catch (e) {
                 console.warn("Auto-redeem fail", e);
              } finally {
@@ -141,7 +135,7 @@ const Login: React.FC = () => {
       const { error } = await (supabase.auth as any).signInWithOAuth({
          provider: 'google',
          options: { 
-            redirectTo: inviteToken ? `${window.location.origin}/login?invite=${inviteToken}` : window.location.origin,
+            redirectTo: getAuthRedirectUrl(inviteToken ? `/auth/callback?invite=${inviteToken}` : '/auth/callback'),
             queryParams: { access_type: 'offline', prompt: 'consent' },
          }
       });
