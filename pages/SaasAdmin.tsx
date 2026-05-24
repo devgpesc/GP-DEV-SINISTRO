@@ -26,11 +26,13 @@ const SaasAdmin: React.FC = () => {
   const [tenants, setTenants] = useState<SaasTenant[]>([]);
   const [plans, setPlans] = useState<SaasPlan[]>([]);
   const [planUsage, setPlanUsage] = useState<Record<string, number>>({});
+  const [tenantOwners, setTenantOwners] = useState<Record<string, any>>({});
   const [searchTerm, setSearchTerm] = useState('');
 
   // Modals States
   const [isTenantModalOpen, setIsTenantModalOpen] = useState(false);
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
+  const [tenantModalTab, setTenantModalTab] = useState<'company' | 'owner'>('company');
   
   // New Credentials Modal
   const [showCredentialsModal, setShowCredentialsModal] = useState(false);
@@ -96,6 +98,14 @@ const SaasAdmin: React.FC = () => {
       setTenants(tenantsData);
       setPlans(plansRes.data || []);
 
+      const ownerPairs = await Promise.all(
+          tenantsData.map(async (tenant: any) => {
+              const { data } = await supabase.rpc('get_tenant_owner_summary', { target_tenant_id: tenant.id });
+              return [tenant.id, data] as const;
+          })
+      );
+      setTenantOwners(Object.fromEntries(ownerPairs.filter(([, owner]) => !!owner)));
+
       const usage: Record<string, number> = {};
       tenantsData.forEach(t => {
           if (t.plan_id) {
@@ -117,16 +127,18 @@ const SaasAdmin: React.FC = () => {
       setEditingTenant(null);
       setTenantForm({ name: '', document: '', plan_id: '', status: 'active', adminName: '', adminEmail: '', adminPassword: '' });
       setIsTenantModalOpen(true);
+      setTenantModalTab('company');
       setShowPassword(false);
   };
 
   const openEditTenantModal = async (tenant: SaasTenant) => {
       setEditingTenant(tenant);
       setIsTenantModalOpen(true);
+      setTenantModalTab('company');
       setShowPassword(false);
       
-      let adminName = '';
-      let adminEmail = '';
+      let adminName = tenantOwners[tenant.id]?.full_name || '';
+      let adminEmail = tenantOwners[tenant.id]?.email || '';
       
       if (tenant.owner_id) {
           setLoadingAdminData(true);
@@ -267,7 +279,7 @@ const SaasAdmin: React.FC = () => {
                       document: tenantForm.document,
                       plan_id: planIdToSend,
                       status: 'active',
-                      owner_id: user.id 
+                      owner_id: null
                   }]).select().single();
 
                   if (dbError) throw dbError;
@@ -402,6 +414,10 @@ const SaasAdmin: React.FC = () => {
                                         {tenant.subscription_status === 'trial' && <span className="text-[9px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded uppercase font-bold border border-blue-200">Trial</span>}
                                     </h4>
                                     <p className="text-xs text-slate-400 font-bold mt-0.5">{tenant.document}</p>
+                                    <p className="text-[11px] text-slate-500 font-bold mt-1">
+                                        Admin: {tenantOwners[tenant.id]?.full_name || 'Aguardando ativacao'} 
+                                        {tenantOwners[tenant.id]?.email && <span className="text-slate-400"> - {tenantOwners[tenant.id].email}</span>}
+                                    </p>
                                 </div>
                             </div>
                             <div className="flex items-center gap-6 flex-shrink-0">
@@ -482,8 +498,12 @@ const SaasAdmin: React.FC = () => {
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => !isProcessing && setIsTenantModalOpen(false)}></div>
           <div className="relative bg-white w-full max-w-2xl rounded-[40px] shadow-2xl p-8 animate-in zoom-in duration-300 max-h-[90vh] overflow-y-auto">
             <h3 className="text-2xl font-black text-slate-800 mb-6">{editingTenant ? 'Editar Empresa' : 'Criar Nova Empresa'}</h3>
+            <div className="flex gap-2 mb-6 bg-slate-100 p-1 rounded-2xl">
+                <button type="button" onClick={() => setTenantModalTab('company')} className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${tenantModalTab === 'company' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}>Empresa e Plano</button>
+                <button type="button" onClick={() => setTenantModalTab('owner')} className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${tenantModalTab === 'owner' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}>Administrador</button>
+            </div>
             <form onSubmit={handleSaveTenant} className="space-y-6">
-                <div className="space-y-4 bg-slate-50/70 border border-slate-100 rounded-3xl p-5">
+                <div className={`space-y-4 bg-slate-50/70 border border-slate-100 rounded-3xl p-5 ${tenantModalTab !== 'company' ? 'hidden' : ''}`}>
                     <h4 className="text-[10px] font-black uppercase text-blue-600 tracking-widest mb-2 flex items-center gap-2"><Building size={14}/> Dados da Empresa</h4>
                     <div>
                         <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Nome da Empresa</label>
@@ -521,7 +541,7 @@ const SaasAdmin: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="space-y-4 pt-4 border-t border-slate-100 bg-slate-50/70 border rounded-3xl p-5">
+                <div className={`space-y-4 bg-slate-50/70 border rounded-3xl p-5 ${tenantModalTab !== 'owner' ? 'hidden' : ''}`}>
                     <h4 className="text-[10px] font-black uppercase text-blue-600 tracking-widest mb-2 flex items-center gap-2">
                         <User size={14}/> 
                         {editingTenant ? 'Administrador da Conta' : 'Administrador Inicial'}

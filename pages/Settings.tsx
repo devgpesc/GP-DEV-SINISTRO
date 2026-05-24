@@ -49,7 +49,7 @@ const Settings: React.FC = () => {
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
-  const [userForm, setUserForm] = useState({ id: '', full_name: '', role: 'Usuário', permissions: {} as Record<string, boolean> });
+  const [userForm, setUserForm] = useState({ id: '', full_name: '', role: 'Usuário', membership_role: 'member', permissions: {} as Record<string, boolean> });
   const [inviteData, setInviteData] = useState({ name: '', email: '', role: 'member' });
   const [generatedLink, setGeneratedLink] = useState('');
   const [copied, setCopied] = useState(false);
@@ -115,9 +115,20 @@ const Settings: React.FC = () => {
 
   const loadUsers = async () => {
     setLoadingUsers(true);
-    const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: true });
-    setUsersList(data || []);
-    setLoadingUsers(false);
+    try {
+      if (!currentTenant?.id) {
+        setUsersList([]);
+        return;
+      }
+      const { data, error } = await supabase.rpc('get_tenant_members', { target_tenant_id: currentTenant.id });
+      if (error) throw error;
+      setUsersList(data || []);
+    } catch (err: any) {
+      addToast('error', 'Erro', err.message || 'Falha ao carregar equipe da empresa.');
+      setUsersList([]);
+    } finally {
+      setLoadingUsers(false);
+    }
   };
 
   const loadInvitations = async () => {
@@ -154,18 +165,32 @@ const Settings: React.FC = () => {
   };
 
   // ... (Funções handleEditUser, handleDeleteUser, togglePermission, handleSaveUser, generateInviteLink, handleDeleteInvite, copyInviteLink mantidas)
-  const handleEditUser = (user: any) => { setEditingUser(user); setUserForm({ id: user.id, full_name: user.full_name || '', role: user.role || 'Usuário', permissions: user.permissions || {} }); setUserModalOpen(true); };
+  const handleEditUser = (user: any) => {
+      setEditingUser(user);
+      setUserForm({
+          id: user.id,
+          full_name: user.full_name || '',
+          role: user.role || 'Usuário',
+          membership_role: user.membership_role || 'member',
+          permissions: user.permissions || {}
+      });
+      setUserModalOpen(true);
+  };
   const handleDeleteUser = async () => { 
       if (!userToDelete) return; 
       try { 
           // Executa a função RPC para apagar o usuário de verdade da tabela auth.users
-          const { error } = await supabase.rpc('delete_user_completely', { target_user_id: userToDelete.id });
+          if (!currentTenant?.id) throw new Error('Empresa atual nao encontrada.');
+          const { error } = await supabase.rpc('detach_tenant_member', {
+              target_tenant_id: currentTenant.id,
+              target_user_id: userToDelete.id
+          });
           if (error) throw error;
           
           await auditService.log('Delete User', 'User', userToDelete.id, { email: userToDelete.email }); 
           setUsersList(prev => prev.filter(u => u.id !== userToDelete.id)); 
           setUserToDelete(null); 
-          addToast('success', 'Removido', 'Usuário excluído permanentemente.'); 
+          addToast('success', 'Removido', 'Acesso removido desta empresa.'); 
       } catch (err: any) { 
           console.error(err);
           if (err.message?.includes('function') || err.code === 'PGRST202') {
@@ -176,7 +201,26 @@ const Settings: React.FC = () => {
       } 
   };
   const togglePermission = (featureId: string) => { setUserForm(prev => ({ ...prev, permissions: { ...prev.permissions, [featureId]: !prev.permissions[featureId] } })); };
-  const handleSaveUser = async () => { if (!editingUser) return; const updates = { full_name: userForm.full_name, role: userForm.role, permissions: userForm.permissions, updated_at: new Date().toISOString() }; const { error } = await supabase.from('profiles').update(updates).eq('id', userForm.id); if (!error) { await auditService.log('Update User', 'User', userForm.id, updates); loadUsers(); setUserModalOpen(false); addToast('success', 'Salvo', 'Usuário atualizado.'); } };
+  const handleSaveUser = async () => {
+      if (!editingUser || !currentTenant?.id) return;
+      const payload = {
+          target_tenant_id: currentTenant.id,
+          target_user_id: userForm.id,
+          target_full_name: userForm.full_name,
+          target_role: userForm.role,
+          target_permissions: userForm.permissions,
+          target_membership_role: userForm.membership_role
+      };
+      const { error } = await supabase.rpc('update_tenant_member_profile', payload);
+      if (!error) {
+          await auditService.log('Update User', 'User', userForm.id, payload);
+          loadUsers();
+          setUserModalOpen(false);
+          addToast('success', 'Salvo', 'Usuário atualizado.');
+      } else {
+          addToast('error', 'Erro', error.message);
+      }
+  };
   const generateInviteLink = async () => { 
       if (!profile) return;
 
@@ -482,14 +526,31 @@ const Settings: React.FC = () => {
                       </div>
                       
                       <div>
-                          <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Nível de Acesso Global</label>
+                          <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Perfil no sistema</label>
                           <select 
                               className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-slate-700 outline-none"
                               value={userForm.role}
                               onChange={e => setUserForm({...userForm, role: e.target.value})}
                           >
                               <option value="Usuário">Usuário (Padrão)</option>
+                              <option value="Gerente">Gerente</option>
                               <option value="Admin">Administrador (Pode ver Config e Auditoria)</option>
+                              {profile?.email?.toLowerCase() === 'devgpesc@gmail.com' && (
+                                  <option value="super_admin">Super Admin da plataforma</option>
+                              )}
+                          </select>
+                      </div>
+
+                      <div>
+                          <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Papel nesta empresa</label>
+                          <select
+                              className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-slate-700 outline-none"
+                              value={userForm.membership_role}
+                              onChange={e => setUserForm({...userForm, membership_role: e.target.value})}
+                          >
+                              <option value="member">Membro</option>
+                              <option value="admin">Administrador da empresa</option>
+                              <option value="owner">Proprietário da empresa</option>
                           </select>
                       </div>
 

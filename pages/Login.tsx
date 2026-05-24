@@ -85,8 +85,8 @@ const Login: React.FC = () => {
           }
       }
 
-      if (profile?.role === 'super_admin' || profile?.role === 'Admin') {
-          // Super Admin/Admin sempre passa
+      if (profile?.role === 'super_admin') {
+          // Super Admin da plataforma sempre passa
           setLocalLoading(false);
           navigate('/', { replace: true });
           return; 

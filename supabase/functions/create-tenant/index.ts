@@ -40,13 +40,13 @@ serve(async (req) => {
 
     const { data: profile } = await supabaseAdmin
       .from('profiles')
-      .select('role')
+      .select('role, email')
       .eq('id', user.id)
       .single()
 
-    if (!profile || (profile.role !== 'super_admin' && profile.role !== 'Admin')) {
+    if (!profile || profile.role !== 'super_admin') {
       return new Response(
-        JSON.stringify({ error: 'Permissão negada. Apenas administradores podem criar empresas.' }),
+        JSON.stringify({ error: 'Permissao negada. Apenas Super Admin pode criar empresas.' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 }
       )
     }
@@ -107,6 +107,20 @@ serve(async (req) => {
       // Rollback básico: se falhar ao criar empresa, deleta o usuário criado para não deixar lixo
       await supabaseAdmin.auth.admin.deleteUser(createdUser.user.id)
       throw tenantError
+    }
+
+    const { error: memberError } = await supabaseAdmin
+      .from('organization_members')
+      .insert({
+        tenant_id: tenant.id,
+        user_id: createdUser.user.id,
+        role: 'owner'
+      })
+
+    if (memberError) {
+      await supabaseAdmin.from('saas_tenants').delete().eq('id', tenant.id)
+      await supabaseAdmin.auth.admin.deleteUser(createdUser.user.id)
+      throw memberError
     }
 
     // 7. Retorno de Sucesso

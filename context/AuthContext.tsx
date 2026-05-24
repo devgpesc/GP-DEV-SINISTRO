@@ -182,7 +182,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // 3. SEGURANÇA: Se não tem memberships válidas e não é Super Admin, faz logout forçado
       // Isso evita o "User (Modo Rápido)" para quem não deve ter acesso
-      const isSuperAdmin = finalProfile.role === 'super_admin' || finalProfile.role === 'Admin';
+      const isSuperAdmin = finalProfile.role === 'super_admin';
       
       if (combinedMemberships.length === 0 && !isSuperAdmin) {
           // Permitir se o usuário tem um convite na URL
