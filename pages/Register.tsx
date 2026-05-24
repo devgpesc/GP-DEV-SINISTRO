@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
-const { Link, useNavigate, useSearchParams } = ReactRouterDOM as any;
+const { Link, useSearchParams } = ReactRouterDOM as any;
 import { supabase } from '../services/supabaseClient';
 import { useToast } from '../context/ToastContext';
 import { auditService } from '../services/auditService';
@@ -13,7 +13,6 @@ const PENDING_REGISTRATION_STORAGE_KEY = 'sb-autoclaims-pending-registration';
 const Register: React.FC = () => {
   const { addToast } = useToast();
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -62,6 +61,10 @@ const Register: React.FC = () => {
       ...payload,
       createdAt: new Date().toISOString()
     }));
+  };
+
+  const redirectToHomeWithFreshContext = () => {
+    window.location.assign('/');
   };
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -141,7 +144,7 @@ const Register: React.FC = () => {
 
         await auditService.log('Accept Invite', 'Invitation', inviteData.id, { tenant: inviteData.tenant_id });
         addToast('success', 'Cadastro concluido!', `Voce agora faz parte de ${trimmedCompanyName}.`);
-        setTimeout(() => navigate('/'), 1200);
+        setTimeout(redirectToHomeWithFreshContext, 1200);
         return;
       }
 
@@ -154,7 +157,7 @@ const Register: React.FC = () => {
 
         await auditService.log('Register', 'User', data.user.id, { email: data.user.email, company: trimmedCompanyName });
         addToast('success', 'Conta criada!', `Bem-vindo a ${trimmedCompanyName}.`);
-        setTimeout(() => navigate('/'), 1200);
+        setTimeout(redirectToHomeWithFreshContext, 1200);
         return;
       }
 
