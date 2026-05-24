@@ -34,6 +34,20 @@ const Purchases: React.FC = () => {
     loadOrders();
   }, []);
 
+  const deriveQuotationStatus = (statuses: string[], fallback?: string | null) => {
+    if (statuses.length === 0) return fallback || 'Aguardando Aprovação';
+    const allCanceled = statuses.every(status => status === 'Cancelada');
+    const hasPendingApproval = statuses.some(status => status === 'Gerada');
+    const allReceived = statuses.every(status => status === 'Recebida');
+    const allApprovedOrReceived = statuses.every(status => status === 'Aprovada' || status === 'Recebida');
+
+    if (allCanceled) return 'Cancelada';
+    if (hasPendingApproval) return 'Aguardando Aprovação';
+    if (allReceived) return 'Compra Realizada';
+    if (allApprovedOrReceived) return 'Compra Autorizada';
+    return fallback || 'Aguardando Aprovação';
+  };
+
   const loadOrders = async () => {
     setLoading(true);
     
@@ -101,10 +115,23 @@ const Purchases: React.FC = () => {
             ? await supabase.from('profiles').select('id, full_name, email').in('id', creatorIds)
             : { data: [] as any[] };
 
+        const orderCodes = [...new Set((data || []).map((o: any) => o.code).filter(Boolean))];
+        const { data: deliveryRows } = orderCodes.length > 0
+            ? await supabase.from('deliveries').select('po, status').in('po', orderCodes)
+            : { data: [] as any[] };
+
         const releaseByQuoteItem = new Map(
           (quoteReleaseRows.data || []).map((row: any) => [`${row.quotation_id}:${row.quotation_item_id}`, row])
         );
         const creatorById = new Map((creatorRows || []).map((profile: any) => [profile.id, profile]));
+        const deliveryByPo = new Map((deliveryRows || []).map((delivery: any) => [delivery.po, delivery.status]));
+        const statusesByQuoteId = new Map<string, string[]>();
+        (data || []).forEach((order: any) => {
+          if (!order.quotation_id) return;
+          const current = statusesByQuoteId.get(order.quotation_id) || [];
+          current.push(order.status);
+          statusesByQuoteId.set(order.quotation_id, current);
+        });
 
         const mappedOrders = data?.map((o: any) => {
             const quote = quoteById.get(o.quotation_id);
@@ -112,6 +139,9 @@ const Purchases: React.FC = () => {
             const associate = event?.associateId ? associateById.get(event.associateId) : null;
             const vehicle = event?.vehicleId ? vehicleById.get(event.vehicleId) : null;
             const creator = o.created_by ? creatorById.get(o.created_by) : null;
+            const derivedQuotationStatus = o.quotation_id
+              ? deriveQuotationStatus(statusesByQuoteId.get(o.quotation_id) || [], quote?.status)
+              : quote?.status || null;
 
             return {
             id: o.id,
@@ -119,7 +149,8 @@ const Purchases: React.FC = () => {
             eventId: o.event_id,
             quotationId: o.quotation_id,
             quotationCode: quote?.code || null,
-            quotationStatus: quote?.status || null,
+            quotationStatus: derivedQuotationStatus,
+            storedQuotationStatus: quote?.status || null,
             quotationCreatedAt: quote?.created_at || null,
             eventProtocol: event?.protocol || quote?.eventRef || null,
             customerName: associate?.name || 'Cliente nao vinculado',
@@ -139,6 +170,7 @@ const Purchases: React.FC = () => {
             })) || [],
             total: o.total || 0,
             status: o.status,
+            deliveryStatus: deliveryByPo.get(o.code) || null,
             createdAt: o.created_at
             };
         }) || [];
@@ -170,11 +202,11 @@ const Purchases: React.FC = () => {
         if (statuses.length > 0) {
           const allCanceled = statuses.every((status: string) => status === 'Cancelada');
           const hasPendingApproval = statuses.some((status: string) => status === 'Gerada');
-          const hasReceived = statuses.some((status: string) => status === 'Recebida');
+          const allReceived = statuses.every((status: string) => status === 'Recebida');
           const allApprovedOrReceived = statuses.every((status: string) => status === 'Aprovada' || status === 'Recebida');
           if (allCanceled) quotationStatus = 'Cancelada';
           else if (hasPendingApproval) quotationStatus = 'Aguardando Aprovação';
-          else if (hasReceived) quotationStatus = 'Compra Realizada';
+          else if (allReceived) quotationStatus = 'Compra Realizada';
           else if (allApprovedOrReceived) quotationStatus = 'Compra Autorizada';
         } else if (forcedOrderStatus === 'Cancelada') {
           quotationStatus = 'Cancelada';
@@ -238,6 +270,24 @@ const Purchases: React.FC = () => {
       amount: order.total
     });
     setOpenMenuId(null);
+  };
+
+  const handleResolveDivergence = async (order: any) => {
+    setToast({ show: true, title: 'Reabrindo entrega', message: `Enviando ${order.code} para tratativa operacional.`, type: 'loading' });
+    setOpenMenuId(null);
+
+    const { error } = await supabase
+      .from('deliveries')
+      .update({ status: 'Pendente' })
+      .eq('po', order.code);
+
+    if (error) {
+      setToast({ show: true, title: 'Erro', message: 'Não foi possível reabrir a entrega divergente.', type: 'info' });
+      return;
+    }
+
+    setOrders(prev => prev.map(item => item.id === order.id ? { ...item, deliveryStatus: 'Pendente' } : item));
+    setToast({ show: true, title: 'Entrega reaberta', message: `${order.code} voltou para a fila de Operação em Entregas.`, type: 'success' });
   };
 
   const executeAction = async () => {
@@ -422,6 +472,12 @@ const Purchases: React.FC = () => {
     return 'bg-slate-50 text-slate-500 border-slate-100';
   };
 
+  const getQuotationStatusClass = (status: string) => {
+    if (status === 'Compra Autorizada' || status === 'Compra Realizada') return 'text-green-700';
+    if (status === 'Cancelada') return 'text-red-600';
+    return 'text-amber-600';
+  };
+
   const groupedOrders = useMemo(() => {
     const groups = new Map<string, any>();
     filteredOrders.forEach(order => {
@@ -567,6 +623,11 @@ const Purchases: React.FC = () => {
                                                     <h4 className="text-base font-black text-slate-800">{order.code}</h4>
                                                     <span className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black uppercase border ${getStatusClass(order.status)}`}>{order.status}</span>
                                                     {order.quotationCode && <span className="px-2.5 py-0.5 rounded-lg text-[9px] font-black uppercase border bg-white text-blue-600 border-blue-100">{order.quotationCode}</span>}
+                                                    {order.deliveryStatus === 'Divergente' && (
+                                                        <span className="px-2.5 py-0.5 rounded-lg text-[9px] font-black uppercase border bg-red-50 text-red-700 border-red-200">
+                                                            Entrega divergente
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-4 text-xs text-slate-500 font-bold">
                                                     <span className="flex items-center gap-1 text-slate-700 truncate max-w-[260px]"><Truck size={12} className="text-blue-400"/> {order.supplierName}</span>
@@ -575,9 +636,18 @@ const Purchases: React.FC = () => {
                                                     <span className="hidden md:inline w-1 h-1 rounded-full bg-slate-300"></span>
                                                     <span>{order.items.length} itens</span>
                                                 </div>
-                                                {order.quotationStatus && (
-                                                    <p className="mt-2 text-[10px] font-black uppercase tracking-widest text-slate-400">Status da cotacao: {order.quotationStatus}</p>
-                                                )}
+                                                <div className="mt-2 flex flex-wrap gap-2">
+                                                    {order.quotationStatus && (
+                                                        <p className={`text-[10px] font-black uppercase tracking-widest ${getQuotationStatusClass(order.quotationStatus)}`}>
+                                                            Status da cotacao: {order.quotationStatus}
+                                                        </p>
+                                                    )}
+                                                    {order.deliveryStatus === 'Divergente' && (
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-red-600">
+                                                            Acao necessaria: tratar divergencia da entrega
+                                                        </p>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
 
@@ -593,6 +663,11 @@ const Purchases: React.FC = () => {
                                                         <ShieldCheck size={16}/>
                                                     </button>
                                                 )}
+                                                {order.deliveryStatus === 'Divergente' && (
+                                                    <button onClick={() => handleResolveDivergence(order)} className="bg-red-600 text-white px-4 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-600/20 flex items-center gap-2" title="Tratar divergência">
+                                                        <AlertTriangle size={16}/>
+                                                    </button>
+                                                )}
                                                 <button onClick={() => setViewOrder(order)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-blue-600 rounded-xl hover:border-blue-200 transition-all shadow-sm" title="Ver Detalhes"><Eye size={18}/></button>
                                                 <button onClick={() => handlePrintEnhanced(order)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-blue-600 rounded-xl hover:border-blue-200 transition-all shadow-sm hidden sm:block" title="Imprimir em retrato"><Printer size={18}/></button>
                                                 <div className="relative">
@@ -600,6 +675,7 @@ const Purchases: React.FC = () => {
                                                     {openMenuId === order.id && (
                                                         <div className="absolute right-0 bottom-full lg:bottom-auto lg:top-full mb-2 lg:mb-0 lg:mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-20 animate-in fade-in zoom-in duration-200">
                                                             {order.status !== 'Cancelada' && <button onClick={() => handleRequestCancel(order)} className="w-full text-left px-4 py-3 text-xs font-bold text-amber-600 hover:bg-amber-50 border-b border-slate-50">Cancelar OC</button>}
+                                                            {order.deliveryStatus === 'Divergente' && <button onClick={() => handleResolveDivergence(order)} className="w-full text-left px-4 py-3 text-xs font-bold text-red-600 hover:bg-red-50 border-b border-slate-50">Tratar divergência</button>}
                                                             <button onClick={() => { setOpenMenuId(null); handlePrintEnhanced(order, 'landscape'); }} className="w-full text-left px-4 py-3 text-xs font-bold text-blue-600 hover:bg-blue-50 border-b border-slate-50">Imprimir paisagem</button>
                                                             <button onClick={() => handleRequestDelete(order)} className="w-full text-left px-4 py-3 text-xs font-bold text-red-600 hover:bg-red-50">Excluir Registro</button>
                                                         </div>
