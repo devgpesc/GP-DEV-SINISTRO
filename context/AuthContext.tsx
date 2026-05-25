@@ -61,19 +61,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const completePendingRegistration = useCallback(async (userId: string, userEmail?: string, userMeta?: any) => {
     const raw = localStorage.getItem(PENDING_REGISTRATION_STORAGE_KEY);
-    if (!raw) return;
+    const normalizedUserEmail = String(userEmail || '').trim().toLowerCase();
 
     let pending: any = null;
-    try {
-      pending = JSON.parse(raw);
-    } catch {
-      localStorage.removeItem(PENDING_REGISTRATION_STORAGE_KEY);
-      return;
+    if (raw) {
+      try {
+        pending = JSON.parse(raw);
+      } catch {
+        localStorage.removeItem(PENDING_REGISTRATION_STORAGE_KEY);
+      }
     }
 
+    const metaCompanyName = userMeta?.company_name || userMeta?.companyName;
+    const metaName = userMeta?.full_name || userMeta?.name;
+
+    if (!pending && metaCompanyName) {
+      pending = {
+        email: normalizedUserEmail,
+        name: metaName,
+        companyName: metaCompanyName
+      };
+    }
+
+    if (!pending) return;
+
     const normalizedPendingEmail = String(pending?.email || '').trim().toLowerCase();
-    const normalizedUserEmail = String(userEmail || '').trim().toLowerCase();
-    if (!normalizedPendingEmail || normalizedPendingEmail !== normalizedUserEmail) return;
+    if (normalizedPendingEmail && normalizedUserEmail && normalizedPendingEmail !== normalizedUserEmail) return;
 
     if (pending.inviteToken) {
       const { error } = await supabase.rpc('accept_invite', { invite_token: pending.inviteToken });

@@ -108,7 +108,9 @@ const Register: React.FC = () => {
           emailRedirectTo: getAuthRedirectUrl(inviteToken ? `/auth/callback?invite=${inviteToken}` : '/auth/callback'),
           data: {
             full_name: trimmedName,
-            name: trimmedName
+            name: trimmedName,
+            company_name: inviteToken ? undefined : trimmedCompanyName,
+            registration_type: inviteToken ? 'invite' : 'business'
           }
         }
       });
@@ -127,7 +129,18 @@ const Register: React.FC = () => {
         throw signUpError;
       }
 
-      if (!data.user) throw new Error('Nao foi possivel criar o usuario.');
+      if (!data.user) {
+        savePendingRegistration({
+          email: normalizedEmail,
+          name: trimmedName,
+          companyName: inviteToken ? undefined : trimmedCompanyName,
+          inviteToken: inviteToken || undefined
+        });
+        addToast('success', 'Cadastro enviado!', 'Confirme seu e-mail para concluir o acesso.');
+        setError('Enviamos um e-mail de confirmacao. Clique no botao do e-mail para ativar a conta e criar a empresa.');
+        setLoading(false);
+        return;
+      }
 
       if (inviteToken && inviteData) {
         if (!data.session) {
