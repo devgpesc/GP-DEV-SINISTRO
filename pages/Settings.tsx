@@ -61,7 +61,7 @@ const Settings: React.FC = () => {
 
   useEffect(() => {
     loadSettings();
-  }, []);
+  }, [currentTenant?.id]);
 
   useEffect(() => {
     if (activeTab === 'users') {
@@ -70,7 +70,7 @@ const Settings: React.FC = () => {
     if (activeTab === 'audit') {
         loadAuditLogs();
     }
-  }, [activeTab]);
+  }, [activeTab, currentTenant?.id]);
 
   useEffect(() => {
     if (inviteModalOpen) {
@@ -79,7 +79,7 @@ const Settings: React.FC = () => {
         setInviteError(null);
         loadInvitations();
     }
-  }, [inviteModalOpen]);
+  }, [inviteModalOpen, currentTenant?.id]);
 
   // ... (Funções toggleShowKey, loadSettings, loadUsers, loadInvitations mantidas)
   const toggleShowKey = (keyName: string) => setShowKeys(prev => ({ ...prev, [keyName]: !prev[keyName] }));
@@ -87,7 +87,12 @@ const Settings: React.FC = () => {
   const loadSettings = async () => {
     setLoading(true);
     try {
-        const { data } = await supabase.from('saas_settings').select('*').limit(1).maybeSingle();
+        if (!currentTenant?.id) return;
+        const { data } = await supabase
+          .from('saas_settings')
+          .select('*')
+          .eq('tenant_id', currentTenant.id)
+          .maybeSingle();
         if (data) {
             setCompanyInfo({
                 company_name: data.company_name || 'EventPro',
@@ -132,7 +137,15 @@ const Settings: React.FC = () => {
   };
 
   const loadInvitations = async () => {
-      const { data } = await supabase.from('invitations').select('*').order('created_at', { ascending: false });
+      if (!currentTenant?.id) {
+        setInvitations([]);
+        return;
+      }
+      const { data } = await supabase
+        .from('invitations')
+        .select('*')
+        .eq('tenant_id', currentTenant.id)
+        .order('created_at', { ascending: false });
       setInvitations(data || []);
   };
 
@@ -145,13 +158,18 @@ const Settings: React.FC = () => {
 
   const handleSaveAll = async () => {
     setSaving(true);
+    if (!currentTenant?.id) {
+      addToast('error', 'Empresa obrigatÃ³ria', 'Selecione uma empresa antes de salvar configuraÃ§Ãµes.');
+      setSaving(false);
+      return;
+    }
     const payload = {
-        id: 1, 
+        tenant_id: currentTenant.id,
         ...companyInfo,
         updated_at: new Date().toISOString()
     };
     try {
-        const { error } = await supabase.from('saas_settings').upsert(payload);
+        const { error } = await supabase.from('saas_settings').upsert(payload, { onConflict: 'tenant_id' });
         if (error) throw error;
         await auditService.log('Update Settings', 'Settings', 'Global', { provider: companyInfo.ai_provider });
         setSaved(true);

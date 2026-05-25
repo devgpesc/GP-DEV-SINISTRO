@@ -54,7 +54,7 @@ interface Review {
 
 const Suppliers: React.FC = () => {
   const { addToast } = useToast();
-  const { user } = useAuth();
+  const { user, currentTenant, isSuperAdmin } = useAuth();
   
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [searchTerm, setSearchTerm] = useState('');
@@ -86,7 +86,7 @@ const Suppliers: React.FC = () => {
 
   useEffect(() => {
     loadSuppliers();
-  }, []);
+  }, [currentTenant?.id, isSuperAdmin]);
 
   useEffect(() => {
     if (activeTab === 'history' && supplierToEdit) {
@@ -98,12 +98,20 @@ const Suppliers: React.FC = () => {
     setLoading(true);
     setDbError(null);
     try {
+        if (!currentTenant?.id && !isSuperAdmin) {
+          setSuppliers([]);
+          return;
+        }
+
         let query = supabase.from('suppliers').select('*').order('created_at', { ascending: false });
+        if (currentTenant?.id) query = query.eq('tenant_id', currentTenant.id);
         let { data, error } = await query;
         
         if (error) {
             if (error.message?.includes('does not exist') || error.code === '42703') {
-                 const retry = await supabase.from('suppliers').select('*');
+                 let retryQuery = supabase.from('suppliers').select('*');
+                 if (currentTenant?.id) retryQuery = retryQuery.eq('tenant_id', currentTenant.id);
+                 const retry = await retryQuery;
                  data = retry.data;
                  error = retry.error as any;
             }
@@ -130,6 +138,7 @@ const Suppliers: React.FC = () => {
         .from('supplier_reviews')
         .select('*, profiles(full_name)')
         .eq('supplier_id', supplierId)
+        .eq('tenant_id', currentTenant?.id || supplierToEdit?.tenant_id || '')
         .order('created_at', { ascending: false });
       
       if (!error) {
@@ -170,7 +179,9 @@ const Suppliers: React.FC = () => {
 
   const confirmDelete = async () => {
     if (deleteId) {
-      const { error } = await supabase.from('suppliers').delete().eq('id', deleteId);
+      let query = supabase.from('suppliers').delete().eq('id', deleteId);
+      if (currentTenant?.id) query = query.eq('tenant_id', currentTenant.id);
+      const { error } = await query;
       if (!error) {
           setSuppliers(prev => prev.filter(s => s.id !== deleteId));
           addToast('success', 'Excluído', 'Fornecedor removido.');
@@ -215,7 +226,14 @@ const Suppliers: React.FC = () => {
     e.preventDefault();
     setIsSaving(true);
 
+    if (!currentTenant?.id && !isSuperAdmin) {
+      addToast('error', 'Empresa obrigatÃ³ria', 'Selecione uma empresa antes de salvar fornecedores.');
+      setIsSaving(false);
+      return;
+    }
+
     const payload = {
+        tenant_id: currentTenant?.id || supplierToEdit?.tenant_id,
         name: formData.name,
         cnpj: formData.cnpj.replace(/\D/g, ''),
         segment: formData.segment,
@@ -232,7 +250,9 @@ const Suppliers: React.FC = () => {
     try {
         let error;
         if (supplierToEdit) {
-            const res = await supabase.from('suppliers').update(payload).eq('id', supplierToEdit.id);
+            let query = supabase.from('suppliers').update(payload).eq('id', supplierToEdit.id);
+            if (currentTenant?.id) query = query.eq('tenant_id', currentTenant.id);
+            const res = await query;
             error = res.error;
         } else {
             const res = await supabase.from('suppliers').insert([payload]);
@@ -253,6 +273,11 @@ const Suppliers: React.FC = () => {
 
   const handleAddReview = async () => {
     if (!supplierToEdit || !user) return;
+    const reviewTenantId = currentTenant?.id || supplierToEdit.tenant_id;
+    if (!reviewTenantId) {
+        addToast('error', 'Empresa obrigatÃ³ria', 'Selecione uma empresa antes de avaliar fornecedores.');
+        return;
+    }
     if (!newReview.comment.trim()) {
         addToast('warning', 'Comentário vazio', 'Por favor descreva a experiência.');
         return;
@@ -262,6 +287,7 @@ const Suppliers: React.FC = () => {
     try {
         // 1. Inserir Review
         const { error } = await supabase.from('supplier_reviews').insert([{
+            tenant_id: reviewTenantId,
             supplier_id: supplierToEdit.id,
             user_id: user.id,
             rating: newReview.rating,
@@ -272,7 +298,11 @@ const Suppliers: React.FC = () => {
 
         // 2. Recalcular Média (Frontend Simples ou Backend Function - aqui faremos via código)
         // Busca todas as reviews atualizadas
-        const { data: allReviews } = await supabase.from('supplier_reviews').select('rating').eq('supplier_id', supplierToEdit.id);
+        const { data: allReviews } = await supabase
+          .from('supplier_reviews')
+          .select('rating')
+          .eq('supplier_id', supplierToEdit.id)
+          .eq('tenant_id', reviewTenantId);
         
         let newAverage = newReview.rating;
         if (allReviews && allReviews.length > 0) {
@@ -281,7 +311,11 @@ const Suppliers: React.FC = () => {
         }
 
         // 3. Atualizar Fornecedor
-        await supabase.from('suppliers').update({ rating: newAverage }).eq('id', supplierToEdit.id);
+        await supabase
+          .from('suppliers')
+          .update({ rating: newAverage })
+          .eq('id', supplierToEdit.id)
+          .eq('tenant_id', reviewTenantId);
 
         addToast('success', 'Avaliação Registrada', 'O desempenho do fornecedor foi atualizado.');
         setNewReview({ rating: 5, comment: '' });
