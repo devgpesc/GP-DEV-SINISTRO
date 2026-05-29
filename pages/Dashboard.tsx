@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { 
   TrendingUp, TrendingDown, Clock, ShieldAlert, DollarSign, ShoppingBag,
-  ArrowUpRight, ArrowDownRight, Database, CheckCircle, Loader2, Package,
-  WifiOff, RefreshCw, Plus, FileText, Car, User
+  ArrowUpRight, ArrowDownRight, Database, Loader2, Package,
+  FileText, Car, User, Search, Truck, Send, Plus, Users, ChevronRight
 } from 'lucide-react';
 import { 
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area,
@@ -32,15 +32,39 @@ const KPICard = ({ title, value, change, trend, icon: Icon, color }: any) => (
   </div>
 );
 
+const WorkflowCard = ({ to, icon: Icon, title, desc, accent, stat }: any) => (
+  <Link
+    to={to}
+    className="group bg-white p-6 rounded-[28px] border border-slate-200/80 shadow-sm hover:shadow-xl hover:border-blue-200 hover:-translate-y-0.5 transition-all duration-300 relative overflow-hidden"
+  >
+    <div className={`absolute -right-6 -top-6 w-24 h-24 rounded-full opacity-10 ${accent}`} />
+    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 ${accent} text-white shadow-lg`}>
+      <Icon size={22} strokeWidth={2.2} />
+    </div>
+    <h3 className="text-lg font-black text-slate-800 mb-1">{title}</h3>
+    <p className="text-sm text-slate-500 font-medium leading-relaxed mb-4">{desc}</p>
+    <div className="flex items-center justify-between">
+      {stat !== undefined && (
+        <span className="text-xs font-black uppercase tracking-wider text-slate-400">{stat}</span>
+      )}
+      <span className="ml-auto flex items-center gap-1 text-blue-600 font-bold text-xs uppercase tracking-wider group-hover:gap-2 transition-all">
+        Abrir <ChevronRight size={16} />
+      </span>
+    </div>
+  </Link>
+);
+
 const Dashboard: React.FC = () => {
-  const { profile } = useAuth();
+  const { profile, access } = useAuth();
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
+  const [quotationsCount, setQuotationsCount] = useState(0);
+  const [deliveriesCount, setDeliveriesCount] = useState(0);
+  const [purchasesCount, setPurchasesCount] = useState(0);
   const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Verificação de Role
-  const isExecutive = profile?.role === 'Admin' || profile?.role === 'Gerente' || profile?.role === 'super_admin';
+  const isExecutive = access.isTenantManager;
 
   const safeFetch = async (table: string) => {
     try {
@@ -65,16 +89,20 @@ const Dashboard: React.FC = () => {
     }, 8000);
 
     try {
-        // Se for usuário comum, carregamos menos dados (apenas eventos para contagem)
-        const promises = [safeFetch('events')];
-        if (isExecutive) {
-            promises.push(safeFetch('purchase_orders'));
-        }
+        const eventsData = await safeFetch('events');
+        setEvents(eventsData);
 
-        const results = await Promise.all(promises);
-        setEvents(results[0]);
+        const [{ count: qCount }, { count: dCount }, { count: poCount }] = await Promise.all([
+          supabase.from('quotations').select('*', { count: 'exact', head: true }),
+          supabase.from('deliveries').select('*', { count: 'exact', head: true }),
+          supabase.from('purchase_orders').select('*', { count: 'exact', head: true }),
+        ]);
+        setQuotationsCount(qCount || 0);
+        setDeliveriesCount(dCount || 0);
+        setPurchasesCount(poCount || 0);
+
         if (isExecutive) {
-            setOrders(results[1]);
+            setOrders(await safeFetch('purchase_orders'));
         }
     } catch (err: any) {
         console.error("Erro dashboard:", err);
@@ -146,53 +174,109 @@ const Dashboard: React.FC = () => {
       );
   }
 
-  // --- DASHBOARD OPERACIONAL (USUÁRIO COMUM) ---
+  // --- CENTRAL OPERACIONAL (membros e equipe) ---
   if (!isExecutive) {
+      const awaiting = events.filter(e => e.status === 'Aguardando' || e.status === 'Em Cotação').length;
+      const inQuotation = events.filter(e => e.status === 'Em Cotação').length;
+
       return (
-        <div className="space-y-8 animate-in fade-in duration-500 max-w-5xl mx-auto">
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-[32px] p-6 md:p-10 text-white shadow-xl shadow-blue-900/20 relative overflow-hidden">
-                <div className="relative z-10">
+        <div className="space-y-8 animate-in fade-in duration-500 max-w-6xl mx-auto">
+            <div className="bg-gradient-to-br from-[#0F172A] via-[#1E3A8A] to-[#4338CA] rounded-[32px] p-6 md:p-10 text-white shadow-2xl shadow-blue-900/25 relative overflow-hidden">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.12),transparent_45%)]" />
+                <div className="relative z-10 flex flex-col md:flex-row md:items-end md:justify-between gap-6">
+                  <div>
+                    <p className="text-[11px] font-black uppercase tracking-[0.25em] text-blue-200 mb-2">Central Operacional</p>
                     <h2 className="text-2xl md:text-3xl font-black mb-2">Olá, {profile?.full_name?.split(' ')[0] || 'Colaborador'}!</h2>
-                    <p className="text-blue-100 font-medium max-w-xl text-sm md:text-base">Bem-vindo ao EventsCar. Selecione uma ação abaixo para começar seu dia de trabalho.</p>
-                </div>
-                <div className="absolute right-0 top-0 h-full w-1/3 bg-white/5 skew-x-12"></div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Link to="/eventos" className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm hover:shadow-lg hover:border-blue-300 transition-all group relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
-                        <FileText size={100} className="text-blue-600"/>
-                    </div>
-                    <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-6">
-                        <ShieldAlert size={28}/>
-                    </div>
-                    {/* MUDANÇA: 'Meus Sinistros' ao invés de 'Meus Eventos' (Já estava correto, mantendo) */}
-                    <h3 className="text-xl font-black text-slate-800 mb-2">Meus Sinistros</h3>
-                    <p className="text-sm text-slate-500 font-medium mb-6">Acompanhe o andamento dos processos e registre novos eventos.</p>
-                    <div className="flex items-center gap-2 text-blue-600 font-bold text-sm uppercase tracking-wider">
-                        Acessar <ArrowUpRight size={18}/>
-                    </div>
-                </Link>
-
-                <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm flex flex-col justify-between">
-                    <div>
-                        <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2"><Clock size={20} className="text-blue-600"/> Resumo Rápido</h3>
-                        <div className="space-y-4">
-                            <div className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
-                                {/* MUDANÇA: 'Sinistros Ativos' */}
-                                <span className="text-sm font-bold text-slate-600">Sinistros Ativos</span>
-                                <span className="bg-white px-3 py-1 rounded-lg text-sm font-black text-slate-800 shadow-sm border border-slate-100">{events.length}</span>
-                            </div>
-                            <div className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
-                                <span className="text-sm font-bold text-slate-600">Aguardando Ação</span>
-                                <span className="bg-amber-100 px-3 py-1 rounded-lg text-sm font-black text-amber-700 border border-amber-200">
-                                    {events.filter(e => e.status === 'Aguardando' || e.status === 'Em Cotação').length}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
+                    <p className="text-blue-100/90 font-medium max-w-2xl text-sm md:text-base">
+                      Siga o fluxo abaixo: registre o sinistro, cote peças, acompanhe compras e entregas — tudo sem depender de permissões manuais.
+                    </p>
+                  </div>
+                  <Link
+                    to="/eventos"
+                    className="inline-flex items-center justify-center gap-2 bg-white text-blue-700 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl hover:bg-blue-50 transition-colors shrink-0"
+                  >
+                    <Plus size={16} /> Novo Sinistro
+                  </Link>
                 </div>
             </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+              <WorkflowCard
+                to="/eventos"
+                icon={ShieldAlert}
+                title="1. Registrar Sinistro"
+                desc="Abra o evento, vincule associado e veículo, anexe evidências."
+                accent="bg-blue-600"
+                stat={`${events.length} ativos`}
+              />
+              <WorkflowCard
+                to="/cotacoes"
+                icon={Search}
+                title="2. Cotar Peças"
+                desc="Monte a matriz de cotação e envie RFQ aos fornecedores."
+                accent="bg-indigo-600"
+                stat={`${quotationsCount} cotações`}
+              />
+              <WorkflowCard
+                to="/compras"
+                icon={ShoppingBag}
+                title="3. Ordem de Compra"
+                desc="Gere e acompanhe OCs. Gestores aprovam quando necessário."
+                accent="bg-violet-600"
+                stat={`${purchasesCount} OCs`}
+              />
+              <WorkflowCard
+                to="/entregas"
+                icon={Truck}
+                title="4. Acompanhar Frete"
+                desc="Rastreie entregas e confirme recebimento das peças."
+                accent="bg-cyan-600"
+                stat={`${deliveriesCount} entregas`}
+              />
+              <WorkflowCard
+                to="/associados"
+                icon={User}
+                title="Cadastrar Associado"
+                desc="Inclua clientes e proprietários para novos sinistros."
+                accent="bg-slate-700"
+              />
+              <WorkflowCard
+                to="/veiculos"
+                icon={Car}
+                title="Cadastrar Veículo"
+                desc="Registre placas e modelos vinculados aos associados."
+                accent="bg-slate-600"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-white rounded-2xl border border-slate-200 p-5">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Sinistros ativos</p>
+                <p className="text-3xl font-black text-slate-800">{events.length}</p>
+              </div>
+              <div className="bg-white rounded-2xl border border-slate-200 p-5">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Aguardando ação</p>
+                <p className="text-3xl font-black text-amber-600">{awaiting}</p>
+              </div>
+              <div className="bg-white rounded-2xl border border-slate-200 p-5">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Em cotação</p>
+                <p className="text-3xl font-black text-blue-600">{inQuotation}</p>
+              </div>
+            </div>
+
+            <Link
+              to="/cotacoes"
+              className="flex items-center justify-between gap-4 p-5 rounded-2xl border border-indigo-100 bg-indigo-50/60 hover:bg-indigo-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-indigo-600 text-white rounded-xl"><Send size={18} /></div>
+                <div>
+                  <p className="font-black text-slate-800 text-sm">Enviar para gestores</p>
+                  <p className="text-xs text-slate-500 font-medium">Finalize cotações pendentes para aprovação da equipe.</p>
+                </div>
+              </div>
+              <ChevronRight className="text-indigo-600" size={20} />
+            </Link>
         </div>
       );
   }

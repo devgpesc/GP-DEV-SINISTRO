@@ -11,6 +11,7 @@ type Session = any;
 
 const TENANT_STORAGE_KEY = 'sb-autoclaims-tenant-id';
 import { readPendingRegistration, clearPendingRegistration } from '../services/pendingRegistration';
+import { AccessProfile, resolveAccessProfile } from '../services/accessControl';
 
 interface UserProfile {
   id: string;
@@ -37,6 +38,7 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   updateProfile: (data: { full_name?: string; avatar_url?: string; role?: string }) => Promise<void>;
   isSuperAdmin: boolean;
+  access: AccessProfile;
   checkPermission: (feature: string) => boolean;
   switchTenant: (tenantId: string) => void;
   refreshContext: () => Promise<void>;
@@ -380,6 +382,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return !!profile.permissions?.[feature];
   };
 
+  const access = resolveAccessProfile(profile, memberships, currentTenant);
+
   const switchTenant = (tenantId: string) => {
       const target = memberships.find(m => m.tenant_id === tenantId);
       if (target) {
@@ -406,6 +410,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signInWithGoogle,
     updateProfile,
     isSuperAdmin: profile?.role === 'super_admin',
+    access,
     checkPermission,
     switchTenant,
     refreshContext

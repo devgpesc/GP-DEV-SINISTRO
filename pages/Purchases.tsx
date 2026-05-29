@@ -6,11 +6,13 @@ import {
 } from 'lucide-react';
 import { PurchaseOrder } from '../types';
 import { supabase } from '../services/supabaseClient';
+import { useAuth } from '../context/AuthContext';
 
 type PrintOrientation = 'portrait' | 'landscape';
 
 const Purchases: React.FC = () => {
-  const [currentUserRole] = useState<'Admin' | 'Gerente' | 'User'>('Admin');
+  const { access } = useAuth();
+  const canApprove = access.canApprovePurchases;
   
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('Todos');
@@ -185,8 +187,6 @@ const Purchases: React.FC = () => {
       return () => clearTimeout(timer);
     }
   }, [toast]);
-
-  const canApprove = currentUserRole === 'Admin' || currentUserRole === 'Gerente';
 
   const syncWorkflowStatus = async (orderContext: any, forcedOrderStatus?: PurchaseOrder['status']) => {
     if (!orderContext?.quotationId && !orderContext?.eventId) return;

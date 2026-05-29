@@ -59,7 +59,7 @@ const NavItem = ({ to, icon: Icon, label, active, badge, onClick }: { to: string
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
-  const { user, profile, isSuperAdmin, signOut, updateProfile, checkPermission } = useAuth();
+  const { user, profile, isSuperAdmin, signOut, updateProfile, access } = useAuth();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [isAiChatOpen, setIsAiChatOpen] = useState(false);
@@ -78,14 +78,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
 
-  // Permissões Logic
-  const role = profile?.role || 'Usuário';
-  const isManagerOrAdmin = role === 'Gerente' || role === 'Admin' || role === 'super_admin';
-  
-  const canViewFinancial = isManagerOrAdmin || checkPermission('financial_view');
-  const canApprove = isManagerOrAdmin || checkPermission('approve_purchases');
-  const canManageTeam = isManagerOrAdmin || checkPermission('manage_users');
-  const canViewReports = isManagerOrAdmin || checkPermission('view_reports');
+  // Acesso: membros da empresa têm fluxo operacional completo por padrão
+  const { canUseOperations, canApprovePurchases, canViewReports, canManageSettings } = access;
 
   // AUTOMATIC AUDIT LOGGING FOR NAVIGATION
   useEffect(() => {
@@ -115,7 +109,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       const dismissedSys = JSON.parse(sessionStorage.getItem('dismissedSysNotifs') || '[]');
 
       try {
-          if (canApprove && !dismissedSys.includes('sys-po-pending')) {
+          if (canApprovePurchases && !dismissedSys.includes('sys-po-pending')) {
               const { count } = await supabase.from('purchase_orders')
                   .select('*', { count: 'exact', head: true })
                   .eq('status', 'Gerada');
@@ -321,26 +315,27 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <NavItem to="/" icon={LayoutDashboard} label="Dashboard" active={location.pathname === '/'} onClick={closeMobileMenu} />
             {/* MUDANÇA: Rótulo atualizado de 'Eventos' para 'Sinistros' */}
             <NavItem to="/eventos" icon={FileText} label="Sinistros" active={location.pathname === '/eventos'} onClick={closeMobileMenu} />
-            
-            {(canViewFinancial || canApprove) && (
-                <>
-                    <NavItem to="/cotacoes" icon={Search} label="Cotações" active={location.pathname === '/cotacoes'} onClick={closeMobileMenu} />
-                    <NavItem to="/compras" icon={ShoppingCart} label="Compras" active={location.pathname === '/compras'} onClick={closeMobileMenu} />
-                    <NavItem to="/entregas" icon={Truck} label="Entregas" active={location.pathname === '/entregas'} onClick={closeMobileMenu} />
-                </>
-            )}
-            
-            {isManagerOrAdmin && (
-                <>
-                    <div className="h-px bg-white/[0.06] my-4"></div>
-                    <NavItem to="/associados" icon={UserCheck} label="Associados" active={location.pathname === '/associados'} onClick={closeMobileMenu} />
-                    <NavItem to="/fornecedores" icon={Users} label="Fornecedores" active={location.pathname === '/fornecedores'} onClick={closeMobileMenu} />
-                    <NavItem to="/veiculos" icon={Car} label="Veículos" active={location.pathname === '/veiculos'} onClick={closeMobileMenu} />
-                    <NavItem to="/catalogo" icon={Package} label="Catálogo" active={location.pathname === '/catalogo'} onClick={closeMobileMenu} />
-                </>
+
+            {canUseOperations && (
+              <>
+                <p className="px-3 pt-4 pb-2 text-[10px] font-bold text-[#738098] uppercase tracking-[0.22em]">Fluxo</p>
+                <NavItem to="/cotacoes" icon={Search} label="Cotações" active={location.pathname === '/cotacoes'} onClick={closeMobileMenu} />
+                <NavItem to="/compras" icon={ShoppingCart} label="Compras" active={location.pathname === '/compras'} onClick={closeMobileMenu} />
+                <NavItem to="/entregas" icon={Truck} label="Entregas" active={location.pathname === '/entregas'} onClick={closeMobileMenu} />
+              </>
             )}
 
-            {(canViewReports || isManagerOrAdmin) && (
+            {canUseOperations && (
+              <>
+                <p className="px-3 pt-4 pb-2 text-[10px] font-bold text-[#738098] uppercase tracking-[0.22em]">Cadastros</p>
+                <NavItem to="/associados" icon={UserCheck} label="Associados" active={location.pathname === '/associados'} onClick={closeMobileMenu} />
+                <NavItem to="/fornecedores" icon={Users} label="Fornecedores" active={location.pathname === '/fornecedores'} onClick={closeMobileMenu} />
+                <NavItem to="/veiculos" icon={Car} label="Veículos" active={location.pathname === '/veiculos'} onClick={closeMobileMenu} />
+                <NavItem to="/catalogo" icon={Package} label="Catálogo" active={location.pathname === '/catalogo'} onClick={closeMobileMenu} />
+              </>
+            )}
+
+            {canViewReports && (
                 <NavItem to="/relatorios" icon={BarChart3} label="Relatórios" active={location.pathname === '/relatorios'} onClick={closeMobileMenu} />
             )}
 
@@ -373,7 +368,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <Hexagon size={18} strokeWidth={1.9} />
             <span className="font-semibold text-[13px]">Plataforma</span>
           </button>
-          {(isSuperAdmin || profile?.role === 'Admin') && (
+          {(isSuperAdmin || canManageSettings) && (
             <Link
               to="/configuracoes"
               onClick={closeMobileMenu}

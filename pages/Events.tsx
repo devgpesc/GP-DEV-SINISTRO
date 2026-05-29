@@ -9,6 +9,7 @@ import { EventStatus, EventType, Priority, Event, Vehicle, Associate } from '../
 import { supabase } from '../services/supabaseClient';
 import { eventService } from '../services/eventService';
 import { useToast } from '../context/ToastContext';
+import PremiumModal, { FormSection, FieldLabel, fieldClassName } from '../components/PremiumModal';
 
 const StatusBadge = ({ status }: { status: EventStatus }) => {
   const styles: any = {
@@ -404,124 +405,201 @@ const Events: React.FC = () => {
         </div>
       )}
 
-      {/* Create/Edit Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => !isSaving && setIsModalOpen(false)}></div>
-          <div className="relative bg-white w-full max-w-3xl rounded-[40px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
-            <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
-              <h3 className="text-xl font-black text-slate-800 flex items-center gap-3"><div className="bg-blue-600 p-2.5 rounded-2xl text-white"><ShieldAlert size={24} /></div>{eventToEdit ? 'Editar Sinistro' : 'Registro de Sinistro'}</h3>
-              <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600"><X size={24}/></button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-8 space-y-8 bg-slate-50/50">
-              {selectedAssociateObj && selectedVehicleObj && (
-                  <div className="p-4 bg-blue-600 text-white rounded-2xl shadow-lg shadow-blue-600/20 flex items-center justify-between animate-in slide-in-from-top-4">
-                      <div className="flex items-center gap-4">
-                          <div className="p-2 bg-white/20 rounded-xl"><LinkIcon size={20}/></div>
-                          <div><p className="text-[10px] font-black uppercase opacity-70 tracking-widest">Vínculo Confirmado</p><p className="font-bold text-sm">{selectedAssociateObj.name} <span className="opacity-50 mx-1">•</span> {selectedVehicleObj.plate} ({selectedVehicleObj.model})</p></div>
-                      </div>
-                      <CheckCircle2 size={24} className="text-blue-200"/>
-                  </div>
-              )}
-              
-              {/* SECTION 1: Vínculo */}
-              <section className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm relative overflow-hidden">
-                 <div className="absolute top-0 left-0 w-1.5 h-full bg-blue-600"></div>
-                 <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-6 flex items-center gap-2"><User size={16} className="text-blue-600"/> 1. Definição de Vínculo (Obrigatório)</h4>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                    <div>
-                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Associado / Proprietário</label>
-                        <select className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none" value={formData.associateId} onChange={e => { setFormData({ ...formData, associateId: e.target.value, vehicleId: '' }); }} disabled={!!eventToEdit}>
-                            <option value="">Selecione o Associado...</option>
-                            {associates.map(a => <option key={a.id} value={a.id}>{a.name} ({a.document})</option>)}
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Veículo Envolvido</label>
-                        <select className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none disabled:opacity-50" value={formData.vehicleId} onChange={e => setFormData({ ...formData, vehicleId: e.target.value })} disabled={!formData.associateId || !!eventToEdit}>
-                            <option value="">{formData.associateId ? (availableVehicles.length > 0 ? 'Selecione o Veículo...' : 'Nenhum veículo encontrado') : 'Aguardando Associado...'}</option>
-                            {availableVehicles.map(v => <option key={v.id} value={v.id}>{v.plate} - {v.model}</option>)}
-                        </select>
-                    </div>
-                 </div>
-                 {!formData.associateId && <div className="mt-4 p-3 bg-amber-50 text-amber-600 text-xs font-bold rounded-xl flex items-center gap-2"><AlertCircle size={16}/> Selecione um associado para habilitar a lista de veículos.</div>}
-              </section>
-
-              {/* SECTION 2: Detalhes */}
-              <section className={`bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm transition-all duration-300 ${isFormLocked ? 'opacity-50 grayscale pointer-events-none' : ''}`}>
-                 <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-6 flex items-center gap-2"><FileText size={16} className="text-blue-600"/> 2. Detalhes do Evento {isFormLocked && <Lock size={14} className="text-slate-400"/>}</h4>
-                 <div className="space-y-6">
-                    <div className="p-5 bg-blue-50/50 rounded-3xl border border-blue-100 flex flex-col md:flex-row gap-4">
-                      <div className="flex-1">
-                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Modo de Geração</label>
-                        <div className="flex bg-white p-1 rounded-xl">
-                          <button type="button" onClick={() => setFormData({...formData, protocolMode: 'auto'})} className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${formData.protocolMode === 'auto' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>Auto</button>
-                          <button type="button" onClick={() => setFormData({...formData, protocolMode: 'manual'})} className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${formData.protocolMode === 'manual' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>Manual</button>
-                        </div>
-                      </div>
-                      <div className="flex-[2]">
-                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Protocolo</label>
-                        <input disabled={formData.protocolMode === 'auto'} className="w-full p-3 bg-white border border-slate-200 rounded-xl font-black outline-none text-slate-700" value={formData.protocolMode === 'auto' ? (eventToEdit ? eventToEdit.protocol : nextAutoProtocol) : formData.manualProtocol} onChange={e => setFormData({...formData, manualProtocol: e.target.value})} />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 gap-4 md:gap-6">
-                        <div><label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Tipo</label><select className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 font-bold text-slate-700" value={formData.type} onChange={e => setFormData({...formData, type: e.target.value as any})}>{Object.values(EventType).map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                    </div>
-                    <div><label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Descrição do Ocorrido</label><textarea className="w-full p-5 bg-slate-50 rounded-3xl border border-slate-100 h-28 outline-none font-medium resize-none text-slate-700" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} /></div>
-                 </div>
-              </section>
-
-              {/* SECTION 3: Anexos */}
-              <section className={`bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm transition-all duration-300 ${isFormLocked ? 'opacity-50 grayscale pointer-events-none' : ''}`}>
-                 <div className="flex justify-between items-center mb-6">
-                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2"><Paperclip size={16} className="text-blue-600"/> 3. Documentos e Evidências</h4>
-                    <button type="button" onClick={() => fileInputRef.current?.click()} className="text-[10px] font-black uppercase bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors flex items-center gap-1"><Plus size={14}/> Adicionar Arquivo</button>
-                    <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelect} multiple accept="image/*,application/pdf" />
-                 </div>
-                 
-                 {formData.attachments.length === 0 ? (
-                    <div className="p-8 border-2 border-dashed border-slate-100 rounded-3xl text-center">
-                        <Paperclip size={32} className="mx-auto text-slate-300 mb-2"/>
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Nenhum anexo adicionado</p>
-                    </div>
-                 ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {formData.attachments.map((att: any) => (
-                            <div key={att.id} className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3 relative group">
-                                <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center border border-slate-200 shrink-0 overflow-hidden">
-                                    {att.type.startsWith('image/') ? (
-                                        <img src={att.url} className="w-full h-full object-cover" />
-                                    ) : (
-                                        <File size={20} className="text-slate-400"/>
-                                    )}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-xs font-bold text-slate-700 truncate">{att.name}</p>
-                                    <p className="text-[10px] text-slate-400 font-medium">{new Date(att.createdAt).toLocaleDateString()} • {att.size}</p>
-                                </div>
-                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    {att.type.startsWith('image/') && (
-                                        <a href={att.url} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-white text-blue-600 rounded-lg shadow-sm hover:bg-blue-50"><Eye size={14}/></a>
-                                    )}
-                                    <a href={att.url} download={att.name} className="p-1.5 bg-white text-green-600 rounded-lg shadow-sm hover:bg-green-50"><Download size={14}/></a>
-                                    <button type="button" onClick={() => removeAttachment(att.id)} className="p-1.5 bg-white text-red-500 rounded-lg shadow-sm hover:bg-red-50"><Trash2 size={14}/></button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                 )}
-              </section>
-            </div>
-            <div className="p-6 bg-white border-t border-slate-100 flex justify-end gap-3 sticky bottom-0 z-10">
-              <button type="button" onClick={() => setIsModalOpen(false)} className="px-8 py-3 text-slate-400 font-black uppercase text-[10px]">Cancelar</button>
-              <button type="submit" onClick={handleSave} disabled={isFormLocked || isSaving} className="px-8 md:px-12 py-4 bg-blue-600 text-white rounded-[20px] font-black text-xs uppercase tracking-widest shadow-xl flex items-center gap-2 disabled:opacity-50">
-                  {isSaving ? <Loader2 className="animate-spin" size={16}/> : (isFormLocked ? <Lock size={14}/> : <ShieldAlert size={16}/>)}
-                  {isSaving ? 'Salvando...' : 'Salvar Sinistro'}
-              </button>
-            </div>
+      <PremiumModal
+        open={isModalOpen}
+        onClose={() => !isSaving && setIsModalOpen(false)}
+        busy={isSaving}
+        title={eventToEdit ? 'Editar Sinistro' : 'Registro de Sinistro'}
+        subtitle="Preencha o vínculo, detalhes e evidências do ocorrido."
+        icon={ShieldAlert}
+        maxWidthClass="max-w-4xl"
+        footer={
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(false)}
+              className="px-6 py-3.5 text-slate-500 font-bold text-sm rounded-2xl hover:bg-slate-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={isFormLocked || isSaving}
+              className="px-8 py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none"
+            >
+              {isSaving ? <Loader2 className="animate-spin" size={16} /> : <ShieldAlert size={16} />}
+              {isSaving ? 'Salvando...' : 'Salvar Sinistro'}
+            </button>
           </div>
+        }
+      >
+        <div className="space-y-6">
+          {selectedAssociateObj && selectedVehicleObj && (
+            <div className="p-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl shadow-lg flex items-center justify-between">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2 bg-white/15 rounded-xl shrink-0"><LinkIcon size={18} /></div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-black uppercase opacity-80 tracking-widest">Vínculo confirmado</p>
+                  <p className="font-bold text-sm truncate">{selectedAssociateObj.name} • {selectedVehicleObj.plate}</p>
+                </div>
+              </div>
+              <CheckCircle2 size={22} className="text-emerald-200 shrink-0" />
+            </div>
+          )}
+
+          <FormSection
+            step={1}
+            title="Vínculo do sinistro"
+            description="Selecione associado e veículo envolvido."
+            complete={!!formData.associateId && !!formData.vehicleId}
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <FieldLabel required>Associado / Proprietário</FieldLabel>
+                <select
+                  className={fieldClassName}
+                  value={formData.associateId}
+                  onChange={(e) => setFormData({ ...formData, associateId: e.target.value, vehicleId: '' })}
+                  disabled={!!eventToEdit}
+                >
+                  <option value="">Selecione o associado...</option>
+                  {associates.map((a) => (
+                    <option key={a.id} value={a.id}>{a.name} ({a.document})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <FieldLabel required>Veículo envolvido</FieldLabel>
+                <select
+                  className={fieldClassName}
+                  value={formData.vehicleId}
+                  onChange={(e) => setFormData({ ...formData, vehicleId: e.target.value })}
+                  disabled={!formData.associateId || !!eventToEdit}
+                >
+                  <option value="">
+                    {!formData.associateId
+                      ? 'Selecione o associado primeiro'
+                      : availableVehicles.length > 0
+                        ? 'Selecione o veículo...'
+                        : 'Nenhum veículo cadastrado'}
+                  </option>
+                  {availableVehicles.map((v) => (
+                    <option key={v.id} value={v.id}>{v.plate} — {v.model}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </FormSection>
+
+          <FormSection
+            step={2}
+            title="Detalhes do evento"
+            description="Protocolo, tipo e descrição do ocorrido."
+            locked={isFormLocked}
+            complete={!isFormLocked && !!formData.description.trim()}
+          >
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="md:col-span-1">
+                  <FieldLabel>Modo protocolo</FieldLabel>
+                  <div className="flex p-1 bg-slate-100 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, protocolMode: 'auto' })}
+                      className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase ${formData.protocolMode === 'auto' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
+                    >
+                      Auto
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, protocolMode: 'manual' })}
+                      className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase ${formData.protocolMode === 'manual' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
+                    >
+                      Manual
+                    </button>
+                  </div>
+                </div>
+                <div className="md:col-span-2">
+                  <FieldLabel>Protocolo</FieldLabel>
+                  <input
+                    disabled={formData.protocolMode === 'auto'}
+                    className={fieldClassName}
+                    value={formData.protocolMode === 'auto' ? (eventToEdit ? eventToEdit.protocol : nextAutoProtocol) : formData.manualProtocol}
+                    onChange={(e) => setFormData({ ...formData, manualProtocol: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div>
+                <FieldLabel required>Tipo de sinistro</FieldLabel>
+                <select
+                  className={fieldClassName}
+                  value={formData.type}
+                  onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
+                >
+                  {Object.values(EventType).map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <FieldLabel>Descrição do ocorrido</FieldLabel>
+                <textarea
+                  className={`${fieldClassName} min-h-[120px] resize-none`}
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Descreva o que aconteceu, local, danos visíveis..."
+                />
+              </div>
+            </div>
+          </FormSection>
+
+          <FormSection
+            step={3}
+            title="Documentos e evidências"
+            description="Fotos, laudos e PDFs do sinistro."
+            locked={isFormLocked}
+          >
+            <div className="flex justify-end mb-4">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="text-[10px] font-black uppercase bg-blue-50 text-blue-600 px-4 py-2 rounded-xl hover:bg-blue-100 flex items-center gap-1"
+              >
+                <Plus size={14} /> Adicionar arquivo
+              </button>
+              <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelect} multiple accept="image/*,application/pdf" />
+            </div>
+            {formData.attachments.length === 0 ? (
+              <div className="p-10 border-2 border-dashed border-slate-200 rounded-2xl text-center bg-slate-50/50">
+                <Paperclip size={28} className="mx-auto text-slate-300 mb-2" />
+                <p className="text-xs font-bold text-slate-400">Nenhum anexo — opcional nesta etapa</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {formData.attachments.map((att: any) => (
+                  <div key={att.id} className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3 group">
+                    <div className="w-11 h-11 bg-white rounded-xl flex items-center justify-center border overflow-hidden shrink-0">
+                      {att.type.startsWith('image/') ? (
+                        <img src={att.url} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <File size={18} className="text-slate-400" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-slate-700 truncate">{att.name}</p>
+                      <p className="text-[10px] text-slate-400">{att.size}</p>
+                    </div>
+                    <button type="button" onClick={() => removeAttachment(att.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </FormSection>
         </div>
-      )}
+      </PremiumModal>
     </div>
   );
 };
