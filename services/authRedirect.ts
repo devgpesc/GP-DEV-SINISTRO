@@ -1,11 +1,17 @@
-export const getAuthRedirectUrl = (path = '/auth/callback') => {
-  const baseUrl = (() => {
-    try {
-      return window.location.origin;
-    } catch {
-      return '';
-    }
-  })();
+const DEFAULT_PRODUCTION_ORIGIN = 'https://eventos.escsistemas.com';
 
-  return `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
+const getAppOrigin = () => {
+  const fromEnv = (import.meta as any).env?.VITE_APP_URL as string | undefined;
+  if (fromEnv?.trim()) return fromEnv.trim().replace(/\/$/, '');
+
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+
+  return DEFAULT_PRODUCTION_ORIGIN;
+};
+
+export const getAuthRedirectUrl = (path = '/auth/callback') => {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return `${getAppOrigin()}${normalizedPath}`;
 };

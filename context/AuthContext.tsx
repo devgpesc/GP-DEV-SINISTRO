@@ -10,7 +10,7 @@ type User = any;
 type Session = any;
 
 const TENANT_STORAGE_KEY = 'sb-autoclaims-tenant-id';
-const PENDING_REGISTRATION_STORAGE_KEY = 'sb-autoclaims-pending-registration';
+import { readPendingRegistration, clearPendingRegistration } from '../services/pendingRegistration';
 
 interface UserProfile {
   id: string;
@@ -60,17 +60,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => { userRef.current = user; }, [user]);
 
   const completePendingRegistration = useCallback(async (userId: string, userEmail?: string, userMeta?: any) => {
-    const raw = localStorage.getItem(PENDING_REGISTRATION_STORAGE_KEY);
     const normalizedUserEmail = String(userEmail || '').trim().toLowerCase();
 
-    let pending: any = null;
-    if (raw) {
-      try {
-        pending = JSON.parse(raw);
-      } catch {
-        localStorage.removeItem(PENDING_REGISTRATION_STORAGE_KEY);
-      }
-    }
+    let pending: any = readPendingRegistration();
 
     const metaCompanyName = userMeta?.company_name || userMeta?.companyName;
     const metaName = userMeta?.full_name || userMeta?.name;
@@ -91,12 +83,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (pending.inviteToken) {
       const { error } = await supabase.rpc('accept_invite', { invite_token: pending.inviteToken });
       if (error) throw error;
-      localStorage.removeItem(PENDING_REGISTRATION_STORAGE_KEY);
+      clearPendingRegistration();
       return;
     }
 
     if (!pending.companyName) {
-      localStorage.removeItem(PENDING_REGISTRATION_STORAGE_KEY);
+      clearPendingRegistration();
       return;
     }
 
@@ -107,7 +99,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const alreadyConfigured = (existingMemberships?.length || 0) > 0 || (existingTenants?.length || 0) > 0;
     if (alreadyConfigured) {
-      localStorage.removeItem(PENDING_REGISTRATION_STORAGE_KEY);
+      clearPendingRegistration();
       return;
     }
 
@@ -117,7 +109,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
     if (registrationError) throw registrationError;
 
-    localStorage.removeItem(PENDING_REGISTRATION_STORAGE_KEY);
+    clearPendingRegistration();
   }, []);
 
   const loadContextData = useCallback(async (userId: string, userEmail?: string, userMeta?: any) => {
@@ -200,7 +192,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (combinedMemberships.length === 0 && !isSuperAdmin) {
           // Permitir se o usuário tem um convite na URL
           const params = new URLSearchParams(window.location.search);
-          if (!params.get('invite') && window.location.pathname !== '/register') {
+          if (
+            !params.get('invite') &&
+            window.location.pathname !== '/register' &&
+            window.location.pathname !== '/auth/callback'
+          ) {
               console.warn('[Auth] Usuário sem memberships ativas e sem convite. Forçando logout.');
               await (supabase.auth as any).signOut();
               if (mounted.current) {

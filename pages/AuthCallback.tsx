@@ -4,21 +4,87 @@ const { useNavigate, useLocation } = ReactRouterDOM as any;
 import { Loader2, AlertCircle } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { useToast } from '../context/ToastContext';
+import { getAuthRedirectUrl } from '../services/authRedirect';
+import {
+  clearPendingRegistration,
+  readPendingRegistration,
+} from '../services/pendingRegistration';
+
+const parseHashParams = () => new URLSearchParams(window.location.hash.replace(/^#/, ''));
+
+const finishPendingInviteOrRegistration = async (inviteToken: string | null) => {
+  const pending = readPendingRegistration();
+
+  if (inviteToken) {
+    const { error } = await supabase.rpc('accept_invite', { invite_token: inviteToken });
+    if (error) throw error;
+    clearPendingRegistration();
+    return;
+  }
+
+  if (pending?.inviteToken) {
+    const { error } = await supabase.rpc('accept_invite', { invite_token: pending.inviteToken });
+    if (error) throw error;
+    clearPendingRegistration();
+    return;
+  }
+
+  if (pending?.companyName) {
+    const { data: { user } } = await (supabase.auth as any).getUser();
+    if (!user) return;
+
+    const { error } = await supabase.rpc('complete_registration', {
+      company_name: pending.companyName,
+      full_name: pending.name || user.user_metadata?.full_name || user.email?.split('@')[0],
+    });
+    if (error) throw error;
+    clearPendingRegistration();
+  }
+};
 
 const AuthCallback: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { addToast } = useToast();
   const [error, setError] = useState<string | null>(null);
+  const [resendEmail, setResendEmail] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
 
   useEffect(() => {
     const finishAuth = async () => {
       try {
         const searchParams = new URLSearchParams(location.search);
-        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-        const authError = searchParams.get('error_description') || hashParams.get('error_description');
+        const hashParams = parseHashParams();
+        const inviteToken = searchParams.get('invite');
 
-        if (authError) throw new Error(authError);
+        const authErrorCode = hashParams.get('error_code') || searchParams.get('error_code');
+        const authError =
+          hashParams.get('error_description') ||
+          searchParams.get('error_description') ||
+          hashParams.get('error') ||
+          searchParams.get('error');
+
+        if (authError) {
+          const pending = readPendingRegistration();
+          if (pending?.email) setResendEmail(pending.email);
+
+          if (authErrorCode === 'otp_expired') {
+            throw new Error(
+              'O link de confirmacao expirou ou ja foi usado. Solicite um novo e-mail abaixo e abra apenas o link mais recente.',
+            );
+          }
+          throw new Error(decodeURIComponent(String(authError).replace(/\+/g, ' ')));
+        }
+
+        const tokenHash = searchParams.get('token_hash');
+        const otpType = searchParams.get('type');
+        if (tokenHash && otpType) {
+          const { error: verifyError } = await (supabase.auth as any).verifyOtp({
+            token_hash: tokenHash,
+            type: otpType,
+          });
+          if (verifyError) throw verifyError;
+        }
 
         const code = searchParams.get('code');
         if (code) {
@@ -26,17 +92,23 @@ const AuthCallback: React.FC = () => {
           if (exchangeError) throw exchangeError;
         }
 
+        const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
+        if (accessToken && refreshToken) {
+          const { error: sessionError } = await (supabase.auth as any).setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (sessionError) throw sessionError;
+        }
+
         const { data: { session }, error: sessionError } = await (supabase.auth as any).getSession();
         if (sessionError) throw sessionError;
 
-        const inviteToken = searchParams.get('invite');
-        if (session?.user && inviteToken) {
-          const { error: inviteError } = await supabase.rpc('accept_invite', { invite_token: inviteToken });
-          if (inviteError) throw inviteError;
-          addToast('success', 'Convite aceito', 'Seu acesso foi vinculado a empresa.');
-        }
-
         if (session?.user) {
+          await finishPendingInviteOrRegistration(inviteToken);
+          addToast('success', 'Acesso confirmado', 'Sua conta foi ativada com sucesso.');
+          window.history.replaceState({}, document.title, '/');
           navigate('/', { replace: true });
           return;
         }
@@ -51,6 +123,33 @@ const AuthCallback: React.FC = () => {
     finishAuth();
   }, [addToast, location.search, navigate]);
 
+  const handleResend = async () => {
+    if (!resendEmail) {
+      navigate('/login', { replace: true });
+      return;
+    }
+
+    setResending(true);
+    try {
+      const pending = readPendingRegistration();
+      const inviteQuery = pending?.inviteToken ? `?invite=${pending.inviteToken}` : '';
+      const { error: resendError } = await (supabase.auth as any).resend({
+        type: 'signup',
+        email: resendEmail,
+        options: {
+          emailRedirectTo: getAuthRedirectUrl(`/auth/callback${inviteQuery}`),
+        },
+      });
+      if (resendError) throw resendError;
+      addToast('success', 'E-mail reenviado', 'Abra o link mais recente na sua caixa de entrada.');
+      setError(null);
+    } catch (err: any) {
+      setError(err.message || 'Nao foi possivel reenviar o e-mail.');
+    } finally {
+      setResending(false);
+    }
+  };
+
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
@@ -58,13 +157,25 @@ const AuthCallback: React.FC = () => {
           <AlertCircle className="mx-auto mb-4 text-red-500" size={36} />
           <h1 className="text-xl font-black text-slate-900">Erro na confirmacao</h1>
           <p className="mt-3 text-sm font-semibold text-slate-500">{error}</p>
-          <button
-            type="button"
-            onClick={() => navigate('/login', { replace: true })}
-            className="mt-6 rounded-2xl bg-blue-600 px-6 py-3 text-xs font-black uppercase tracking-widest text-white"
-          >
-            Voltar ao login
-          </button>
+          <div className="mt-6 flex flex-col gap-3">
+            {resendEmail && (
+              <button
+                type="button"
+                onClick={handleResend}
+                disabled={resending}
+                className="rounded-2xl bg-blue-600 px-6 py-3 text-xs font-black uppercase tracking-widest text-white disabled:opacity-50"
+              >
+                {resending ? 'Reenviando...' : 'Reenviar e-mail de confirmacao'}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => navigate('/login', { replace: true })}
+              className="rounded-2xl border border-slate-200 px-6 py-3 text-xs font-black uppercase tracking-widest text-slate-600"
+            >
+              Voltar ao login
+            </button>
+          </div>
         </div>
       </div>
     );

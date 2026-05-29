@@ -5,10 +5,9 @@ import { supabase } from '../services/supabaseClient';
 import { useToast } from '../context/ToastContext';
 import { auditService } from '../services/auditService';
 import { getAuthRedirectUrl } from '../services/authRedirect';
-import { Mail, Lock, User, Loader2, ArrowLeft, Building, AlertCircle, Link as LinkIcon, Eye, EyeOff, Chrome } from 'lucide-react';
+import { savePendingRegistration } from '../services/pendingRegistration';
+import { Mail, Lock, User, Loader2, ArrowLeft, Building, AlertCircle, Link as LinkIcon, Eye, EyeOff, Chrome, CheckCircle2 } from 'lucide-react';
 import EscLogo from '../components/EscLogo';
-
-const PENDING_REGISTRATION_STORAGE_KEY = 'sb-autoclaims-pending-registration';
 
 const Register: React.FC = () => {
   const { addToast } = useToast();
@@ -25,6 +24,8 @@ const Register: React.FC = () => {
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [inviteData, setInviteData] = useState<any>(null);
   const [verifyingInvite, setVerifyingInvite] = useState(false);
+  const [awaitingEmailConfirmation, setAwaitingEmailConfirmation] = useState(false);
+  const [resendingEmail, setResendingEmail] = useState(false);
 
   useEffect(() => {
     const token = searchParams.get('invite');
@@ -54,13 +55,6 @@ const Register: React.FC = () => {
     } finally {
       setVerifyingInvite(false);
     }
-  };
-
-  const savePendingRegistration = (payload: Record<string, any>) => {
-    localStorage.setItem(PENDING_REGISTRATION_STORAGE_KEY, JSON.stringify({
-      ...payload,
-      createdAt: new Date().toISOString()
-    }));
   };
 
   const redirectToHomeWithFreshContext = () => {
@@ -172,12 +166,10 @@ const Register: React.FC = () => {
           email: normalizedEmail,
           name: trimmedName,
           companyName: inviteToken ? undefined : trimmedCompanyName,
-          inviteToken: inviteToken || undefined
+          inviteToken: inviteToken || undefined,
         });
         addToast('success', 'Cadastro enviado!', 'Confirme seu e-mail para concluir o acesso.');
-        setError(inviteToken
-          ? 'Se este e-mail ainda nao tinha conta, enviamos a confirmacao. Se ele ja tinha conta, volte ao login e entre com esse e-mail para aceitar o convite.'
-          : 'Enviamos um e-mail de confirmacao. Clique no botao do e-mail para ativar a conta e criar a empresa.');
+        setAwaitingEmailConfirmation(true);
         setLoading(false);
         return;
       }
@@ -187,10 +179,10 @@ const Register: React.FC = () => {
           savePendingRegistration({
             email: normalizedEmail,
             name: trimmedName,
-            inviteToken
+            inviteToken,
           });
           addToast('success', 'Cadastro realizado!', 'Confirme seu e-mail para concluir o convite.');
-          setError('Se este e-mail ainda nao tinha conta, confirme o e-mail para ativar. Se ja tinha conta, volte ao login e entre com o e-mail cadastrado para aceitar o convite.');
+          setAwaitingEmailConfirmation(true);
           setLoading(false);
           return;
         }
@@ -220,10 +212,10 @@ const Register: React.FC = () => {
       savePendingRegistration({
         email: normalizedEmail,
         name: trimmedName,
-        companyName: trimmedCompanyName
+        companyName: trimmedCompanyName,
       });
       addToast('success', 'Cadastro realizado!', 'Verifique seu e-mail para confirmar a conta.');
-      setError('Conta criada! Verifique sua caixa de entrada e spam para confirmar o e-mail.');
+      setAwaitingEmailConfirmation(true);
       setLoading(false);
     } catch (err: any) {
       console.error(err);
@@ -232,8 +224,66 @@ const Register: React.FC = () => {
     }
   };
 
+  const handleResendConfirmation = async () => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) return;
+
+    setResendingEmail(true);
+    setError(null);
+    try {
+      const inviteQuery = inviteToken ? `?invite=${inviteToken}` : '';
+      const { error: resendError } = await (supabase.auth as any).resend({
+        type: 'signup',
+        email: normalizedEmail,
+        options: {
+          emailRedirectTo: getAuthRedirectUrl(`/auth/callback${inviteQuery}`),
+        },
+      });
+      if (resendError) throw resendError;
+      addToast('success', 'E-mail reenviado', 'Use o link mais recente (links antigos expiram).');
+    } catch (err: any) {
+      setError(err.message || 'Nao foi possivel reenviar o e-mail.');
+    } finally {
+      setResendingEmail(false);
+    }
+  };
+
   if (verifyingInvite) {
     return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-blue-600" size={32} /></div>;
+  }
+
+  if (awaitingEmailConfirmation) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
+        <div className="w-full max-w-md bg-white p-10 rounded-[48px] shadow-2xl border border-slate-100 text-center">
+          <CheckCircle2 className="mx-auto mb-4 text-green-500" size={48} />
+          <h2 className="text-2xl font-black text-slate-800 mb-2">Confirme seu e-mail</h2>
+          <p className="text-sm text-slate-500 font-medium mb-2">
+            Enviamos um link para <strong className="text-slate-800">{email}</strong>.
+          </p>
+          <p className="text-xs text-slate-400 font-semibold mb-6">
+            Abra o e-mail mais recente e clique no botao de confirmacao. Links antigos expiram ao solicitar um novo.
+          </p>
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-100 rounded-2xl text-xs font-bold text-red-600">{error}</div>
+          )}
+          <button
+            type="button"
+            onClick={handleResendConfirmation}
+            disabled={resendingEmail}
+            className="w-full py-4 mb-3 bg-blue-600 text-white rounded-[22px] font-black text-xs uppercase tracking-widest disabled:opacity-50"
+          >
+            {resendingEmail ? 'Reenviando...' : 'Reenviar e-mail de confirmacao'}
+          </button>
+          <Link
+            to={inviteToken ? `/login?invite=${inviteToken}` : '/login'}
+            className="block w-full py-4 border border-slate-200 rounded-[22px] font-black text-xs uppercase tracking-widest text-slate-600 hover:border-blue-200 hover:text-blue-600"
+          >
+            Ja confirmei — ir para login
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   return (
