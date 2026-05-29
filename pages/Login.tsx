@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useEffect } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 const { useNavigate, Link, useLocation } = ReactRouterDOM as any;
@@ -24,8 +24,8 @@ const Login: React.FC = () => {
   const [localLoading, setLocalLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Configuração visual da marca
-  const [company] = useState({ name: 'Esc Solutions', product: 'EventPro' });
+  // Configuracao visual da marca
+  const [company] = useState({ name: 'Grupo Esc Sistemas', product: 'EventsCar' });
 
   useEffect(() => {
     // Only redirect if a user is already present when the component mounts, 
@@ -58,15 +58,15 @@ const Login: React.FC = () => {
     setError(null);
 
     try {
-      // 1. Autenticação Básica (Email/Senha)
+      // 1. Autenticacao basica (Email/Senha)
       // Casting supabase.auth to any
       const { data, error: authError } = await (supabase.auth as any).signInWithPassword({ email, password });
       
       if (authError) throw authError;
-      if (!data.user) throw new Error("Usuário não encontrado.");
+      if (!data.user) throw new Error("Usuario nao encontrado.");
 
-      // 2. VERIFICAÇÃO DE PERMISSÃO DE ACESSO (VÍNCULO COM EMPRESA)
-      // Verifica se o usuário tem perfil de Super Admin ou se pertence a alguma empresa ativa
+      // 2. Verificacao de permissao de acesso (vinculo com empresa)
+      // Verifica se o usuario tem perfil de Super Admin ou se pertence a alguma empresa ativa
       
       // Checa perfil primeiro
       const { data: profile } = await supabase
@@ -92,8 +92,8 @@ const Login: React.FC = () => {
           return; 
       }
 
-      // Se não for admin global, verifica vínculo com tenant ativo
-      // NOTA: Removido o inner join com saas_tenants pois usuários normais não têm permissão de leitura na tabela saas_tenants devido ao RLS.
+      // Se nao for admin global, verifica vinculo com tenant ativo
+      // NOTA: Removido o inner join com saas_tenants pois usuarios normais nao tem permissao de leitura na tabela saas_tenants devido ao RLS.
       const { data: memberships, error: memberError } = await supabase
         .from('organization_members')
         .select('id, tenant_id')
@@ -107,21 +107,21 @@ const Login: React.FC = () => {
       const hasMembership = (memberships && memberships.length > 0) || (ownedTenants && ownedTenants.length > 0);
 
       if (memberError || !hasMembership) {
-          // LOGOUT IMEDIATO SE NÃO TIVER PERMISSÃO
+          // Logout imediato se nao tiver permissao
           await (supabase.auth as any).signOut();
           setLocalLoading(false);
-          setError('Acesso Negado: Este usuário não possui vínculo com uma empresa ativa.');
+          setError('Acesso negado: este usuario nao possui vinculo com uma empresa ativa.');
           return;
       }
 
-      // Sucesso - O AuthContext detectará a sessão e redirecionará
+      // Sucesso - O AuthContext detectara a sessao e redirecionara
       navigate('/', { replace: true });
     } catch (err: any) {
       console.error(err);
       if (err.message === 'Invalid login credentials') {
           setError('E-mail ou senha incorretos. Verifique suas credenciais.');
       } else {
-          setError(err.message || 'Não foi possível conectar. Tente novamente mais tarde.');
+          setError(err.message || 'Nao foi possivel conectar. Tente novamente mais tarde.');
       }
       setLocalLoading(false);
     }
@@ -150,7 +150,7 @@ const Login: React.FC = () => {
   return (
     <div className="min-h-screen flex bg-[#F8FAFC] font-sans selection:bg-blue-100 selection:text-blue-900">
       
-      {/* LADO ESQUERDO (Branding & Valor) - Visível apenas em Desktop */}
+      {/* LADO ESQUERDO (Branding & Valor) - Visivel apenas em Desktop */}
       <div className="hidden lg:flex w-1/2 relative flex-col justify-between p-16 overflow-hidden bg-[#0F172A]">
         {/* Background Pattern Sutil */}
         <div className="absolute inset-0 z-0 opacity-20" style={{ 
@@ -165,14 +165,19 @@ const Login: React.FC = () => {
           {/* LOGO AREA */}
           <div className="mb-12">
              {/* Logo Customizada */}
-             <div className="flex items-center gap-3">
+             <div className="flex items-center gap-4">
                 <EscLogo className="w-16 h-16 text-white" classNameText="text-white text-3xl" />
+                <img
+                  src="/brand/grupo-esc-sistemas.jpeg"
+                  alt="Grupo Esc Sistemas"
+                  className="h-12 w-28 rounded-lg object-cover object-center opacity-90 ring-1 ring-white/10"
+                />
              </div>
           </div>
 
           <h1 className="text-5xl font-extrabold text-white leading-[1.1] mb-6 tracking-tight">
-            Gestão de Sinistros <br/>
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">Inteligente & Ágil</span>
+            Gestao de Sinistros <br/>
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">Inteligente & Agil</span>
           </h1>
           <p className="text-slate-400 text-lg max-w-md leading-relaxed font-light mb-10">
             Plataforma completa para abertura, rastreamento e auditoria financeira de eventos automotivos.
@@ -181,7 +186,7 @@ const Login: React.FC = () => {
           <div className="space-y-5">
              {[
                { icon: LayoutDashboard, label: 'Dashboards Executivos em Tempo Real' },
-               { icon: Zap, label: 'Automação de Cotações e OCs' },
+               { icon: Zap, label: 'Automacao de Cotacoes e OCs' },
                { icon: ShieldCheck, label: 'Auditoria e Compliance Financeiro' }
              ].map((item, idx) => (
                <div key={idx} className="flex items-center gap-4 group">
@@ -197,7 +202,7 @@ const Login: React.FC = () => {
 
       {/* LADO DIREITO (Login Form) */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-12 relative bg-[#F8FAFC]">
-        {/* Aumentado max-w para ficar maior e mais confortável */}
+        {/* Aumentado max-w para ficar maior e mais confortavel */}
         <div className="w-full max-w-xl animate-in slide-in-from-right-8 duration-700 fade-in">
           
           {/* Mobile Logo Only */}
@@ -247,7 +252,7 @@ const Login: React.FC = () => {
                         value={password}
                         onChange={e => setPassword(e.target.value)}
                         className="w-full pl-14 pr-12 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none text-base font-semibold text-slate-800 focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all placeholder:text-slate-400"
-                        placeholder="••••••••"
+                        placeholder="********"
                       />
                       <button 
                         type="button"
@@ -289,7 +294,7 @@ const Login: React.FC = () => {
 
             <div className="mt-10 text-center">
                <p className="text-slate-500 text-sm font-medium">
-                 Não tem uma conta? <Link to="/register" className="text-blue-600 font-bold hover:underline">Criar conta empresarial</Link>
+                 Nao tem uma conta? <Link to="/register" className="text-blue-600 font-bold hover:underline">Criar conta empresarial</Link>
                </p>
             </div>
           </div>

@@ -27,7 +27,7 @@ const Settings: React.FC = () => {
   
   // ... (Estados companyInfo, usersList, modals mantidos igual ao original)
   const [companyInfo, setCompanyInfo] = useState({
-    company_name: 'EventPro',
+    company_name: 'EventsCar',
     cnpj: '',
     address: '',
     email: '',
@@ -95,7 +95,7 @@ const Settings: React.FC = () => {
           .maybeSingle();
         if (data) {
             setCompanyInfo({
-                company_name: data.company_name || 'EventPro',
+                company_name: data.company_name || 'EventsCar',
                 cnpj: data.cnpj || '',
                 address: data.address || '',
                 email: data.email || '',
@@ -159,7 +159,7 @@ const Settings: React.FC = () => {
   const handleSaveAll = async () => {
     setSaving(true);
     if (!currentTenant?.id) {
-      addToast('error', 'Empresa obrigatÃ³ria', 'Selecione uma empresa antes de salvar configuraÃ§Ãµes.');
+      addToast('error', 'Empresa obrigatoria', 'Selecione uma empresa antes de salvar configuracoes.');
       setSaving(false);
       return;
     }

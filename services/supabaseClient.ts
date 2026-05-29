@@ -14,7 +14,7 @@ const envUrl = getEnv('VITE_SUPABASE_URL');
 const envKey = getEnv('VITE_SUPABASE_PUBLISHABLE_KEY') || getEnv('VITE_SUPABASE_ANON_KEY');
 
 if (!envUrl || !envKey) {
-  console.warn('[AutoClaims] Variáveis de ambiente Supabase não detectadas.');
+  console.warn('[EventsCar] Variáveis de ambiente Supabase não detectadas.');
 }
 
 export const isSupabaseConfigured = !!(envUrl && envKey);
@@ -38,7 +38,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     storageKey: 'sb-autoclaims-auth-token', // Chave única para evitar conflitos
   },
   global: {
-    headers: { 'x-application-name': 'autoclaims-pro' },
+    headers: { 'x-application-name': 'eventscar' },
   },
 });
 

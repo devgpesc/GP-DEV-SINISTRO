@@ -4,7 +4,7 @@ import { supabase } from './supabaseClient';
 import { LLMProvider } from '../types';
 
 /**
- * AI Service for AutoClaims Pro (Unified Gateway)
+ * AI Service for EventsCar (Unified Gateway)
  * Centraliza a inteligência do sistema, gerenciando contexto e prompts.
  */
 
@@ -62,7 +62,7 @@ export const aiService = {
 
   async generateStrategicInsight(options: AIAnalysisOptions): Promise<string> {
     const config = await this.getConfig();
-    const systemPrompt = `Você é um Diretor Executivo (CFO/COO) de uma empresa de gestão de frotas e seguros (AutoClaims Pro).
+    const systemPrompt = `Você é um Diretor Executivo (CFO/COO) de uma empresa de gestão de frotas e seguros (EventsCar).
     Analise os dados financeiros e operacionais fornecidos.
     Foque em: Redução de custos (savings), eficiência de SLA (tempo de sinistro) e performance de fornecedores.
     Responda em Português do Brasil de forma executiva e direta.`;
@@ -117,7 +117,7 @@ export const aiService = {
     
     // --- DEFINIÇÃO CORRETA DO SISTEMA ---
     const supportSystemPrompt = `
-      Você é o "Gerente de Suporte Virtual" da ESC Solutions (EventPro / AutoClaims).
+      Você é o "Gerente de Suporte Virtual" do EventsCar, produto do Grupo Esc Sistemas.
       Sua persona é sênior, técnica, empática e focada em resolução eficiente.
       
       IMPORTANTE - CONTEXTO DO SISTEMA:

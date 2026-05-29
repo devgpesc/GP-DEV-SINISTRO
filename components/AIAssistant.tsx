@@ -78,7 +78,7 @@ const AIAssistant: React.FC = () => {
               >
                   <div className="flex items-center gap-2">
                       <Sparkles size={18} className="text-blue-400" />
-                      <h3 className="font-bold">AutoClaims Insight AI</h3>
+                      <h3 className="font-bold">EventsCar Insight AI</h3>
                   </div>
                   <div className="flex items-center gap-3">
                       <button 

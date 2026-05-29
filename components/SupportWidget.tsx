@@ -337,7 +337,7 @@ ${dossier.summary}
 🤖 *Diagnóstico Preliminar:*
 ${dossier.suggested_fix}
 
-_Ticket gerado via EventPro AI_
+_Ticket gerado via EventsCar AI_
     `.trim();
 
     window.open(`https://wa.me/5562998464374?text=${encodeURIComponent(text)}`, '_blank');

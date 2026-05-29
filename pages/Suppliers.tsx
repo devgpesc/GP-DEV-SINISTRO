@@ -227,7 +227,7 @@ const Suppliers: React.FC = () => {
     setIsSaving(true);
 
     if (!currentTenant?.id && !isSuperAdmin) {
-      addToast('error', 'Empresa obrigatÃ³ria', 'Selecione uma empresa antes de salvar fornecedores.');
+      addToast('error', 'Empresa obrigatoria', 'Selecione uma empresa antes de salvar fornecedores.');
       setIsSaving(false);
       return;
     }
@@ -275,7 +275,7 @@ const Suppliers: React.FC = () => {
     if (!supplierToEdit || !user) return;
     const reviewTenantId = currentTenant?.id || supplierToEdit.tenant_id;
     if (!reviewTenantId) {
-        addToast('error', 'Empresa obrigatÃ³ria', 'Selecione uma empresa antes de avaliar fornecedores.');
+        addToast('error', 'Empresa obrigatoria', 'Selecione uma empresa antes de avaliar fornecedores.');
         return;
     }
     if (!newReview.comment.trim()) {

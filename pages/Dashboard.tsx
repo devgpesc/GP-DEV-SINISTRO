@@ -153,7 +153,7 @@ const Dashboard: React.FC = () => {
             <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-[32px] p-6 md:p-10 text-white shadow-xl shadow-blue-900/20 relative overflow-hidden">
                 <div className="relative z-10">
                     <h2 className="text-2xl md:text-3xl font-black mb-2">Olá, {profile?.full_name?.split(' ')[0] || 'Colaborador'}!</h2>
-                    <p className="text-blue-100 font-medium max-w-xl text-sm md:text-base">Bem-vindo ao AutoClaims Pro. Selecione uma ação abaixo para começar seu dia de trabalho.</p>
+                    <p className="text-blue-100 font-medium max-w-xl text-sm md:text-base">Bem-vindo ao EventsCar. Selecione uma ação abaixo para começar seu dia de trabalho.</p>
                 </div>
                 <div className="absolute right-0 top-0 h-full w-1/3 bg-white/5 skew-x-12"></div>
             </div>

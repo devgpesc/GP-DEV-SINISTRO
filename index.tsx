@@ -2,7 +2,7 @@ import React, { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 // SHIM GLOBAL ABSOLUTO - DEVE SER O PRIMEIRO CÓDIGO A EXECUTAR
-console.log('[AutoClaims] Inicializando shims...');
+console.log('[EventsCar] Inicializando shims...');
 if (typeof window !== 'undefined') {
   (window as any).process = (window as any).process || {};
   (window as any).process.env = (window as any).process.env || {};
@@ -29,7 +29,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('[AutoClaims] Erro capturado pelo ErrorBoundary:', error, errorInfo);
+    console.error('[EventsCar] Erro capturado pelo ErrorBoundary:', error, errorInfo);
   }
 
   render() {
@@ -47,11 +47,11 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 }
 
-console.log('[AutoClaims] Localizando elemento root...');
+console.log('[EventsCar] Localizando elemento root...');
 const rootElement = document.getElementById('root');
 
 if (rootElement) {
-  console.log('[AutoClaims] Elemento root encontrado. Criando raiz do React...');
+  console.log('[EventsCar] Elemento root encontrado. Criando raiz do React...');
   try {
     const root = createRoot(rootElement);
     root.render(
@@ -59,11 +59,11 @@ if (rootElement) {
         <App />
       </ErrorBoundary>
     );
-    console.log('[AutoClaims] Renderização inicial disparada.');
+    console.log('[EventsCar] Renderização inicial disparada.');
   } catch (err) {
-    console.error('[AutoClaims] Erro fatal durante createRoot:', err);
+    console.error('[EventsCar] Erro fatal durante createRoot:', err);
   }
 } else {
-  console.error('[AutoClaims] ERRO CRÍTICO: Não foi possível encontrar o elemento <div id="root"> no HTML.');
+  console.error('[EventsCar] ERRO CRÍTICO: Não foi possível encontrar o elemento <div id="root"> no HTML.');
   document.body.innerHTML = '<div style="color: red; padding: 20px; font-weight: bold;">Erro de Inicialização: Elemento #root não encontrado.</div>';
 }

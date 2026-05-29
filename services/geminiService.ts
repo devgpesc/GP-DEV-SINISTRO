@@ -2,7 +2,7 @@
 import { GoogleGenAI } from "@google/genai";
 
 /**
- * AI Service for AutoClaims Pro.
+ * AI Service for EventsCar.
  * Provides strategic insights and executive summaries using Gemini models.
  */
 
@@ -15,7 +15,7 @@ export const getAIInsight = async (query: string, context: any) => {
       contents: `Usuário pergunta: ${query}`,
       config: {
         // CORREÇÃO: Contexto explícito para evitar alucinação com eventos sociais
-        systemInstruction: `Você é um assistente estratégico de compras e seguros (AutoClaims Pro). 
+        systemInstruction: `Você é um assistente estratégico de compras e seguros (EventsCar). 
         Contexto: Gestão de Sinistros Automotivos (NÃO é gestão de festas/eventos sociais).
         Contexto atual do sistema: ${JSON.stringify(context)}
         Responda de forma executiva, visionária e focada em redução de custos e SLA.`,

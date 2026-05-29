@@ -1,5 +1,5 @@
 {
-  "name": "EventPro - Gestão de Sinistros",
+  "name": "EventsCar - Gestao de Sinistros",
   "description": "Sistema SaaS completo para gestão de sinistros veiculares, cotações inteligentes, matriz comparativa de preços, ordens de compra e auditoria financeira com IA.",
   "requestFramePermissions": [
     "camera"
