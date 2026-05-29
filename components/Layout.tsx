@@ -301,7 +301,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
       {/* Sidebar - Responsive */}
       <aside className={`
-        fixed top-0 left-0 h-full w-[260px] bg-[#111827] text-white flex flex-col z-40 transition-transform duration-300 ease-in-out border-r border-white/[0.04]
+        fixed top-0 left-0 h-full w-[270px] bg-[#111827] text-white flex flex-col z-40 transition-transform duration-300 ease-in-out border-r border-white/[0.04]
         ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 print:hidden
       `}>
         {/* ... (Sidebar Content remains the same) ... */}
@@ -309,7 +309,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <div className="flex items-center justify-between mb-7 px-1">
             
             {/* LOGO CUSTOMIZADA ESC */}
-            <EscLogo className="w-8 h-8 text-white" classNameText="text-white text-lg" />
+            <EscLogo className="w-9 h-9 text-white shrink-0" classNameText="text-white text-[19px]" />
 
             <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-[#A6B0C3] hover:text-white">
                 <X size={24}/>
@@ -395,7 +395,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 md:ml-[260px] p-4 md:p-8 relative print:ml-0 print:p-0 print:w-full min-w-0 w-full">
+      <main className="flex-1 md:ml-[270px] p-4 md:p-8 relative print:ml-0 print:p-0 print:w-full min-w-0 w-full">
         {/* ... (Main Content Header remains the same) ... */}
         <div className="md:hidden flex justify-between items-center mb-6 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
             <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-slate-600 hover:bg-slate-50 rounded-xl">

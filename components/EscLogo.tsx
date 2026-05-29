@@ -12,7 +12,7 @@ const EscLogo: React.FC<EscLogoProps> = ({
   showText = true
 }) => {
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-3 min-w-0">
       <svg
         viewBox="0 0 24 24"
         fill="none"
@@ -31,10 +31,10 @@ const EscLogo: React.FC<EscLogoProps> = ({
 
       {showText && (
         <div className={`leading-none font-bold tracking-tight ${classNameText}`}>
-          <div>
+          <div className="whitespace-nowrap">
             Events<span className="text-blue-500">Car</span>
           </div>
-          <div className="text-[0.48em] font-semibold tracking-widest opacity-80 uppercase">
+          <div className="text-[0.48em] font-semibold tracking-widest opacity-80 uppercase whitespace-nowrap">
             Grupo Esc Sistemas
           </div>
         </div>

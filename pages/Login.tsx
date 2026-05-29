@@ -165,13 +165,8 @@ const Login: React.FC = () => {
           {/* LOGO AREA */}
           <div className="mb-12">
              {/* Logo Customizada */}
-             <div className="flex items-center gap-4">
+             <div className="flex items-center gap-3">
                 <EscLogo className="w-16 h-16 text-white" classNameText="text-white text-3xl" />
-                <img
-                  src="/brand/grupo-esc-sistemas.jpeg"
-                  alt="Grupo Esc Sistemas"
-                  className="h-12 w-28 rounded-lg object-cover object-center opacity-90 ring-1 ring-white/10"
-                />
              </div>
           </div>
 

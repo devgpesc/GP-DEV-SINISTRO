@@ -243,11 +243,6 @@ const Register: React.FC = () => {
           <div className="mb-6 scale-125">
             <EscLogo className="w-16 h-16 text-slate-900" classNameText="text-slate-900 text-3xl" />
           </div>
-          <img
-            src="/brand/grupo-esc-sistemas.jpeg"
-            alt="Grupo Esc Sistemas"
-            className="mb-4 h-14 w-36 rounded-xl object-cover object-center shadow-lg shadow-slate-200"
-          />
 
           <h2 className="text-3xl font-black text-slate-800 tracking-tighter mt-2">Events<span className="text-blue-600">Car</span></h2>
         </div>
