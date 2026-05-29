@@ -1,5 +1,6 @@
 
 import { createClient } from '@supabase/supabase-js';
+import { authStorage } from './authStorage';
 
 // Helper seguro para ler variáveis de ambiente em diferentes ambientes
 const getEnv = (key: string) => {
@@ -27,17 +28,17 @@ const supabaseAnonKey = (envKey && typeof envKey === 'string' && envKey.trim().l
   ? envKey 
   : 'demo-key';
 
-// Inicializa o cliente com persistência explícita no LocalStorage e Auto Refresh
-// Essa configuração é CRÍTICA para evitar o logout no F5
+const authConfig = {
+  flowType: 'pkce' as const,
+  autoRefreshToken: true,
+  persistSession: true,
+  detectSessionInUrl: true,
+  storageKey: 'sb-autoclaims-auth-token',
+  ...(typeof window !== 'undefined' ? { storage: authStorage } : {}),
+};
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    flowType: 'pkce',
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true,
-    storage: window.localStorage, // Garante uso do storage do navegador
-    storageKey: 'sb-autoclaims-auth-token', // Chave única para evitar conflitos
-  },
+  auth: authConfig,
   global: {
     headers: { 'x-application-name': 'eventscar' },
   },

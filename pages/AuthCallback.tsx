@@ -12,6 +12,28 @@ import {
 
 const parseHashParams = () => new URLSearchParams(window.location.hash.replace(/^#/, ''));
 
+const waitForAuthSession = (timeoutMs = 6000): Promise<any | null> =>
+  new Promise((resolve) => {
+    let settled = false;
+    const finish = (session: any | null) => {
+      if (settled) return;
+      settled = true;
+      subscription?.unsubscribe();
+      clearTimeout(timer);
+      resolve(session);
+    };
+
+    const { data: { subscription } } = (supabase.auth as any).onAuthStateChange((event: string, session: any) => {
+      if (event === 'SIGNED_IN' && session) finish(session);
+    });
+
+    const timer = setTimeout(() => finish(null), timeoutMs);
+
+    (supabase.auth as any).getSession().then(({ data: { session } }: any) => {
+      if (session) finish(session);
+    });
+  });
+
 const finishPendingInviteOrRegistration = async (inviteToken: string | null) => {
   const pending = readPendingRegistration();
 
@@ -76,6 +98,7 @@ const AuthCallback: React.FC = () => {
           throw new Error(decodeURIComponent(String(authError).replace(/\+/g, ' ')));
         }
 
+        // 1) Confirmação por e-mail (token_hash) — funciona sem PKCE no mesmo browser
         const tokenHash = searchParams.get('token_hash');
         const otpType = searchParams.get('type');
         if (tokenHash && otpType) {
@@ -84,22 +107,39 @@ const AuthCallback: React.FC = () => {
             type: otpType,
           });
           if (verifyError) throw verifyError;
-        }
+        } else {
+          // 2) Fluxo implícito legado (#access_token)
+          const accessToken = hashParams.get('access_token');
+          const refreshToken = hashParams.get('refresh_token');
+          if (accessToken && refreshToken) {
+            const { error: sessionError } = await (supabase.auth as any).setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+            if (sessionError) throw sessionError;
+          } else {
+            // 3) PKCE (?code=) — OAuth Google ou confirmação recente no mesmo navegador
+            const code = searchParams.get('code');
+            if (code) {
+              await new Promise((r) => setTimeout(r, 150));
 
-        const code = searchParams.get('code');
-        if (code) {
-          const { error: exchangeError } = await (supabase.auth as any).exchangeCodeForSession(code);
-          if (exchangeError) throw exchangeError;
-        }
-
-        const accessToken = hashParams.get('access_token');
-        const refreshToken = hashParams.get('refresh_token');
-        if (accessToken && refreshToken) {
-          const { error: sessionError } = await (supabase.auth as any).setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          });
-          if (sessionError) throw sessionError;
+              let { data: { session: existingSession } } = await (supabase.auth as any).getSession();
+              if (!existingSession) {
+                const { error: exchangeError } = await (supabase.auth as any).exchangeCodeForSession(code);
+                if (exchangeError) {
+                  existingSession = await waitForAuthSession();
+                  if (!existingSession) {
+                    if (String(exchangeError.message || '').includes('PKCE')) {
+                      throw new Error(
+                        'Nao foi possivel concluir o login OAuth. Abra o link no mesmo navegador em que iniciou o acesso, ou entre com e-mail e senha. Se usou um link de confirmacao antigo, solicite um novo e-mail.',
+                      );
+                    }
+                    throw exchangeError;
+                  }
+                }
+              }
+            }
+          }
         }
 
         const { data: { session }, error: sessionError } = await (supabase.auth as any).getSession();
