@@ -5,7 +5,7 @@ import { supabase } from '../services/supabaseClient';
 import { useToast } from '../context/ToastContext';
 import { auditService } from '../services/auditService';
 import { getAuthRedirectUrl } from '../services/authRedirect';
-import { Mail, Lock, User, Loader2, ArrowLeft, Building, AlertCircle, Link as LinkIcon, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, User, Loader2, ArrowLeft, Building, AlertCircle, Link as LinkIcon, Eye, EyeOff, Chrome } from 'lucide-react';
 import EscLogo from '../components/EscLogo';
 
 const PENDING_REGISTRATION_STORAGE_KEY = 'sb-autoclaims-pending-registration';
@@ -65,6 +65,44 @@ const Register: React.FC = () => {
 
   const redirectToHomeWithFreshContext = () => {
     window.location.assign('/');
+  };
+
+  const handleGoogleRegister = async () => {
+    setLoading(true);
+    setError(null);
+
+    const trimmedCompanyName = companyName.trim();
+    const trimmedName = name.trim();
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!inviteToken && !trimmedCompanyName) {
+      setError('Informe o nome da empresa antes de continuar com Google.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      savePendingRegistration({
+        email: normalizedEmail || undefined,
+        name: trimmedName || undefined,
+        companyName: inviteToken ? undefined : trimmedCompanyName,
+        inviteToken: inviteToken || undefined
+      });
+
+      const { error: oauthError } = await (supabase.auth as any).signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: getAuthRedirectUrl(inviteToken ? `/auth/callback?invite=${inviteToken}` : '/auth/callback'),
+          queryParams: { access_type: 'offline', prompt: 'consent' }
+        }
+      });
+
+      if (oauthError) throw oauthError;
+    } catch (err: any) {
+      console.error('Google register error:', err);
+      setError(err.message || 'Nao foi possivel iniciar o cadastro com Google.');
+      setLoading(false);
+    }
   };
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -137,7 +175,9 @@ const Register: React.FC = () => {
           inviteToken: inviteToken || undefined
         });
         addToast('success', 'Cadastro enviado!', 'Confirme seu e-mail para concluir o acesso.');
-        setError('Enviamos um e-mail de confirmacao. Clique no botao do e-mail para ativar a conta e criar a empresa.');
+        setError(inviteToken
+          ? 'Se este e-mail ainda nao tinha conta, enviamos a confirmacao. Se ele ja tinha conta, volte ao login e entre com esse e-mail para aceitar o convite.'
+          : 'Enviamos um e-mail de confirmacao. Clique no botao do e-mail para ativar a conta e criar a empresa.');
         setLoading(false);
         return;
       }
@@ -150,7 +190,7 @@ const Register: React.FC = () => {
             inviteToken
           });
           addToast('success', 'Cadastro realizado!', 'Confirme seu e-mail para concluir o convite.');
-          setError('Conta criada! Confirme seu e-mail para ativar o acesso a empresa.');
+          setError('Se este e-mail ainda nao tinha conta, confirme o e-mail para ativar. Se ja tinha conta, volte ao login e entre com o e-mail cadastrado para aceitar o convite.');
           setLoading(false);
           return;
         }
@@ -297,6 +337,22 @@ const Register: React.FC = () => {
               {loading ? <Loader2 className="animate-spin" size={20} /> : (inviteToken ? 'Entrar na Empresa' : 'Criar Conta & Acessar')}
             </button>
           </form>
+
+          <div className="my-6 flex items-center gap-4">
+            <div className="h-px flex-1 bg-slate-100" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">ou</span>
+            <div className="h-px flex-1 bg-slate-100" />
+          </div>
+
+          <button
+            type="button"
+            onClick={handleGoogleRegister}
+            disabled={loading}
+            className="w-full py-4 bg-white text-slate-700 border border-slate-200 rounded-[22px] font-black text-xs uppercase tracking-widest hover:border-blue-200 hover:text-blue-600 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+          >
+            {loading ? <Loader2 className="animate-spin" size={18} /> : <Chrome size={18} />}
+            {inviteToken ? 'Continuar com Google' : 'Criar com Google'}
+          </button>
         </div>
       </div>
     </div>
