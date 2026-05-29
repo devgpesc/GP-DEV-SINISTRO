@@ -1,0 +1,1 @@
+-- Seed opcional para desenvolvimento local (vazio por padrao).

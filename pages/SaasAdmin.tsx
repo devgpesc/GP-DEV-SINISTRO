@@ -215,13 +215,11 @@ const SaasAdmin: React.FC = () => {
       if (!tenantToDelete) return;
       setIsProcessing(true);
       try {
-          // Tenta limpar dependências conhecidas primeiro para evitar erro de FK se o CASCADE não estiver configurado no banco
-          await supabase.from('organization_members').delete().eq('tenant_id', tenantToDelete.id);
-          await supabase.from('events').delete().eq('tenant_id', tenantToDelete.id);
-          
-          const { error } = await supabase.from('saas_tenants').delete().eq('id', tenantToDelete.id);
+          const { error } = await supabase.rpc('delete_tenant_cascade', {
+              target_tenant_id: tenantToDelete.id,
+          });
           if (error) throw error;
-          
+
           setTenants(prev => prev.filter(t => t.id !== tenantToDelete.id));
           addToast('success', 'Sucesso', 'Empresa e dados removidos.');
           setTenantToDelete(null);
