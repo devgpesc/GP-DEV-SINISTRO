@@ -100,8 +100,19 @@ const SaasAdmin: React.FC = () => {
 
       const ownerPairs = await Promise.all(
           tenantsData.map(async (tenant: any) => {
-              const { data } = await supabase.rpc('get_tenant_owner_summary', { target_tenant_id: tenant.id });
-              return [tenant.id, data] as const;
+              try {
+                const { data, error } = await supabase.rpc('get_tenant_owner_summary', {
+                  target_tenant_id: tenant.id,
+                });
+                if (error) {
+                  console.warn('[SaasAdmin] owner summary:', tenant.id, error.message);
+                  return [tenant.id, null] as const;
+                }
+                return [tenant.id, data] as const;
+              } catch (err) {
+                console.warn('[SaasAdmin] owner summary failed:', tenant.id, err);
+                return [tenant.id, null] as const;
+              }
           })
       );
       setTenantOwners(Object.fromEntries(ownerPairs.filter(([, owner]) => !!owner)));
@@ -116,7 +127,10 @@ const SaasAdmin: React.FC = () => {
 
     } catch (error: any) {
         console.error("Erro ao carregar dados:", error);
-        addToast('error', 'Erro', error.message);
+        const msg = String(error?.message || '');
+        if (!(msg.includes('notifications') && msg.includes('does not exist'))) {
+          addToast('error', 'Erro', msg || 'Falha ao carregar painel.');
+        }
     } finally {
       setLoading(false);
     }

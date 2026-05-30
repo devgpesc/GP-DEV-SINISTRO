@@ -151,14 +151,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               }
           }
 
-          const { data: dbNotifs } = await supabase.from('notifications')
+          const { data: dbNotifs, error: notifError } = await supabase.from('notifications')
               .select('*')
               .eq('user_id', user?.id)
               .eq('read', false)
               .order('created_at', { ascending: false })
               .limit(10);
 
-          if (dbNotifs) {
+          if (notifError) {
+              if (!String(notifError.message || '').includes('does not exist')) {
+                  console.warn('[Notifications]', notifError.message);
+              }
+          } else if (dbNotifs) {
               dbNotifs.forEach((n: any) => {
                   newNotifications.push({
                       id: n.id,
