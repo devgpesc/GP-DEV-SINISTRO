@@ -119,6 +119,7 @@ export interface QuotationItem {
   quantity: number;
   unit: string;
   category?: string;
+  item_type?: 'Peça' | 'Serviço';
   target_price?: number;
   catalog_item_id?: string;
   status: 'Pendente' | 'Cotado' | 'Comprado';

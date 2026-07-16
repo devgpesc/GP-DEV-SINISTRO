@@ -92,7 +92,8 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
 
       const persistedSelections: Record<string, ManualPurchaseSelection> = {};
       data.selections
-        .filter((selection) => selection.status !== 'Cancelado')
+        .filter((selection) => selection.status === 'Selecionado')
+        .filter((selection) => !data.processedItemIds.includes(selection.quotation_item_id))
         .forEach((selection) => {
           persistedSelections[selection.quotation_item_id] = {
             supplierId: selection.supplier_id,
@@ -297,9 +298,17 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
     }
   };
 
+  const activeSelections = useMemo(() => {
+    const next: Record<string, ManualPurchaseSelection> = {};
+    Object.entries(selections).forEach(([itemId, selection]) => {
+      if (!processedItemIds.includes(itemId)) next[itemId] = selection;
+    });
+    return next;
+  }, [selections, processedItemIds]);
+
   const selectedGroups = useMemo(() => {
     const groups: Record<string, { supplier: Supplier; rows: Array<{ item: QuotationItem; price: SupplierPrice; selection: ManualPurchaseSelection }>; total: number }> = {};
-    Object.entries(selections).forEach(([itemId, selection]) => {
+    Object.entries(activeSelections).forEach(([itemId, selection]) => {
       const item = items.find((candidate) => candidate.id === itemId);
       const supplier = suppliers.find((candidate) => candidate.id === selection.supplierId);
       const price = prices.find((candidate) => candidate.quotation_item_id === itemId && candidate.supplier_id === selection.supplierId);
@@ -310,17 +319,17 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
       groups[supplier.id].total += price.price * (selection.quantity || item.quantity || 1);
     });
     return Object.values(groups);
-  }, [items, suppliers, prices, selections]);
+  }, [items, suppliers, prices, activeSelections]);
 
   const stats = useMemo(() => {
     const totalItems = items.length;
     const quotedItems = items.filter((item) => prices.some((price) => price.quotation_item_id === item.id)).length;
-    const selectedItems = Object.keys(selections).length;
+    const selectedItems = Object.keys(activeSelections).length;
     const selectedTotal = selectedGroups.reduce((sum, group) => sum + group.total, 0);
     const avgItemValue = selectedItems > 0 ? selectedTotal / selectedItems : 0;
     const coverage = totalItems > 0 ? (quotedItems / totalItems) * 100 : 0;
     return { totalItems, quotedItems, selectedItems, selectedTotal, avgItemValue, coverage, responsesCount: prices.length };
-  }, [items, prices, selections, selectedGroups]);
+  }, [items, prices, activeSelections, selectedGroups]);
 
   const versionOptions = useMemo(() => {
     const values = new Set<string>();
@@ -339,7 +348,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
     if (!matchesVersion) return false;
     if (filterStatus === 'Sem Cotacao') return matchesText && !hasPrice;
     if (filterStatus === 'Cotado') return matchesText && hasPrice;
-    if (filterStatus === 'Selecionado') return matchesText && !!selections[item.id];
+    if (filterStatus === 'Selecionado') return matchesText && !!activeSelections[item.id];
     if (filterStatus === 'Processado') return matchesText && processedItemIds.includes(item.id);
     return matchesText;
   });
@@ -350,12 +359,12 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
 
   const handleProcessPurchase = async () => {
     if (!quotationId) return;
-    if (Object.keys(selections).length === 0) {
+    if (Object.keys(activeSelections).length === 0) {
       addToast('warning', 'Selecao vazia', 'Selecione manualmente pelo menos um item para compra.');
       return;
     }
 
-    const invalid = Object.entries(selections).find(([itemId, selection]) => {
+    const invalid = Object.entries(activeSelections).find(([itemId, selection]) => {
       const item = items.find((candidate) => candidate.id === itemId);
       const price = prices.find((candidate) => candidate.quotation_item_id === itemId && candidate.supplier_id === selection.supplierId);
       return !item || !selection.supplierId || !selection.quantity || !price;
@@ -368,7 +377,8 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
 
     setIsSubmitting(true);
     try {
-      await quotationService.processPurchase(quotationId, selections, eventId);
+      await quotationService.processPurchase(quotationId, activeSelections, eventId);
+      setSelections({});
       addToast('success', 'Compras enviadas', 'As OCs foram geradas para aprovacao da gestao.');
       navigate('/compras');
     } catch (error: any) {
@@ -557,7 +567,8 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
                     <div className="flex gap-2 mt-2 items-center">
                       <span className="text-[10px] text-slate-400 font-black uppercase bg-slate-50 px-2 py-0.5 rounded border border-slate-100">{item.quantity} {item.unit}</span>
                       {isProcessed && <span className="text-[9px] font-black uppercase text-slate-500 bg-slate-200 px-2 py-0.5 rounded">Processado</span>}
-                      {selections[item.id] && !isProcessed && <CheckCircle2 size={16} className="text-blue-600" />}
+                      {activeSelections[item.id] && !isProcessed && <CheckCircle2 size={16} className="text-blue-600" />}
+                      {(item as any).item_type === 'Serviço' && <span className="text-[9px] font-black uppercase text-purple-600 bg-purple-50 px-2 py-0.5 rounded border border-purple-100">Servico</span>}
                     </div>
                     {isProcessed && (
                       <button
@@ -572,7 +583,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
                   </td>
                   {filteredSuppliers.map((supplier) => {
                     const price = prices.find((candidate) => candidate.quotation_item_id === item.id && candidate.supplier_id === supplier.id);
-                    const selected = selections[item.id]?.supplierId === supplier.id;
+                    const selected = activeSelections[item.id]?.supplierId === supplier.id;
                     const isBest = !!price && bestPriceByItem[item.id] === price.price;
                     const isEditing = editingCell?.itemId === item.id && editingCell?.supplierId === supplier.id;
 
@@ -608,7 +619,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
                         <button onClick={() => selectForPurchase(item, supplier, price)} disabled={isProcessed || price.availability === false} className={`w-full py-4 rounded-2xl border-2 transition-all flex flex-col items-center justify-center relative ${selected ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105 z-10' : isBest ? 'bg-green-50 border-green-300 text-slate-800 hover:border-blue-500' : 'bg-white border-slate-200 text-slate-500 hover:border-blue-300'} disabled:opacity-50 disabled:cursor-not-allowed`}>
                           {isBest && !selected && <span className="absolute -top-3 bg-green-500 text-white text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-wide shadow-sm border border-white">Menor preco</span>}
                           <span className="text-sm font-black"><span className="opacity-50 text-[10px]">R$</span> {money(price.price)}</span>
-                          <span className={`text-[9px] font-bold mt-1 uppercase ${selected ? 'text-blue-200' : 'text-slate-400'}`}>Total R$ {money(price.price * (selections[item.id]?.quantity || item.quantity || 1))}</span>
+                          <span className={`text-[9px] font-bold mt-1 uppercase ${selected ? 'text-blue-200' : 'text-slate-400'}`}>Total R$ {money(price.price * (activeSelections[item.id]?.quantity || item.quantity || 1))}</span>
                           <span className={`text-[9px] font-bold mt-1 ${price.availability === false ? 'text-red-400' : selected ? 'text-blue-100' : 'text-slate-400'}`}>{price.availability === false ? 'Indisponivel' : price.delivery_days ? `${price.delivery_days} dia(s)` : 'Prazo nao informado'}</span>
                           {price.obs && <MessageSquare size={10} className={selected ? 'text-blue-300 mt-1' : 'text-slate-300 mt-1'} />}
                         </button>

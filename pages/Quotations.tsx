@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Search, ChevronRight, ArrowLeft, BarChart3, Trash2, Rocket, List, Package, Users, Edit3, Box, Zap, Save, Loader2, Check, CheckSquare, LayoutGrid } from 'lucide-react';
+import { Plus, Search, ChevronRight, ArrowLeft, BarChart3, Trash2, Rocket, List, Package, Users, Edit3, Box, Zap, Save, Loader2, Check, CheckSquare, LayoutGrid, Wrench } from 'lucide-react';
 import MatrixTable from '../components/MatrixTable';
 import { supabase } from '../services/supabaseClient';
 import { Event, Supplier, CatalogItem } from '../types';
@@ -25,6 +25,7 @@ const Quotations: React.FC = () => {
       quantity: number;
       unit: string;
       category?: string;
+      item_type?: 'Peça' | 'Serviço';
       catalog_item_id?: string;
   }
 
@@ -38,6 +39,7 @@ const Quotations: React.FC = () => {
   // --- STATES DO CATÁLOGO INTELIGENTE ---
   const [itemSearch, setItemSearch] = useState('');
   const [manualQty, setManualQty] = useState(1);
+  const [itemTypeTab, setItemTypeTab] = useState<'Peça' | 'Serviço'>('Peça');
   const [showCatalogDropdown, setShowCatalogDropdown] = useState(false);
   const [searchResults, setSearchResults] = useState<CatalogItem[]>([]);
   const [isSearchingCatalog, setIsSearchingCatalog] = useState(false);
@@ -66,6 +68,7 @@ const Quotations: React.FC = () => {
                       .from('catalog_items')
                       .select('*')
                       .or(`name.ilike.%${itemSearch}%,code.ilike.%${itemSearch}%`)
+                      .eq('type', itemTypeTab)
                       .limit(5);
                   setSearchResults(data || []);
                   setShowCatalogDropdown(true);
@@ -81,7 +84,7 @@ const Quotations: React.FC = () => {
       }, 300);
 
       return () => clearTimeout(delayDebounceFn);
-  }, [itemSearch]);
+  }, [itemSearch, itemTypeTab]);
 
   const loadData = async () => {
     const { data: eventsData } = await supabase.from('events').select('*').order('created_at', { ascending: false });
@@ -122,7 +125,8 @@ const Quotations: React.FC = () => {
               quantity: i.quantity, 
               unit: i.unit || 'UN',
               catalog_item_id: i.catalog_item_id,
-              category: i.category
+              category: i.category,
+              item_type: i.item_type || 'Peça'
           })) || [],
           selectedSuppliers: qSuppliers?.map((qs: any) => qs.supplier_id) || []
       });
@@ -187,8 +191,9 @@ const Quotations: React.FC = () => {
                 quotation_id: quoteId,
                 name: item.name,
                 quantity: item.quantity,
-                unit: item.unit || 'UN',
+                unit: item.unit || (item.item_type === 'Serviço' ? 'HL' : 'UN'),
                 category: item.category,
+                item_type: item.item_type || 'Peça',
                 catalog_item_id: item.catalog_item_id || null, 
                 status: 'Pendente'
             }));
@@ -228,6 +233,7 @@ const Quotations: React.FC = () => {
               quantity: manualQty, 
               unit: cItem.unit, 
               category: cItem.category, 
+              item_type: cItem.type || 'Peça',
               catalog_item_id: cItem.id 
           }]
       }));
@@ -240,10 +246,17 @@ const Quotations: React.FC = () => {
   const addManualItem = async () => {
       if (!itemSearch.trim()) return;
       const manualName = itemSearch.trim();
+      const isService = itemTypeTab === 'Serviço';
       
       setNewQuote(prev => ({
           ...prev, 
-          items: [...prev.items, { name: manualName, quantity: manualQty, unit: 'UN', category: 'Geral' }]
+          items: [...prev.items, { 
+              name: manualName, 
+              quantity: manualQty, 
+              unit: isService ? 'HL' : 'UN', 
+              category: isService ? 'Serviços' : 'Geral',
+              item_type: itemTypeTab
+          }]
       }));
       setItemSearch('');
       setManualQty(1);
@@ -259,13 +272,14 @@ const Quotations: React.FC = () => {
 
   const createAndAddCatalogItem = async () => {
       if (!itemSearch.trim()) return;
+      const isService = itemTypeTab === 'Serviço';
       
       const newItemPayload = {
           name: itemSearch.trim(),
           code: `NEW-${Date.now().toString().slice(-4)}`,
-          category: 'Geral',
-          type: 'Peça',
-          unit: 'UN'
+          category: isService ? 'Serviços' : 'Geral',
+          type: itemTypeTab,
+          unit: isService ? 'HL' : 'UN'
       };
 
       try {
@@ -453,6 +467,14 @@ const Quotations: React.FC = () => {
             <div className="bg-white p-10 rounded-[48px] shadow-sm border border-slate-200 h-full flex flex-col relative">
                <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2"><List size={20} className="text-blue-600"/> 2. Defina os Itens</h3>
                <div className="flex-1 space-y-4">
+                  <div className="flex bg-slate-100 p-1 rounded-2xl">
+                    <button type="button" onClick={() => setItemTypeTab('Peça')} className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${itemTypeTab === 'Peça' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}>
+                      <Package size={14} /> Pecas
+                    </button>
+                    <button type="button" onClick={() => setItemTypeTab('Serviço')} className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${itemTypeTab === 'Serviço' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500'}`}>
+                      <Wrench size={14} /> Servicos / Mao de Obra
+                    </button>
+                  </div>
                   <div className="flex items-center justify-between">
                     <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-[10px] font-black uppercase tracking-widest">
                       {newQuote.items.length} item(ns)
@@ -474,7 +496,7 @@ const Quotations: React.FC = () => {
                               <input 
                                 ref={searchInputRef}
                                 className="w-full p-4 pl-12 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-medium focus:ring-2 focus:ring-blue-500/20 transition-all placeholder:text-slate-400" 
-                                placeholder="Busque no catálogo ou digite..." 
+                                placeholder={itemTypeTab === 'Serviço' ? 'Busque servico ou digite mao de obra...' : 'Busque no catalogo ou digite...'} 
                                 value={itemSearch} 
                                 onChange={e => setItemSearch(e.target.value)} 
                                 onKeyDown={e => e.key === 'Enter' && !showCatalogDropdown && addManualItem()} 
@@ -483,8 +505,8 @@ const Quotations: React.FC = () => {
                                   {isSearchingCatalog ? <Loader2 className="animate-spin" size={20}/> : <Search size={20}/>}
                               </div>
                           </div>
-                          <input type="number" className="w-20 p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-medium text-center" value={manualQty} onChange={e => setManualQty(Math.max(1, Number(e.target.value) || 1))} min={1} />
-                          <button onClick={addManualItem} className="bg-slate-900 text-white p-4 rounded-2xl shadow-lg hover:scale-105 transition-all"><Plus size={20}/></button>
+                          <input type="number" className="w-20 p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-medium text-center" value={manualQty} onChange={e => setManualQty(Math.max(0.5, Number(e.target.value) || 1))} min={itemTypeTab === 'Serviço' ? 0.5 : 1} step={itemTypeTab === 'Serviço' ? 0.5 : 1} title={itemTypeTab === 'Serviço' ? 'Horas (HL)' : 'Quantidade'} />
+                          <button onClick={addManualItem} className={`text-white p-4 rounded-2xl shadow-lg hover:scale-105 transition-all ${itemTypeTab === 'Serviço' ? 'bg-purple-600' : 'bg-slate-900'}`} title={itemTypeTab === 'Serviço' ? 'Adicionar servico' : 'Adicionar peca'}><Plus size={20}/></button>
                       </div>
 
                       {/* Dropdown de Catálogo */}
@@ -492,12 +514,14 @@ const Quotations: React.FC = () => {
                           <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-100 max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-2 z-50">
                               {searchResults.length > 0 ? (
                                   <>
-                                    <div className="p-2 bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 sticky top-0">Catálogo Oficial</div>
+                                    <div className="p-2 bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 sticky top-0">
+                                      Catalogo Oficial — {itemTypeTab === 'Serviço' ? 'Servicos' : 'Pecas'}
+                                    </div>
                                     {searchResults.map(item => (
                                         <button key={item.id} onClick={() => addCatalogItem(item)} className="w-full text-left p-3 hover:bg-blue-50 flex justify-between items-center group transition-colors">
                                             <div>
                                                 <p className="text-sm font-bold text-slate-700">{item.name}</p>
-                                                <p className="text-[10px] text-slate-400 font-medium">{item.code} • {item.unit} • {item.category}</p>
+                                                <p className="text-[10px] text-slate-400 font-medium">{item.code} • {item.unit} • {item.category} • {item.type}</p>
                                             </div>
                                             <Plus size={16} className="text-blue-600 opacity-0 group-hover:opacity-100"/>
                                         </button>
@@ -507,7 +531,7 @@ const Quotations: React.FC = () => {
                                   <div className="p-4 text-center">
                                       <p className="text-xs text-slate-400 mb-2">Item não encontrado no catálogo.</p>
                                       <button onClick={createAndAddCatalogItem} className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center justify-center gap-1 w-full p-2 rounded-xl hover:bg-blue-50">
-                                          <Save size={14}/> Cadastrar "{itemSearch}" e Adicionar
+                                          <Save size={14}/> Cadastrar "{itemSearch}" como {itemTypeTab === 'Serviço' ? 'servico' : 'peca'} e adicionar
                                       </button>
                                   </div>
                               )}
@@ -525,12 +549,12 @@ const Quotations: React.FC = () => {
                       {newQuote.items.map((item, idx) => (
                           <div key={idx} className="flex justify-between items-center p-3 bg-white rounded-xl border border-slate-100 shadow-sm group hover:border-blue-100 transition-all">
                               <div className="flex items-center gap-3">
-                                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${item.catalog_item_id ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-400'}`}>
-                                      {item.catalog_item_id ? <Zap size={14} fill="currentColor"/> : <Box size={14}/>}
+                                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${item.item_type === 'Serviço' ? 'bg-purple-100 text-purple-600' : item.catalog_item_id ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-400'}`}>
+                                      {item.item_type === 'Serviço' ? <Wrench size={14}/> : item.catalog_item_id ? <Zap size={14} fill="currentColor"/> : <Box size={14}/>}
                                   </div>
                                   <div>
                                       <p className="font-bold text-slate-700 text-sm">{item.name}</p>
-                                      <p className="text-[10px] text-slate-400 font-bold uppercase">{item.quantity} {item.unit} {item.category ? `• ${item.category}` : ''}</p>
+                                      <p className="text-[10px] text-slate-400 font-bold uppercase">{item.quantity} {item.unit} {item.item_type === 'Serviço' ? '• Servico' : ''} {item.category ? `• ${item.category}` : ''}</p>
                                   </div>
                               </div>
                               <button onClick={() => setNewQuote(prev => ({...prev, items: prev.items.filter((_, i) => i !== idx)}))} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"><Trash2 size={16}/></button>

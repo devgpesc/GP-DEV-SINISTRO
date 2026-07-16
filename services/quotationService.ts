@@ -290,7 +290,15 @@ export const quotationService = {
     }
 
     const { items, prices, processedItemIds } = await this.getMatrixData(quotationId);
-    const duplicateItems = Object.keys(selections).filter((itemId) => processedItemIds.includes(itemId));
+    const activeSelections = Object.fromEntries(
+      Object.entries(selections).filter(([itemId]) => !processedItemIds.includes(itemId))
+    );
+
+    if (Object.keys(activeSelections).length === 0) {
+      throw new Error('Selecione pelo menos um item pendente para compra.');
+    }
+
+    const duplicateItems = Object.keys(activeSelections).filter((itemId) => processedItemIds.includes(itemId));
     if (duplicateItems.length > 0) {
       throw new Error('Existem itens ja processados. Atualize a matriz antes de continuar.');
     }
@@ -304,7 +312,7 @@ export const quotationService = {
       .update({ is_winner: false })
       .in('quotation_item_id', itemIds);
 
-    for (const [itemId, selection] of Object.entries(selections)) {
+    for (const [itemId, selection] of Object.entries(activeSelections)) {
       const item = items.find((candidate) => candidate.id === itemId);
       if (!item) throw new Error(`Item nao encontrado na cotacao: ${itemId}`);
       if (!selection.supplierId) throw new Error(`Item sem fornecedor selecionado: ${item.name}`);
@@ -387,10 +395,10 @@ export const quotationService = {
       .from('quotation_purchase_selections')
       .update({ status: 'Processado' })
       .eq('quotation_id', quotationId)
-      .in('quotation_item_id', Object.keys(selections));
+      .in('quotation_item_id', Object.keys(activeSelections));
 
     await this.saveDecisionHistory(quotationId, 'process_purchase', {
-      selections,
+      selections: activeSelections,
       purchase_orders: createdOrders.map((order: any) => ({ id: order.id, code: order.code, itemsCount: order.itemsCount })),
     });
 
