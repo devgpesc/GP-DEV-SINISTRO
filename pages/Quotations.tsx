@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Search, ChevronRight, ArrowLeft, BarChart3, Trash2, Rocket, List, Package, Users, Edit3, Box, Zap, Save, Loader2, Check, CheckSquare, LayoutGrid, Wrench } from 'lucide-react';
+import { Plus, Search, ChevronRight, ArrowLeft, BarChart3, Trash2, Rocket, List, Package, Users, Edit3, Box, Zap, Save, Loader2, Check, CheckSquare, LayoutGrid, Wrench, UserPlus } from 'lucide-react';
 import MatrixTable from '../components/MatrixTable';
 import { supabase } from '../services/supabaseClient';
-import { Event, Supplier, CatalogItem } from '../types';
+import { eventService } from '../services/eventService';
+import { Event, EventStatus, EventType, Priority, Supplier, CatalogItem } from '../types';
 import { useToast } from '../context/ToastContext';
 import ActionModal from '../components/ActionModal';
 
@@ -52,6 +53,15 @@ const Quotations: React.FC = () => {
   // Estado para passar para a Matriz
   const [activeQuoteId, setActiveQuoteId] = useState<string | null>(null);
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
+  const [showQuickRegister, setShowQuickRegister] = useState(false);
+  const [isQuickSaving, setIsQuickSaving] = useState(false);
+  const [quickForm, setQuickForm] = useState({
+    clientName: '',
+    document: '',
+    plate: '',
+    type: EventType.COLLISION,
+    description: '',
+  });
   const selectedEvent = realEvents.find(ev => ev.id === newQuote.eventId);
 
   useEffect(() => {
@@ -302,6 +312,124 @@ const Quotations: React.FC = () => {
     }));
   };
 
+  const resetQuickForm = () => {
+    setQuickForm({
+      clientName: '',
+      document: '',
+      plate: '',
+      type: EventType.COLLISION,
+      description: '',
+    });
+  };
+
+  const handleQuickRegister = async () => {
+    const clientName = quickForm.clientName.trim();
+    const cleanPlate = quickForm.plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const cleanDocument = quickForm.document.replace(/\D/g, '');
+
+    if (!clientName) {
+      addToast('warning', 'Nome obrigatorio', 'Informe o nome do cliente.');
+      return;
+    }
+    if (cleanPlate.length < 7) {
+      addToast('warning', 'Placa invalida', 'Informe uma placa valida com 7 caracteres.');
+      return;
+    }
+
+    setIsQuickSaving(true);
+    try {
+      let associateId = '';
+      const docToUse = cleanDocument || `RAP${Date.now().toString().slice(-8)}`;
+
+      const { data: existingAssociate } = await supabase
+        .from('associates')
+        .select('id')
+        .eq('document', docToUse)
+        .maybeSingle();
+
+      if (existingAssociate?.id) {
+        associateId = existingAssociate.id;
+        await supabase.from('associates').update({ name: clientName }).eq('id', associateId);
+      } else {
+        const { data: newAssociate, error: associateError } = await supabase
+          .from('associates')
+          .insert([{
+            name: clientName,
+            document: docToUse,
+            type: 'PF',
+            created_at: new Date().toISOString(),
+          }])
+          .select('id')
+          .single();
+        if (associateError) throw associateError;
+        associateId = newAssociate.id;
+      }
+
+      let vehicleId = '';
+      const { data: existingVehicle } = await supabase
+        .from('vehicles')
+        .select('id, associate_id')
+        .eq('plate', cleanPlate)
+        .maybeSingle();
+
+      if (existingVehicle?.id) {
+        vehicleId = existingVehicle.id;
+        await supabase.from('vehicles').update({ associate_id: associateId }).eq('id', vehicleId);
+      } else {
+        const currentYear = new Date().getFullYear().toString();
+        const { data: newVehicle, error: vehicleError } = await supabase
+          .from('vehicles')
+          .insert([{
+            plate: cleanPlate,
+            associate_id: associateId,
+            status: 'Ativo',
+            brand: 'A DEFINIR',
+            model: 'CADASTRO RAPIDO',
+            color: 'BRANCA',
+            fuel: 'FLEX',
+            type: 'Automovel',
+            year_fab: currentYear,
+            year_model: currentYear,
+            created_at: new Date().toISOString(),
+          }])
+          .select('id')
+          .single();
+        if (vehicleError) throw vehicleError;
+        vehicleId = newVehicle.id;
+      }
+
+      const protocol = `EVT-${new Date().getFullYear()}-${String(realEvents.length + 1).padStart(4, '0')}`;
+      const createdEvent = await eventService.createEvent({
+        protocol,
+        type: quickForm.type,
+        priority: Priority.MEDIUM,
+        category: quickForm.type,
+        vehicleId,
+        associateId,
+        description: quickForm.description.trim() || 'Sinistro aberto via cadastro rapido na cotacao.',
+        status: EventStatus.WAITING,
+        createdAt: new Date().toISOString(),
+        attachments: [],
+        history: [],
+      });
+
+      await loadData();
+      setNewQuote((prev) => ({
+        ...prev,
+        eventId: createdEvent.id,
+        eventProtocol: createdEvent.protocol,
+      }));
+      setShowQuickRegister(false);
+      resetQuickForm();
+      addToast('success', 'Sinistro criado', `Protocolo ${createdEvent.protocol} vinculado a cotacao.`);
+    } catch (error: any) {
+      console.error('Cadastro rapido:', error);
+      addToast('error', 'Erro no cadastro', error.message || 'Nao foi possivel criar o sinistro.');
+    } finally {
+      setIsQuickSaving(false);
+    }
+  };
+
   const openMatrix = (quote: any) => {
       setActiveQuoteId(quote.id);
       setActiveEventId(quote.eventId);
@@ -439,6 +567,79 @@ const Quotations: React.FC = () => {
                     <option value="">Selecione...</option>
                     {realEvents.map(e => <option key={e.id} value={e.id}>{e.protocol} - {e.category} ({e.status})</option>)}
                   </select>
+
+                  {!editingQuoteId && (
+                    <div className="space-y-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowQuickRegister((prev) => !prev)}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50/50 text-blue-700 text-xs font-black uppercase tracking-widest hover:bg-blue-50 transition-all"
+                      >
+                        <UserPlus size={16} />
+                        {showQuickRegister ? 'Fechar cadastro rapido' : 'Cadastro rapido de sinistro'}
+                      </button>
+
+                      {showQuickRegister && (
+                        <div className="rounded-2xl border border-blue-100 bg-blue-50/40 p-4 space-y-3">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-blue-600">Novo sinistro sem sair da cotacao</p>
+                          <input
+                            className="w-full p-3 rounded-xl border border-slate-200 bg-white text-sm font-bold outline-none"
+                            placeholder="Nome do cliente *"
+                            value={quickForm.clientName}
+                            onChange={(e) => setQuickForm((prev) => ({ ...prev, clientName: e.target.value }))}
+                          />
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <input
+                              className="w-full p-3 rounded-xl border border-slate-200 bg-white text-sm font-bold outline-none uppercase"
+                              placeholder="Placa *"
+                              value={quickForm.plate}
+                              onChange={(e) => setQuickForm((prev) => ({ ...prev, plate: e.target.value }))}
+                              maxLength={8}
+                            />
+                            <input
+                              className="w-full p-3 rounded-xl border border-slate-200 bg-white text-sm font-bold outline-none"
+                              placeholder="CPF/CNPJ (opcional)"
+                              value={quickForm.document}
+                              onChange={(e) => setQuickForm((prev) => ({ ...prev, document: e.target.value }))}
+                            />
+                          </div>
+                          <select
+                            className="w-full p-3 rounded-xl border border-slate-200 bg-white text-sm font-bold outline-none"
+                            value={quickForm.type}
+                            onChange={(e) => setQuickForm((prev) => ({ ...prev, type: e.target.value as EventType }))}
+                          >
+                            {Object.values(EventType).map((type) => (
+                              <option key={type} value={type}>{type}</option>
+                            ))}
+                          </select>
+                          <textarea
+                            className="w-full p-3 rounded-xl border border-slate-200 bg-white text-sm font-medium outline-none min-h-[70px]"
+                            placeholder="Descricao do sinistro (opcional)"
+                            value={quickForm.description}
+                            onChange={(e) => setQuickForm((prev) => ({ ...prev, description: e.target.value }))}
+                          />
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => { setShowQuickRegister(false); resetQuickForm(); }}
+                              className="px-4 py-2 rounded-xl text-xs font-black uppercase text-slate-500 bg-white border border-slate-200"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleQuickRegister}
+                              disabled={isQuickSaving}
+                              className="px-4 py-2 rounded-xl text-xs font-black uppercase text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                            >
+                              {isQuickSaving ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
+                              Criar e vincular
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {selectedEvent && (
                     <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
