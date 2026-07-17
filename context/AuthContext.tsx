@@ -229,6 +229,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     } catch (err: any) {
       console.warn('[Auth] Falha ao carregar contexto:', err.message);
+      const onAuthCallback =
+        typeof window !== 'undefined' && window.location.pathname === '/auth/callback';
+      if (onAuthCallback) {
+        // O AuthCallback conclui o OAuth e chama refreshContext() antes de redirecionar.
+        return;
+      }
       if (mounted.current) {
         await (supabase.auth as any).signOut();
         setSession(null);
@@ -257,15 +263,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // 1. Recupera sessão inicial
         const { data: { session: initialSession }, error } = await (supabase.auth as any).getSession();
         
+        const onAuthCallback =
+          typeof window !== 'undefined' && window.location.pathname === '/auth/callback';
+
         if (mounted.current) {
             if (initialSession?.user) {
                 setSession(initialSession);
                 setUser(initialSession.user);
-                await loadContextData(
-                  initialSession.user.id, 
-                  initialSession.user.email, 
-                  initialSession.user.user_metadata
-                );
+                if (!onAuthCallback) {
+                  await loadContextData(
+                    initialSession.user.id,
+                    initialSession.user.email,
+                    initialSession.user.user_metadata
+                  );
+                }
             }
         }
       } catch (error) {
@@ -290,11 +301,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(newSession?.user ?? null);
           
           if (newSession?.user && newSession.user.id !== userRef.current?.id) {
-             await loadContextData(
-               newSession.user.id, 
-               newSession.user.email, 
-               newSession.user.user_metadata
-             );
+             const onAuthCallback =
+               typeof window !== 'undefined' && window.location.pathname === '/auth/callback';
+             if (!onAuthCallback) {
+               await loadContextData(
+                 newSession.user.id,
+                 newSession.user.email,
+                 newSession.user.user_metadata
+               );
+             }
           }
       } else if (event === 'SIGNED_OUT') {
           setSession(null);

@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 const { useNavigate, useLocation } = ReactRouterDOM as any;
 import { Loader2, AlertCircle } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import { getAuthRedirectUrl } from '../services/authRedirect';
 import {
   clearPendingRegistration,
@@ -12,7 +13,21 @@ import {
 
 const parseHashParams = () => new URLSearchParams(window.location.hash.replace(/^#/, ''));
 
-const waitForAuthSession = (timeoutMs = 6000): Promise<any | null> =>
+const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+};
+
+const waitForAuthSession = (timeoutMs = 10000): Promise<any | null> =>
   new Promise((resolve) => {
     let settled = false;
     const finish = (session: any | null) => {
@@ -24,7 +39,7 @@ const waitForAuthSession = (timeoutMs = 6000): Promise<any | null> =>
     };
 
     const { data: { subscription } } = (supabase.auth as any).onAuthStateChange((event: string, session: any) => {
-      if (event === 'SIGNED_IN' && session) finish(session);
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) finish(session);
     });
 
     const timer = setTimeout(() => finish(null), timeoutMs);
@@ -33,6 +48,11 @@ const waitForAuthSession = (timeoutMs = 6000): Promise<any | null> =>
       if (session) finish(session);
     });
   });
+
+const stripAuthParamsFromUrl = (inviteToken: string | null) => {
+  const nextPath = inviteToken ? `/auth/callback?invite=${inviteToken}` : '/auth/callback';
+  window.history.replaceState({}, document.title, nextPath);
+};
 
 const finishPendingInviteOrRegistration = async (inviteToken: string | null) => {
   const pending = readPendingRegistration();
@@ -68,11 +88,22 @@ const AuthCallback: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { addToast } = useToast();
+  const { refreshContext } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [resendEmail, setResendEmail] = useState<string | null>(null);
   const [resending, setResending] = useState(false);
+  const [slow, setSlow] = useState(false);
+  const processingRef = useRef(false);
 
   useEffect(() => {
+    const slowTimer = setTimeout(() => setSlow(true), 12000);
+    return () => clearTimeout(slowTimer);
+  }, []);
+
+  useEffect(() => {
+    if (processingRef.current) return;
+    processingRef.current = true;
+
     const finishAuth = async () => {
       try {
         const searchParams = new URLSearchParams(location.search);
@@ -98,40 +129,44 @@ const AuthCallback: React.FC = () => {
           throw new Error(decodeURIComponent(String(authError).replace(/\+/g, ' ')));
         }
 
-        // 1) Confirmação por e-mail (token_hash) — funciona sem PKCE no mesmo browser
         const tokenHash = searchParams.get('token_hash');
         const otpType = searchParams.get('type');
         if (tokenHash && otpType) {
-          const { error: verifyError } = await (supabase.auth as any).verifyOtp({
-            token_hash: tokenHash,
-            type: otpType,
-          });
+          stripAuthParamsFromUrl(inviteToken);
+          const { error: verifyError } = await withTimeout(
+            (supabase.auth as any).verifyOtp({ token_hash: tokenHash, type: otpType }),
+            15000,
+            'Tempo esgotado ao confirmar o e-mail. Tente novamente.',
+          ) as { error: any };
           if (verifyError) throw verifyError;
         } else {
-          // 2) Fluxo implícito legado (#access_token)
           const accessToken = hashParams.get('access_token');
           const refreshToken = hashParams.get('refresh_token');
           if (accessToken && refreshToken) {
+            window.history.replaceState({}, document.title, window.location.pathname);
             const { error: sessionError } = await (supabase.auth as any).setSession({
               access_token: accessToken,
               refresh_token: refreshToken,
             });
             if (sessionError) throw sessionError;
           } else {
-            // 3) PKCE (?code=) — OAuth Google ou confirmação recente no mesmo navegador
             const code = searchParams.get('code');
             if (code) {
-              await new Promise((r) => setTimeout(r, 150));
+              stripAuthParamsFromUrl(inviteToken);
 
-              let { data: { session: existingSession } } = await (supabase.auth as any).getSession();
+              let existingSession = await waitForAuthSession(2000);
               if (!existingSession) {
-                const { error: exchangeError } = await (supabase.auth as any).exchangeCodeForSession(code);
+                const { error: exchangeError } = await withTimeout(
+                  (supabase.auth as any).exchangeCodeForSession(code),
+                  15000,
+                  'Tempo esgotado ao concluir login com Google. Tente novamente.',
+                ) as { error: any };
                 if (exchangeError) {
-                  existingSession = await waitForAuthSession();
+                  existingSession = await waitForAuthSession(8000);
                   if (!existingSession) {
                     if (String(exchangeError.message || '').includes('PKCE')) {
                       throw new Error(
-                        'Nao foi possivel concluir o login OAuth. Abra o link no mesmo navegador em que iniciou o acesso, ou entre com e-mail e senha. Se usou um link de confirmacao antigo, solicite um novo e-mail.',
+                        'Nao foi possivel concluir o login OAuth. Inicie o acesso com Google novamente no mesmo navegador, sem limpar cookies durante o processo.',
                       );
                     }
                     throw exchangeError;
@@ -147,6 +182,7 @@ const AuthCallback: React.FC = () => {
 
         if (session?.user) {
           await finishPendingInviteOrRegistration(inviteToken);
+          await refreshContext();
           addToast('success', 'Acesso confirmado', 'Sua conta foi ativada com sucesso.');
           window.history.replaceState({}, document.title, '/');
           navigate('/', { replace: true });
@@ -161,7 +197,7 @@ const AuthCallback: React.FC = () => {
     };
 
     finishAuth();
-  }, [addToast, location.search, navigate]);
+  }, [addToast, location.search, navigate, refreshContext]);
 
   const handleResend = async () => {
     if (!resendEmail) {
@@ -222,9 +258,23 @@ const AuthCallback: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 text-slate-700">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 text-slate-700 p-6">
       <Loader2 className="mb-4 animate-spin text-blue-600" size={34} />
       <p className="text-xs font-black uppercase tracking-widest">Concluindo acesso seguro...</p>
+      {slow && (
+        <div className="mt-8 max-w-sm text-center">
+          <p className="text-sm font-semibold text-slate-500">
+            Demorando mais que o normal. Aguarde ou volte ao login e tente novamente.
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/login', { replace: true })}
+            className="mt-4 rounded-2xl border border-slate-200 px-6 py-3 text-xs font-black uppercase tracking-widest text-slate-600"
+          >
+            Voltar ao login
+          </button>
+        </div>
+      )}
     </div>
   );
 };

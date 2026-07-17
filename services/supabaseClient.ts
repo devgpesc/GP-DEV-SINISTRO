@@ -32,7 +32,8 @@ const authConfig = {
   flowType: 'pkce' as const,
   autoRefreshToken: true,
   persistSession: true,
-  detectSessionInUrl: true,
+  // AuthCallback.tsx trata ?code= manualmente — evita corrida que trava o OAuth Google.
+  detectSessionInUrl: false,
   storageKey: 'sb-autoclaims-auth-token',
   ...(typeof window !== 'undefined' ? { storage: authStorage } : {}),
 };
