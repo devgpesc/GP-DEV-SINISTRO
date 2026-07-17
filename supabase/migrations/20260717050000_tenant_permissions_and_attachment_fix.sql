@@ -97,6 +97,8 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS public.get_tenant_members(uuid);
+
 CREATE OR REPLACE FUNCTION public.get_tenant_members(target_tenant_id uuid)
 RETURNS TABLE (
   id uuid,
@@ -146,6 +148,9 @@ BEGIN
     p.created_at ASC;
 END;
 $$;
+
+DROP FUNCTION IF EXISTS public.update_tenant_member_profile(uuid, uuid, text, text, jsonb, text);
+DROP FUNCTION IF EXISTS public.update_tenant_member_profile(uuid, uuid, text, text, jsonb, text, jsonb);
 
 CREATE OR REPLACE FUNCTION public.update_tenant_member_profile(
   target_tenant_id uuid,
