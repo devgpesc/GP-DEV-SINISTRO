@@ -12,6 +12,7 @@ type Session = any;
 const TENANT_STORAGE_KEY = 'sb-autoclaims-tenant-id';
 import { readPendingRegistration, clearPendingRegistration } from '../services/pendingRegistration';
 import { AccessProfile, resolveAccessProfile } from '../services/accessControl';
+import { isRootPlatformAdminEmail, resolvePlatformRole } from '../services/platformAdmin';
 
 interface UserProfile {
   id: string;
@@ -165,14 +166,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const tenantById = new Map(linkedTenants.map((tenant: any) => [tenant.id, tenant]));
 
       // 1. Perfil
-      const finalProfile: UserProfile = profileRes.data || {
+      const finalProfile: UserProfile = {
         id: userId,
         email: userEmail,
-        role: 'Usuário',
-        full_name: userMeta?.full_name || userMeta?.name || userEmail?.split('@')[0],
-        avatar_url: userMeta?.avatar_url,
-        permissions: {},
-        created_at: new Date().toISOString()
+        full_name:
+          profileRes.data?.full_name ||
+          userMeta?.full_name ||
+          userMeta?.name ||
+          userEmail?.split('@')[0],
+        avatar_url: profileRes.data?.avatar_url || userMeta?.avatar_url,
+        permissions: profileRes.data?.permissions || {},
+        created_at: profileRes.data?.created_at || new Date().toISOString(),
+        ...(profileRes.data || {}),
+        role: resolvePlatformRole(userEmail, profileRes.data?.role),
       };
       
       if (mounted.current) setProfile(finalProfile);
@@ -254,6 +260,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('[Auth] Falha ao carregar contexto:', err.message);
       const onAuthCallback =
         typeof window !== 'undefined' && window.location.pathname === '/auth/callback';
+
+      if (isRootPlatformAdminEmail(userEmail) && mounted.current) {
+        setProfile({
+          id: userId,
+          email: userEmail,
+          role: 'super_admin',
+          full_name: userMeta?.full_name || userMeta?.name || userEmail?.split('@')[0],
+          avatar_url: userMeta?.avatar_url,
+          permissions: {},
+          created_at: new Date().toISOString(),
+        });
+        setMemberships([]);
+        setCurrentTenant(null);
+        return;
+      }
+
       if (onAuthCallback) {
         throw err;
       }
@@ -458,7 +480,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signOut,
     signInWithGoogle,
     updateProfile,
-    isSuperAdmin: profile?.role === 'super_admin',
+    isSuperAdmin: profile?.role === 'super_admin' || isRootPlatformAdminEmail(user?.email),
     access,
     checkPermission,
     switchTenant,
