@@ -54,13 +54,18 @@ export async function uploadEventAttachments(eventId: string, attachments: Event
     const { data: publicData } = supabase.storage.from(BUCKET).getPublicUrl(path);
     const url = publicData.publicUrl;
 
+    const displayName = att.file.name || att.name || 'Anexo';
+    const mimeType = att.file.type || getAttachmentKind('', displayName);
+
     const { data, error } = await supabase
       .from('event_attachments')
       .insert([{
         event_id: eventId,
         url,
-        name: att.file.name,
-        type: att.file.type || getAttachmentKind('', att.file.name)
+        name: displayName,
+        file_name: displayName,
+        type: mimeType,
+        mime_type: mimeType,
       }])
       .select()
       .single();

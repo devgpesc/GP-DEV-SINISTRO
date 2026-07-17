@@ -9,6 +9,7 @@ import { EventStatus, EventType, Priority, Event, Vehicle, Associate } from '../
 import { supabase } from '../services/supabaseClient';
 import { eventService } from '../services/eventService';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import PremiumModal, { FormSection, FieldLabel, fieldClassName } from '../components/PremiumModal';
 import { useEventTypes } from '../hooks/useEventTypes';
 import { ATTACHMENT_ACCEPT } from '../utils/defaults';
@@ -48,6 +49,7 @@ const PriorityBadge = ({ priority }: { priority: Priority }) => {
 
 const Events: React.FC = () => {
   const { addToast } = useToast();
+  const { currentTenant } = useAuth();
   const { eventTypes } = useEventTypes();
   const [events, setEvents] = useState<Event[]>([]);
   const [associates, setAssociates] = useState<Associate[]>([]);
@@ -111,9 +113,16 @@ const Events: React.FC = () => {
     }
   };
 
-  const nextAutoProtocol = useMemo(() => {
-    return `EVT-${new Date().getFullYear()}-${String(events.length + 1).padStart(4, '0')}`;
-  }, [events]);
+  const [nextAutoProtocol, setNextAutoProtocol] = useState('EVT-...');
+
+  const refreshNextProtocol = async () => {
+    try {
+      const protocol = await eventService.getNextProtocol(currentTenant?.id);
+      setNextAutoProtocol(protocol);
+    } catch {
+      setNextAutoProtocol(`EVT-${new Date().getFullYear()}-0001`);
+    }
+  };
 
   const availableVehicles = useMemo(() => {
     if (!formData.associateId) return [];
@@ -138,8 +147,9 @@ const Events: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleOpenNew = () => {
+  const handleOpenNew = async () => {
     setEventToEdit(null);
+    await refreshNextProtocol();
     setFormData({
         protocolMode: 'auto',
         manualProtocol: '',
@@ -291,15 +301,17 @@ const Events: React.FC = () => {
             await eventService.updateEvent(eventToEdit.id, eventData);
             addToast('success', 'Sinistro Atualizado', 'As alterações foram salvas com sucesso.');
         } else {
-            await eventService.createEvent(eventData);
-            addToast('success', 'Sinistro Criado', `Protocolo ${protocol} gerado.`);
+            const created = await eventService.createEvent(eventData, { tenantId: currentTenant?.id });
+            addToast('success', 'Sinistro Criado', `Protocolo ${created?.protocol || protocol} gerado.`);
         }
         
-        loadData();
+        await loadData();
         setIsModalOpen(false);
         setEventToEdit(null);
     } catch (error: any) {
         console.error(error);
+        await loadData();
+        await refreshNextProtocol();
         addToast('error', 'Erro ao Salvar', error.message || 'Ocorreu um erro inesperado.');
     } finally {
         setIsSaving(false);

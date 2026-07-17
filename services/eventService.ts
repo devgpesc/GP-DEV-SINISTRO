@@ -3,7 +3,24 @@ import { supabase } from './supabaseClient';
 import { Event } from '../types';
 import { uploadEventAttachments, deleteEventAttachment, EventAttachment, normalizeAttachmentRow } from './attachmentService';
 
+const BUCKET = 'event-attachments';
+
+async function rollbackCreatedEvent(eventId: string, uploadedPaths: string[]) {
+  if (uploadedPaths.length) {
+    await supabase.storage.from(BUCKET).remove(uploadedPaths);
+  }
+  await supabase.rpc('delete_event_cascade', { p_event_id: eventId });
+}
+
 export const eventService = {
+  async getNextProtocol(tenantId?: string | null): Promise<string> {
+    const { data, error } = await supabase.rpc('next_event_protocol', {
+      p_tenant_id: tenantId ?? null,
+    });
+    if (error) throw error;
+    return String(data);
+  },
+
   async getEvents(): Promise<Event[]> {
     const { data, error } = await supabase
       .from('events')
@@ -24,7 +41,7 @@ export const eventService = {
     }));
   },
 
-  async createEvent(eventData: Partial<Event>) {
+  async createEvent(eventData: Partial<Event>, options?: { tenantId?: string | null }) {
     const { data: { user }, error: authError } = await (supabase.auth as any).getUser();
     
     if (authError || !user || !user.id) {
@@ -37,8 +54,14 @@ export const eventService = {
 
     const { attachments, history, id, ...cleanEventData } = eventData;
 
+    let protocol = cleanEventData.protocol;
+    if (!protocol || String(protocol).startsWith('EVT-')) {
+      protocol = await eventService.getNextProtocol(options?.tenantId);
+    }
+
     const payload = {
       ...cleanEventData,
+      protocol,
       created_by: user.id, 
       created_at: eventData.createdAt || new Date().toISOString(),
       vehicleId: eventData.vehicleId,
@@ -53,8 +76,8 @@ export const eventService = {
     
     if (error) throw error;
     
-    if (data && data.id) {
-        await supabase.from('event_history').insert([{
+    if (data?.id) {
+        const { error: historyError } = await supabase.from('event_history').insert([{
             event_id: data.id,
             from_status: 'Criação',
             to_status: 'Aguardando',
@@ -63,12 +86,16 @@ export const eventService = {
             created_at: new Date().toISOString()
         }]);
 
+        if (historyError) {
+          await rollbackCreatedEvent(data.id, []);
+          throw historyError;
+        }
+
         if (attachments?.length) {
           try {
             await uploadEventAttachments(data.id, attachments as EventAttachment[]);
           } catch (attachmentError) {
-            await supabase.from('event_history').delete().eq('event_id', data.id);
-            await supabase.from('events').delete().eq('id', data.id);
+            await rollbackCreatedEvent(data.id, []);
             throw attachmentError;
           }
         }

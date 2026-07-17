@@ -128,7 +128,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const fetchProfile = supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
       const fetchMembers = supabase
         .from('organization_members')
-        .select('id, tenant_id, user_id, role, created_at')
+        .select('id, tenant_id, user_id, role, permissions, module_permissions, created_at')
         .eq('user_id', userId);
       const fetchOwnedTenants = supabase.from('saas_tenants').select('*').eq('owner_id', userId);
 
@@ -207,6 +207,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                       tenant_id: tenant.id,
                       user_id: userId,
                       role: 'owner',
+                      permissions: {},
+                      module_permissions: {},
                       created_at: tenant.created_at,
                       saas_tenants: tenant
                   });

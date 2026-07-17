@@ -7,7 +7,6 @@ import { PrivateRoute } from './components/PrivateRoute.tsx';
 import { PermissionRoute } from './components/PermissionRoute.tsx';
 import Layout from './components/Layout.tsx';
 
-// Pages
 import Dashboard from './pages/Dashboard.tsx';
 import Events from './pages/Events.tsx';
 import Quotations from './pages/Quotations.tsx';
@@ -45,22 +44,42 @@ const App: React.FC = () => {
                <PrivateRoute>
                  <Layout>
                     <Routes>
-                      <Route path="/" element={<Dashboard />} />
-                      <Route path="/eventos" element={<Events />} />
-                      <Route path="/cotacoes" element={<Quotations />} />
-                      <Route path="/compras" element={<Purchases />} />
-                      <Route path="/entregas" element={<Deliveries />} />
-                      <Route path="/fornecedores" element={<Suppliers />} />
-                      <Route path="/associados" element={<Associates />} />
-                      <Route path="/veiculos" element={<Vehicles />} />
-                      <Route path="/catalogo" element={<Catalog />} />
+                      <Route path="/" element={
+                        <PermissionRoute require="canAccessDashboard"><Dashboard /></PermissionRoute>
+                      } />
+                      <Route path="/eventos" element={
+                        <PermissionRoute require="canAccessEvents"><Events /></PermissionRoute>
+                      } />
+                      <Route path="/cotacoes" element={
+                        <PermissionRoute require="canAccessQuotations"><Quotations /></PermissionRoute>
+                      } />
+                      <Route path="/compras" element={
+                        <PermissionRoute require="canAccessPurchases"><Purchases /></PermissionRoute>
+                      } />
+                      <Route path="/entregas" element={
+                        <PermissionRoute require="canAccessDeliveries"><Deliveries /></PermissionRoute>
+                      } />
+                      <Route path="/fornecedores" element={
+                        <PermissionRoute require="canAccessSuppliers"><Suppliers /></PermissionRoute>
+                      } />
+                      <Route path="/associados" element={
+                        <PermissionRoute require="canAccessAssociates"><Associates /></PermissionRoute>
+                      } />
+                      <Route path="/veiculos" element={
+                        <PermissionRoute require="canAccessVehicles"><Vehicles /></PermissionRoute>
+                      } />
+                      <Route path="/catalogo" element={
+                        <PermissionRoute require="canAccessCatalog"><Catalog /></PermissionRoute>
+                      } />
                       <Route path="/relatorios" element={
                         <PermissionRoute require="canViewReports"><Reports /></PermissionRoute>
                       } />
                       <Route path="/configuracoes" element={
                         <PermissionRoute require="canManageSettings"><Settings /></PermissionRoute>
                       } />
-                      <Route path="/notificacoes" element={<Notifications />} />
+                      <Route path="/notificacoes" element={
+                        <PermissionRoute require="canAccessNotifications"><Notifications /></PermissionRoute>
+                      } />
                       <Route path="/saas-admin" element={
                           <AdminRoute><SaasAdmin /></AdminRoute>
                       } />

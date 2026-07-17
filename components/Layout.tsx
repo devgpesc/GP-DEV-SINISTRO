@@ -79,7 +79,26 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [loadingNotifications, setLoadingNotifications] = useState(false);
 
   // Acesso: membros da empresa têm fluxo operacional completo por padrão
-  const { canUseOperations, canApprovePurchases, canViewReports, canManageSettings } = access;
+  const {
+    canAccessDashboard,
+    canAccessEvents,
+    canAccessQuotations,
+    canAccessPurchases,
+    canAccessDeliveries,
+    canAccessAssociates,
+    canAccessSuppliers,
+    canAccessVehicles,
+    canAccessCatalog,
+    canAccessNotifications,
+    canApprovePurchases,
+    canViewReports,
+    canManageSettings,
+  } = access;
+
+  const hasFlowModules =
+    canAccessQuotations || canAccessPurchases || canAccessDeliveries;
+  const hasRegistryModules =
+    canAccessAssociates || canAccessSuppliers || canAccessVehicles || canAccessCatalog;
 
   // AUTOMATIC AUDIT LOGGING FOR NAVIGATION
   useEffect(() => {
@@ -316,26 +335,43 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           
           <nav className="space-y-1 overflow-y-auto max-h-[calc(100vh-210px)] pr-1 custom-scrollbar">
             <p className="px-3 pb-2 text-[10px] font-bold text-[#738098] uppercase tracking-[0.22em]">Menu</p>
-            <NavItem to="/" icon={LayoutDashboard} label="Dashboard" active={location.pathname === '/'} onClick={closeMobileMenu} />
-            {/* MUDANÇA: Rótulo atualizado de 'Eventos' para 'Sinistros' */}
-            <NavItem to="/eventos" icon={FileText} label="Sinistros" active={location.pathname === '/eventos'} onClick={closeMobileMenu} />
+            {canAccessDashboard && (
+              <NavItem to="/" icon={LayoutDashboard} label="Dashboard" active={location.pathname === '/'} onClick={closeMobileMenu} />
+            )}
+            {canAccessEvents && (
+              <NavItem to="/eventos" icon={FileText} label="Sinistros" active={location.pathname === '/eventos'} onClick={closeMobileMenu} />
+            )}
 
-            {canUseOperations && (
+            {hasFlowModules && (
               <>
                 <p className="px-3 pt-4 pb-2 text-[10px] font-bold text-[#738098] uppercase tracking-[0.22em]">Fluxo</p>
-                <NavItem to="/cotacoes" icon={Search} label="Cotações" active={location.pathname === '/cotacoes'} onClick={closeMobileMenu} />
-                <NavItem to="/compras" icon={ShoppingCart} label="Compras" active={location.pathname === '/compras'} onClick={closeMobileMenu} />
-                <NavItem to="/entregas" icon={Truck} label="Entregas" active={location.pathname === '/entregas'} onClick={closeMobileMenu} />
+                {canAccessQuotations && (
+                  <NavItem to="/cotacoes" icon={Search} label="Cotações" active={location.pathname === '/cotacoes'} onClick={closeMobileMenu} />
+                )}
+                {canAccessPurchases && (
+                  <NavItem to="/compras" icon={ShoppingCart} label="Compras" active={location.pathname === '/compras'} onClick={closeMobileMenu} />
+                )}
+                {canAccessDeliveries && (
+                  <NavItem to="/entregas" icon={Truck} label="Entregas" active={location.pathname === '/entregas'} onClick={closeMobileMenu} />
+                )}
               </>
             )}
 
-            {canUseOperations && (
+            {hasRegistryModules && (
               <>
                 <p className="px-3 pt-4 pb-2 text-[10px] font-bold text-[#738098] uppercase tracking-[0.22em]">Cadastros</p>
-                <NavItem to="/associados" icon={UserCheck} label="Associados" active={location.pathname === '/associados'} onClick={closeMobileMenu} />
-                <NavItem to="/fornecedores" icon={Users} label="Fornecedores" active={location.pathname === '/fornecedores'} onClick={closeMobileMenu} />
-                <NavItem to="/veiculos" icon={Car} label="Veículos" active={location.pathname === '/veiculos'} onClick={closeMobileMenu} />
-                <NavItem to="/catalogo" icon={Package} label="Catálogo" active={location.pathname === '/catalogo'} onClick={closeMobileMenu} />
+                {canAccessAssociates && (
+                  <NavItem to="/associados" icon={UserCheck} label="Associados" active={location.pathname === '/associados'} onClick={closeMobileMenu} />
+                )}
+                {canAccessSuppliers && (
+                  <NavItem to="/fornecedores" icon={Users} label="Fornecedores" active={location.pathname === '/fornecedores'} onClick={closeMobileMenu} />
+                )}
+                {canAccessVehicles && (
+                  <NavItem to="/veiculos" icon={Car} label="Veículos" active={location.pathname === '/veiculos'} onClick={closeMobileMenu} />
+                )}
+                {canAccessCatalog && (
+                  <NavItem to="/catalogo" icon={Package} label="Catálogo" active={location.pathname === '/catalogo'} onClick={closeMobileMenu} />
+                )}
               </>
             )}
 

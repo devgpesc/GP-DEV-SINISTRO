@@ -28,6 +28,8 @@ export interface OrganizationMember {
   tenant_id: string;
   user_id: string;
   role: 'owner' | 'admin' | 'member' | 'observer';
+  permissions?: Record<string, boolean>;
+  module_permissions?: Record<string, boolean>;
   created_at: string;
 }
 

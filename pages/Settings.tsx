@@ -8,7 +8,7 @@ import { apiKeyService, ApiKeyRecord } from '../services/apiKeyService';
 import ActionModal from '../components/ActionModal';
 import { Invitation, AuditLog } from '../types';
 import { DEFAULT_EVENT_TYPES } from '../utils/defaults';
-import { CANONICAL_PERMISSIONS, normalizePermissions, sanitizePermissionsForSave } from '../services/permissionKeys';
+import { CANONICAL_PERMISSIONS, MODULE_PERMISSIONS, normalizeModulePermissions, normalizePermissions, sanitizeModulePermissionsForSave, sanitizePermissionsForSave } from '../services/permissionKeys';
 
 const Settings: React.FC = () => {
   const { addToast } = useToast();
@@ -45,7 +45,14 @@ const Settings: React.FC = () => {
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
-  const [userForm, setUserForm] = useState({ id: '', full_name: '', role: 'Usuário', membership_role: 'member', permissions: {} as Record<string, boolean> });
+  const [userForm, setUserForm] = useState({
+    id: '',
+    full_name: '',
+    role: 'Usuário',
+    membership_role: 'member',
+    permissions: {} as Record<string, boolean>,
+    module_permissions: {} as Record<string, boolean>,
+  });
   const [inviteData, setInviteData] = useState({ name: '', email: '', role: 'member' });
   const [generatedLink, setGeneratedLink] = useState('');
   const [copied, setCopied] = useState(false);
@@ -240,6 +247,7 @@ const Settings: React.FC = () => {
           role: user.role || 'Usuário',
           membership_role: user.membership_role || 'member',
           permissions: normalizePermissions(user.permissions),
+          module_permissions: normalizeModulePermissions(user.module_permissions),
       });
       setUserModalOpen(true);
   };
@@ -268,6 +276,12 @@ const Settings: React.FC = () => {
       } 
   };
   const togglePermission = (featureId: string) => { setUserForm(prev => ({ ...prev, permissions: { ...prev.permissions, [featureId]: !prev.permissions[featureId] } })); };
+  const toggleModulePermission = (moduleId: string) => {
+    setUserForm(prev => ({
+      ...prev,
+      module_permissions: { ...prev.module_permissions, [moduleId]: !prev.module_permissions[moduleId] },
+    }));
+  };
   const handleSaveUser = async () => {
       if (!editingUser || !currentTenant?.id) return;
       const payload = {
@@ -276,7 +290,8 @@ const Settings: React.FC = () => {
           target_full_name: userForm.full_name,
           target_role: userForm.role,
           target_permissions: sanitizePermissionsForSave(userForm.permissions),
-          target_membership_role: userForm.membership_role
+          target_membership_role: userForm.membership_role,
+          target_module_permissions: sanitizeModulePermissionsForSave(userForm.module_permissions),
       };
       const { error } = await supabase.rpc('update_tenant_member_profile', payload);
       if (!error) {
@@ -744,7 +759,32 @@ const Settings: React.FC = () => {
                       </div>
 
                       <div>
-                          <label className="block text-[10px] font-black uppercase text-slate-400 mb-3 border-b border-slate-100 pb-2">Permissões granulares</label>
+                          <label className="block text-[10px] font-black uppercase text-slate-400 mb-3 border-b border-slate-100 pb-2">Módulos desta empresa</label>
+                          <p className="text-[11px] font-semibold text-slate-400 mb-3">
+                            Controle quais áreas do sistema este usuário acessa nesta empresa.
+                          </p>
+                          {['Menu', 'Fluxo', 'Cadastros', 'Extra'].map((group) => (
+                            <div key={group} className="mb-4">
+                              <p className="text-[10px] font-black uppercase text-slate-300 mb-2">{group}</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                {MODULE_PERMISSIONS.filter((mod) => mod.group === group).map((mod) => (
+                                  <label key={mod.id} className="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 cursor-pointer border border-transparent hover:border-slate-100">
+                                    <input
+                                      type="checkbox"
+                                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                                      checked={!!userForm.module_permissions[mod.id]}
+                                      onChange={() => toggleModulePermission(mod.id)}
+                                    />
+                                    <span className="text-xs font-bold text-slate-600">{mod.label}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+
+                      <div>
+                          <label className="block text-[10px] font-black uppercase text-slate-400 mb-3 border-b border-slate-100 pb-2">Permissões granulares desta empresa</label>
                           <p className="text-[11px] font-semibold text-slate-400 mb-3">
                             Gerentes e administradores da empresa já têm acesso amplo. Use estas flags para liberar funções específicas a membros comuns.
                           </p>
