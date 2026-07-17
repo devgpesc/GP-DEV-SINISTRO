@@ -55,6 +55,7 @@ const Events: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [eventToEdit, setEventToEdit] = useState<Event | null>(null);
   const [eventToDelete, setEventToDelete] = useState<Event | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
   // States para Filtros Avançados
@@ -231,15 +232,18 @@ const Events: React.FC = () => {
   };
 
   const handleDelete = async () => {
-      if (eventToDelete) {
-          try {
-            await supabase.from('events').delete().eq('id', eventToDelete.id);
-            setEvents(events.filter(e => e.id !== eventToDelete.id));
-            setEventToDelete(null);
-            addToast('success', 'Excluído', 'Registro removido permanentemente.');
-          } catch (e) {
-            addToast('error', 'Erro', 'Não foi possível excluir o evento.');
-          }
+      if (!eventToDelete || isDeleting) return;
+      setIsDeleting(true);
+      try {
+        await eventService.deleteEvent(eventToDelete.id);
+        setEvents(prev => prev.filter(e => e.id !== eventToDelete.id));
+        setEventToDelete(null);
+        addToast('success', 'Excluído', 'Registro removido permanentemente.');
+      } catch (e: any) {
+        console.error(e);
+        addToast('error', 'Erro', e?.message || 'Não foi possível excluir o sinistro.');
+      } finally {
+        setIsDeleting(false);
       }
   };
 
@@ -418,8 +422,11 @@ const Events: React.FC = () => {
             <h3 className="text-xl font-black text-slate-800 mb-2">Excluir Sinistro?</h3>
             <p className="text-sm text-slate-500 font-medium mb-8 leading-relaxed">Você está prestes a remover o protocolo <span className="font-black text-slate-800">{eventToDelete.protocol}</span>.</p>
             <div className="grid grid-cols-2 gap-4">
-              <button onClick={() => setEventToDelete(null)} className="py-3 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase text-[10px]">Cancelar</button>
-              <button onClick={handleDelete} className="py-3 bg-red-500 text-white rounded-2xl font-black uppercase text-[10px]">Confirmar</button>
+              <button onClick={() => setEventToDelete(null)} disabled={isDeleting} className="py-3 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase text-[10px]">Cancelar</button>
+              <button onClick={handleDelete} disabled={isDeleting} className="py-3 bg-red-500 text-white rounded-2xl font-black uppercase text-[10px] disabled:opacity-60 flex items-center justify-center gap-2">
+                {isDeleting ? <Loader2 className="animate-spin" size={14} /> : null}
+                {isDeleting ? 'Excluindo...' : 'Confirmar'}
+              </button>
             </div>
           </div>
         </div>

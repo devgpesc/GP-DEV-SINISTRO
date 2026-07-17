@@ -89,5 +89,20 @@ export const eventService = {
 
   async removeAttachment(id: string, url?: string) {
     await deleteEventAttachment(id, url);
+  },
+
+  async deleteEvent(id: string) {
+    const { data, error } = await supabase.rpc('delete_event_cascade', { p_event_id: id });
+
+    if (error) {
+      const fallback = await supabase.from('events').delete().eq('id', id).select('id');
+      if (fallback.error) throw fallback.error;
+      if (!fallback.data?.length) {
+        throw new Error('Não foi possível excluir o sinistro. Verifique permissões ou vínculos ativos.');
+      }
+      return fallback.data[0];
+    }
+
+    return data;
   }
 };
