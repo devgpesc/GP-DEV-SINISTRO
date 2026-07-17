@@ -6,6 +6,7 @@ import { auditService } from '../services/auditService';
 import { useAuth } from '../context/AuthContext';
 import ActionModal from '../components/ActionModal';
 import { Invitation, AuditLog } from '../types';
+import { DEFAULT_EVENT_TYPES } from '../utils/defaults';
 
 // ... (SYSTEM_FEATURES const e imports mantidos)
 const SYSTEM_FEATURES = [
@@ -40,8 +41,10 @@ const Settings: React.FC = () => {
     openai_key: '',
     gemini_key: '',
     anthropic_key: '',
-    groq_key: ''
+    groq_key: '',
+    event_types: DEFAULT_EVENT_TYPES as string[]
   });
+  const [newEventType, setNewEventType] = useState('');
 
   const [usersList, setUsersList] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
@@ -108,7 +111,10 @@ const Settings: React.FC = () => {
                 openai_key: data.openai_key || '',
                 gemini_key: data.gemini_key || '',
                 anthropic_key: data.anthropic_key || '',
-                groq_key: data.groq_key || ''
+                groq_key: data.groq_key || '',
+                event_types: Array.isArray(data.event_types) && data.event_types.length > 0
+                  ? data.event_types
+                  : DEFAULT_EVENT_TYPES
             });
         }
     } catch (e) {
@@ -309,6 +315,7 @@ const Settings: React.FC = () => {
   const tabs = [
     { id: 'ai_config', label: 'Inteligência Artificial', icon: Brain },
     { id: 'general', label: 'Geral', icon: Building },
+    { id: 'event_types', label: 'Tipos de Sinistro', icon: Shield },
     { id: 'users', label: 'Equipe e Permissões', icon: Users },
     ...(profile?.role === 'Admin' || profile?.role === 'super_admin' ? [{ id: 'audit', label: 'Auditoria', icon: ClipboardList }] : []),
     { id: 'integrations', label: 'Outras Integrações', icon: Globe },
@@ -376,6 +383,63 @@ const Settings: React.FC = () => {
                             <button type="button" onClick={() => toggleShowKey('google')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">{showKeys['google'] ? <EyeOff size={16}/> : <Eye size={16}/>}</button>
                         </div>
                      </div>
+                  </div>
+              )}
+
+              {activeTab === 'event_types' && (
+                  <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
+                      <div className="flex items-center gap-3 pb-6 border-b border-slate-50">
+                          <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl"><Shield size={24}/></div>
+                          <div>
+                            <h3 className="text-lg font-black text-slate-800">Tipos de Sinistro</h3>
+                            <p className="text-sm text-slate-500">Gerencie as opções exibidas no cadastro de sinistros.</p>
+                          </div>
+                      </div>
+                      <div className="flex gap-3">
+                          <input
+                            className="flex-1 p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none"
+                            placeholder="Novo tipo, ex: Acordo"
+                            value={newEventType}
+                            onChange={e => setNewEventType(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter' && newEventType.trim()) {
+                                e.preventDefault();
+                                if (!companyInfo.event_types.includes(newEventType.trim())) {
+                                  setCompanyInfo({ ...companyInfo, event_types: [...companyInfo.event_types, newEventType.trim()] });
+                                }
+                                setNewEventType('');
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!newEventType.trim()) return;
+                              if (!companyInfo.event_types.includes(newEventType.trim())) {
+                                setCompanyInfo({ ...companyInfo, event_types: [...companyInfo.event_types, newEventType.trim()] });
+                              }
+                              setNewEventType('');
+                            }}
+                            className="px-5 py-3 rounded-2xl bg-blue-600 text-white text-xs font-black uppercase tracking-widest flex items-center gap-2"
+                          >
+                            <Plus size={14}/> Adicionar
+                          </button>
+                      </div>
+                      <div className="space-y-2">
+                          {companyInfo.event_types.map((type) => (
+                            <div key={type} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                              <span className="font-bold text-slate-700">{type}</span>
+                              <button
+                                type="button"
+                                onClick={() => setCompanyInfo({ ...companyInfo, event_types: companyInfo.event_types.filter(t => t !== type) })}
+                                className="p-2 text-red-500 hover:bg-red-50 rounded-xl"
+                                title="Remover"
+                              >
+                                <Trash2 size={16}/>
+                              </button>
+                            </div>
+                          ))}
+                      </div>
                   </div>
               )}
 

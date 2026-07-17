@@ -7,8 +7,7 @@ import {
 import { PurchaseOrder } from '../types';
 import { supabase } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
-
-type PrintOrientation = 'portrait' | 'landscape';
+import { openPurchaseOrderPreview, PrintOrientation } from '../utils/purchaseOrderPrint';
 
 const Purchases: React.FC = () => {
   const { access } = useAuth();
@@ -30,10 +29,21 @@ const Purchases: React.FC = () => {
     orderId: string | null;
     orderCode: string | null;
     amount?: number;
-  }>({ isOpen: false, type: null, orderId: null, orderCode: null });
+    approvalNote?: string;
+  }>({ isOpen: false, type: null, orderId: null, orderCode: null, approvalNote: '' });
 
   useEffect(() => {
     loadOrders();
+
+    const channel = supabase
+      .channel('purchases-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_orders' }, () => loadOrders())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'quotations' }, () => loadOrders())
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const deriveQuotationStatus = (statuses: string[], fallback?: string | null) => {
@@ -188,6 +198,13 @@ const Purchases: React.FC = () => {
     }
   }, [toast]);
 
+  const patchQuotationStatusLocally = (quotationId: string | null | undefined, quotationStatus: string) => {
+    if (!quotationId) return;
+    setOrders(prev => prev.map(order =>
+      order.quotationId === quotationId ? { ...order, quotationStatus } : order
+    ));
+  };
+
   const syncWorkflowStatus = async (orderContext: any, forcedOrderStatus?: PurchaseOrder['status']) => {
     if (!orderContext?.quotationId && !orderContext?.eventId) return;
     try {
@@ -213,6 +230,7 @@ const Purchases: React.FC = () => {
         }
 
         await supabase.from('quotations').update({ status: quotationStatus }).eq('id', orderContext.quotationId);
+        patchQuotationStatusLocally(orderContext.quotationId, quotationStatus);
         if (orderContext?.eventId) {
           let eventStatus = 'Aguardando Aprovação';
           if (quotationStatus === 'Cancelada') eventStatus = 'Reprovado';
@@ -229,10 +247,10 @@ const Purchases: React.FC = () => {
     }
   };
 
-  const updateOrderStatus = async (id: string, newStatus: PurchaseOrder['status'], orderContext?: any) => {
-    const { error } = await supabase.from('purchase_orders').update({ status: newStatus }).eq('id', id);
+  const updateOrderStatus = async (id: string, newStatus: PurchaseOrder['status'], orderContext?: any, extra?: Record<string, unknown>) => {
+    const { error } = await supabase.from('purchase_orders').update({ status: newStatus, ...extra }).eq('id', id);
     if (!error) {
-        setOrders(prev => prev.map(o => o.id === id ? { ...o, status: newStatus } : o));
+        setOrders(prev => prev.map(o => o.id === id ? { ...o, status: newStatus, ...extra } : o));
         await syncWorkflowStatus(orderContext, newStatus);
     } else {
         setToast({ show: true, title: 'Erro', message: 'Falha ao atualizar status.', type: 'info' });
@@ -245,7 +263,8 @@ const Purchases: React.FC = () => {
       type: 'approve',
       orderId: order.id,
       orderCode: order.code,
-      amount: order.total
+      amount: order.total,
+      approvalNote: ''
     });
     setOpenMenuId(null);
   };
@@ -294,7 +313,17 @@ const Purchases: React.FC = () => {
     if (confirmModal.orderId && confirmModal.type) {
       if (confirmModal.type === 'approve') {
         const order = orders.find(o => o.id === confirmModal.orderId);
-        await updateOrderStatus(confirmModal.orderId, 'Aprovada', order);
+        const note = confirmModal.approvalNote?.trim();
+        if (!note) {
+          setToast({ show: true, title: 'Aprovação obrigatória', message: 'Informe a justificativa por escrito para aprovar.', type: 'info' });
+          return;
+        }
+        const { data: { user } } = await supabase.auth.getUser();
+        await updateOrderStatus(confirmModal.orderId, 'Aprovada', order, {
+          approval_note: note,
+          approved_by: user?.id || null,
+          approved_at: new Date().toISOString()
+        });
         setToast({ show: true, title: 'Sucesso', message: `Ordem ${confirmModal.orderCode} aprovada.`, type: 'success' });
       } else if (confirmModal.type === 'cancel') {
         const order = orders.find(o => o.id === confirmModal.orderId);
@@ -315,143 +344,10 @@ const Purchases: React.FC = () => {
     }
   };
 
-  const handlePrint = (order: any) => {
-    setToast({ show: true, title: 'Imprimindo', message: 'Gerando visualização...', type: 'loading' });
-    
-    const itemsHtml = order.items?.map((item: any) => `
-      <tr>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.name}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">${item.quantity} ${item.unit || ''}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">R$ ${(item.price || 0).toFixed(2)}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">R$ ${(item.total || (item.price * item.quantity)).toFixed(2)}</td>
-      </tr>
-    `).join('') || '';
-
-    const printContent = `
-      <html>
-        <head><title>Ordem de Compra ${order.code}</title></head>
-        <body style="font-family: Arial, sans-serif; padding: 40px;">
-          <h1 style="color: #2563eb;">Ordem de Compra: ${order.code}</h1>
-          <p><strong>Cliente:</strong> ${order.customerName || 'Cliente nao vinculado'}</p>
-          ${order.customerDocument ? `<p><strong>Documento:</strong> ${order.customerDocument}</p>` : ''}
-          ${order.vehicleLabel ? `<p><strong>Veiculo:</strong> ${order.vehicleLabel}</p>` : ''}
-          ${order.eventProtocol ? `<p><strong>Sinistro:</strong> ${order.eventProtocol}</p>` : ''}
-          <p><strong>Fornecedor:</strong> ${order.supplierName}</p>
-          <p><strong>Data:</strong> ${new Date(order.createdAt).toLocaleDateString()}</p>
-          <hr/>
-          <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
-            <thead>
-              <tr style="background: #f3f4f6;">
-                <th style="padding: 10px; text-align: left;">Item</th>
-                <th style="padding: 10px; text-align: center;">Qtd</th>
-                <th style="padding: 10px; text-align: right;">Unitário</th>
-                <th style="padding: 10px; text-align: right;">Total</th>
-              </tr>
-            </thead>
-            <tbody>${itemsHtml}</tbody>
-          </table>
-          <h3 style="text-align: right; margin-top: 30px;">TOTAL: R$ ${order.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</h3>
-        </body>
-      </html>
-    `;
-
-    const win = window.open('', '', 'width=800,height=600');
-    if (win) {
-        win.document.write(printContent);
-        win.document.close();
-        win.print();
-        setToast(null);
-    }
-  };
-
   const handlePrintEnhanced = (order: any, orientation: PrintOrientation = 'portrait') => {
-    setToast({ show: true, title: 'Imprimindo', message: 'Gerando visualização...', type: 'loading' });
-    const isLandscape = orientation === 'landscape';
-
-    const itemsHtml = order.items?.map((item: any) => `
-      <tr>
-        <td style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0;">${item.name}</td>
-        <td style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; text-align: center;">${item.quantity} ${item.unit || ''}</td>
-        <td style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; text-align: right;">R$ ${(item.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-        <td style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 700;">R$ ${(item.total || (item.price * item.quantity)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-      </tr>
-    `).join('') || '';
-
-    const printContent = `
-      <html>
-        <head>
-          <title>Ordem de Compra ${order.code}</title>
-          <style>
-            @page { size: A4 ${orientation}; margin: ${isLandscape ? '12mm' : '18mm'}; }
-            * { box-sizing: border-box; }
-            body { font-family: Inter, "Segoe UI", Arial, sans-serif; margin: 0; color: #0f172a; }
-            .topbar { display: flex; justify-content: space-between; font-size: 11px; color: #64748b; margin-bottom: ${isLandscape ? '8px' : '14px'}; }
-            .title { font-size: ${isLandscape ? '28px' : '34px'}; font-weight: 900; color: #1d4ed8; line-height: 1.05; margin: 8px 0 ${isLandscape ? '10px' : '16px'} 0; }
-            .subtitle { font-size: 12px; color: #64748b; margin-bottom: 14px; }
-            .meta-grid { display: grid; grid-template-columns: ${isLandscape ? 'repeat(3, 1fr)' : '1fr 1fr'}; gap: 10px; margin-bottom: 16px; }
-            .meta-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px 12px; }
-            .meta-label { font-size: 10px; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 4px; }
-            .meta-value { font-size: 14px; font-weight: 700; color: #0f172a; }
-            table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-            thead tr { background: #eff6ff; }
-            th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .3px; color: #1e3a8a; padding: 10px 12px; border-bottom: 1px solid #bfdbfe; }
-            td { font-size: 13px; padding: 10px 12px; border-bottom: 1px solid #e2e8f0; }
-            .right, th.right { text-align: right; }
-            .center, th.center { text-align: center; }
-            .totals { margin-top: 18px; display: flex; justify-content: flex-end; }
-            .total-box { min-width: 240px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 12px; }
-            .total-label { font-size: 10px; font-weight: 800; text-transform: uppercase; color: #1e3a8a; margin-bottom: 4px; }
-            .total-value { font-size: 28px; font-weight: 900; color: #1e3a8a; text-align: right; line-height: 1; }
-            .footer { margin-top: 24px; display: flex; justify-content: space-between; font-size: 11px; color: #64748b; }
-          </style>
-        </head>
-        <body>
-          <div class="topbar">
-            <span>${new Date().toLocaleString('pt-BR')}</span>
-            <span>Ordem de Compra ${order.code}</span>
-          </div>
-          <div class="title">Ordem de Compra ${order.code}</div>
-          <div class="subtitle">Documento gerado automaticamente pela matriz de cotações.</div>
-          <div class="meta-grid">
-            <div class="meta-card"><div class="meta-label">Cliente</div><div class="meta-value">${order.customerName || 'Cliente não vinculado'}</div></div>
-            <div class="meta-card"><div class="meta-label">Fornecedor</div><div class="meta-value">${order.supplierName}</div></div>
-            <div class="meta-card"><div class="meta-label">Documento</div><div class="meta-value">${order.customerDocument || 'Não informado'}</div></div>
-            <div class="meta-card"><div class="meta-label">Data</div><div class="meta-value">${new Date(order.createdAt).toLocaleDateString('pt-BR')}</div></div>
-            <div class="meta-card"><div class="meta-label">Veículo</div><div class="meta-value">${order.vehicleLabel || 'Não vinculado'}</div></div>
-            <div class="meta-card"><div class="meta-label">Sinistro</div><div class="meta-value">${order.eventProtocol || 'Não vinculado'}</div></div>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th class="center">Qtd</th>
-                <th class="right">Unitário</th>
-                <th class="right">Total</th>
-              </tr>
-            </thead>
-            <tbody>${itemsHtml}</tbody>
-          </table>
-          <div class="totals">
-            <div class="total-box">
-              <div class="total-label">Total da Ordem</div>
-              <div class="total-value">R$ ${order.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-            </div>
-          </div>
-          <div class="footer">
-            <span>Status: ${order.status}</span>
-            <span>${order.items?.length || 0} item(ns)</span>
-          </div>
-        </body>
-      </html>
-    `;
-
-    const win = window.open('', '', isLandscape ? 'width=1200,height=800' : 'width=900,height=700');
-    if (win) {
-      win.document.write(printContent);
-      win.document.close();
-      win.print();
-      setToast(null);
-    }
+    setToast({ show: true, title: 'Visualização', message: 'Abrindo documento no navegador...', type: 'loading' });
+    openPurchaseOrderPreview(order, orientation);
+    setTimeout(() => setToast(null), 1200);
   };
 
   const filteredOrders = useMemo(() => {
@@ -659,8 +555,8 @@ const Purchases: React.FC = () => {
 
                                             <div className="flex gap-2 flex-shrink-0">
                                                 {order.status === 'Gerada' && canApprove && (
-                                                    <button onClick={() => handleRequestApprove(order)} className="bg-green-600 text-white px-4 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-600/20 flex items-center gap-2" title="Aprovar OC">
-                                                        <ShieldCheck size={16}/>
+                                                    <button onClick={() => handleRequestApprove(order)} className="bg-green-600 text-white px-4 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-600/20 flex items-center gap-2" title="Aprovar por escrito">
+                                                        <ShieldCheck size={16}/> Aprovar
                                                     </button>
                                                 )}
                                                 {order.deliveryStatus === 'Divergente' && (
@@ -669,14 +565,14 @@ const Purchases: React.FC = () => {
                                                     </button>
                                                 )}
                                                 <button onClick={() => setViewOrder(order)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-blue-600 rounded-xl hover:border-blue-200 transition-all shadow-sm" title="Ver Detalhes"><Eye size={18}/></button>
-                                                <button onClick={() => handlePrintEnhanced(order)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-blue-600 rounded-xl hover:border-blue-200 transition-all shadow-sm hidden sm:block" title="Imprimir em retrato"><Printer size={18}/></button>
+                                                <button onClick={() => handlePrintEnhanced(order)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-blue-600 rounded-xl hover:border-blue-200 transition-all shadow-sm hidden sm:block" title="Visualizar no navegador"><Printer size={18}/></button>
                                                 <div className="relative">
                                                     <button onClick={() => setOpenMenuId(openMenuId === order.id ? null : order.id)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-50 transition-all shadow-sm"><MoreVertical size={18}/></button>
                                                     {openMenuId === order.id && (
                                                         <div className="absolute right-0 bottom-full lg:bottom-auto lg:top-full mb-2 lg:mb-0 lg:mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-20 animate-in fade-in zoom-in duration-200">
                                                             {order.status !== 'Cancelada' && <button onClick={() => handleRequestCancel(order)} className="w-full text-left px-4 py-3 text-xs font-bold text-amber-600 hover:bg-amber-50 border-b border-slate-50">Cancelar OC</button>}
                                                             {order.deliveryStatus === 'Divergente' && <button onClick={() => handleResolveDivergence(order)} className="w-full text-left px-4 py-3 text-xs font-bold text-red-600 hover:bg-red-50 border-b border-slate-50">Tratar divergência</button>}
-                                                            <button onClick={() => { setOpenMenuId(null); handlePrintEnhanced(order, 'landscape'); }} className="w-full text-left px-4 py-3 text-xs font-bold text-blue-600 hover:bg-blue-50 border-b border-slate-50">Imprimir paisagem</button>
+                                                            <button onClick={() => { setOpenMenuId(null); handlePrintEnhanced(order, 'landscape'); }} className="w-full text-left px-4 py-3 text-xs font-bold text-blue-600 hover:bg-blue-50 border-b border-slate-50">Visualizar paisagem</button>
                                                             <button onClick={() => handleRequestDelete(order)} className="w-full text-left px-4 py-3 text-xs font-bold text-red-600 hover:bg-red-50">Excluir Registro</button>
                                                         </div>
                                                     )}
@@ -752,10 +648,10 @@ const Purchases: React.FC = () => {
                 </div>
                 <div className="p-4 border-t border-slate-100 bg-white flex flex-col sm:flex-row justify-end gap-2">
                     <button onClick={() => handlePrintEnhanced(viewOrder)} className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-blue-700">
-                        <Printer size={14}/> Imprimir retrato
+                        <Printer size={14}/> Visualizar retrato
                     </button>
                     <button onClick={() => handlePrintEnhanced(viewOrder, 'landscape')} className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-slate-800">
-                        <Printer size={14}/> Imprimir paisagem
+                        <Printer size={14}/> Visualizar paisagem
                     </button>
                 </div>
             </div>
@@ -766,13 +662,26 @@ const Purchases: React.FC = () => {
       {confirmModal.isOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}></div>
-          <div className="relative bg-white w-full max-w-sm rounded-[32px] shadow-2xl p-8 text-center animate-in zoom-in">
+          <div className="relative bg-white w-full max-w-md rounded-[32px] shadow-2xl p-8 animate-in zoom-in">
             <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ${confirmModal.type === 'approve' ? 'bg-green-50 text-green-500' : 'bg-red-50 text-red-500'}`}>
               {confirmModal.type === 'approve' ? <ShieldCheck size={40} /> : <AlertTriangle size={40} />}
             </div>
-            <h3 className="text-xl font-black text-slate-800 mb-2">Confirmar Ação?</h3>
+            <h3 className="text-xl font-black text-slate-800 mb-2">
+              {confirmModal.type === 'approve' ? 'Aprovar por escrito' : 'Confirmar ação?'}
+            </h3>
+            {confirmModal.type === 'approve' && (
+              <div className="mt-4 text-left">
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Justificativa da aprovação *</label>
+                <textarea
+                  className="w-full min-h-[110px] p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium text-slate-700 outline-none resize-none"
+                  placeholder="Descreva o motivo da aprovação desta ordem de compra..."
+                  value={confirmModal.approvalNote || ''}
+                  onChange={(e) => setConfirmModal({ ...confirmModal, approvalNote: e.target.value })}
+                />
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4 mt-6">
-              <button onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })} className="py-3 bg-slate-100 rounded-2xl font-black text-xs uppercase text-slate-500">Voltar</button>
+              <button onClick={() => setConfirmModal({ ...confirmModal, isOpen: false, approvalNote: '' })} className="py-3 bg-slate-100 rounded-2xl font-black text-xs uppercase text-slate-500">Voltar</button>
               <button onClick={executeAction} className={`py-3 text-white rounded-2xl font-black text-xs uppercase ${confirmModal.type === 'approve' ? 'bg-green-600' : 'bg-red-500'}`}>Confirmar</button>
             </div>
           </div>

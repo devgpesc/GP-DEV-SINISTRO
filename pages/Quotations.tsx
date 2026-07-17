@@ -7,9 +7,11 @@ import { eventService } from '../services/eventService';
 import { Event, EventStatus, EventType, Priority, Supplier, CatalogItem } from '../types';
 import { useToast } from '../context/ToastContext';
 import ActionModal from '../components/ActionModal';
+import { useEventTypes } from '../hooks/useEventTypes';
 
 const Quotations: React.FC = () => {
   const { addToast } = useToast();
+  const { eventTypes } = useEventTypes();
   const [step, setStep] = useState(1); // 1: List, 2: Wizard, 3: Matrix
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [wizardStep, setWizardStep] = useState(1);
@@ -608,7 +610,7 @@ const Quotations: React.FC = () => {
                             value={quickForm.type}
                             onChange={(e) => setQuickForm((prev) => ({ ...prev, type: e.target.value as EventType }))}
                           >
-                            {Object.values(EventType).map((type) => (
+                            {eventTypes.map((type) => (
                               <option key={type} value={type}>{type}</option>
                             ))}
                           </select>

@@ -1,8 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Truck, CheckCircle, AlertTriangle, Clock, Archive, BarChart3, PackageCheck, ClipboardList, Route, Search, UserCheck, BriefcaseBusiness, LayoutGrid, List } from 'lucide-react';
+import { Truck, CheckCircle, Clock, Archive, BarChart3, PackageCheck, Search, UserCheck, BriefcaseBusiness, LayoutGrid, List, History } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
+import { useAuth } from '../context/AuthContext';
 
-type DeliveryStatus = 'Pendente' | 'Em Separacao' | 'Despachado' | 'Conforme' | 'Divergente';
+type DeliveryStatus = 'Pendente' | 'Entregue';
+
+interface MovementEntry {
+  at: string;
+  action: string;
+  user?: string;
+  note?: string;
+}
 
 interface DeliveryItem {
   id: string;
@@ -17,35 +25,46 @@ interface DeliveryItem {
   status: DeliveryStatus;
   customer?: string;
   vehicle?: string;
+  deliveredBy?: string;
+  observation?: string;
+  movementHistory: MovementEntry[];
   source: 'delivery' | 'purchase_order';
 }
 
 const statusStyle: Record<DeliveryStatus, string> = {
   Pendente: 'bg-amber-50 text-amber-700 border-amber-100',
-  'Em Separacao': 'bg-blue-50 text-blue-700 border-blue-100',
-  Despachado: 'bg-indigo-50 text-indigo-700 border-indigo-100',
-  Conforme: 'bg-green-50 text-green-700 border-green-100',
-  Divergente: 'bg-red-50 text-red-700 border-red-100',
+  Entregue: 'bg-green-50 text-green-700 border-green-100',
 };
 
 const statusLabel: Record<DeliveryStatus, string> = {
   Pendente: 'Aguardando',
-  'Em Separacao': 'Em separacao',
-  Despachado: 'Despachado',
-  Conforme: 'Conforme',
-  Divergente: 'Divergente',
+  Entregue: 'Entregue',
+};
+
+const normalizeStatus = (status?: string): DeliveryStatus => {
+  if (status === 'Entregue' || status === 'Conforme' || status === 'Recebida') return 'Entregue';
+  return 'Pendente';
 };
 
 const Deliveries: React.FC = () => {
+  const { profile } = useAuth();
   const [activeTab, setActiveTab] = useState<'operacao' | 'gestao' | 'historico'>('operacao');
   const [deliveries, setDeliveries] = useState<DeliveryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards');
+  const [deliverModal, setDeliverModal] = useState<DeliveryItem | null>(null);
+  const [deliverForm, setDeliverForm] = useState({ responsible: '', observation: '' });
 
   useEffect(() => {
     loadDeliveries();
+    const channel = supabase
+      .channel('deliveries-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'deliveries' }, () => loadDeliveries())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_orders' }, () => loadDeliveries())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const loadDeliveries = async () => {
@@ -65,14 +84,20 @@ const Deliveries: React.FC = () => {
           quotation_id,
           suppliers (name),
           purchase_order_items (id, name, quantity),
-          quotations (eventRef)
+          quotations (eventRef, eventId)
         `)
         .in('status', ['Aprovada', 'Recebida'])
         .order('created_at', { ascending: false })
     ]);
 
     const existingByPo = new Map((deliveryRows || []).map((row: any) => [row.po, row]));
-    const eventIds = [...new Set((orderRows || []).map((order: any) => order.event_id).filter(Boolean))];
+
+    const quoteEventIds = (orderRows || [])
+      .map((order: any) => order.quotations?.eventId)
+      .filter(Boolean);
+    const directEventIds = (orderRows || []).map((order: any) => order.event_id).filter(Boolean);
+    const eventIds = [...new Set([...directEventIds, ...quoteEventIds])];
+
     const { data: eventRows } = eventIds.length
       ? await supabase.from('events').select('id, protocol, associateId, vehicleId').in('id', eventIds)
       : { data: [] as any[] };
@@ -88,12 +113,23 @@ const Deliveries: React.FC = () => {
     const associateById = new Map((associateRows || []).map((associate: any) => [associate.id, associate]));
     const vehicleById = new Map((vehicleRows || []).map((vehicle: any) => [vehicle.id, vehicle]));
 
-    const fromOrders: DeliveryItem[] = (orderRows || []).map((order: any) => {
-      const existing = existingByPo.get(order.code);
-      const event = eventById.get(order.event_id);
+    const resolveEventContext = (order: any) => {
+      const eventId = order.event_id || order.quotations?.eventId;
+      const event = eventId ? eventById.get(eventId) : null;
       const associate = event?.associateId ? associateById.get(event.associateId) : null;
       const vehicle = event?.vehicleId ? vehicleById.get(event.vehicleId) : null;
-      const fallbackStatus: DeliveryStatus = order.status === 'Recebida' ? 'Conforme' : 'Pendente';
+      return {
+        event,
+        customer: associate?.name,
+        vehicle: vehicle ? `${vehicle.brand || ''} ${vehicle.model || ''}${vehicle.plate ? ` - ${vehicle.plate}` : ''}`.trim() : undefined,
+        eventLabel: event?.protocol || order.quotations?.eventRef || 'Sem sinistro'
+      };
+    };
+
+    const fromOrders: DeliveryItem[] = (orderRows || []).map((order: any) => {
+      const existing = existingByPo.get(order.code);
+      const ctx = resolveEventContext(order);
+      const history = Array.isArray(existing?.movement_history) ? existing.movement_history : [];
 
       return {
         id: existing?.id || `po-${order.id}`,
@@ -103,68 +139,132 @@ const Deliveries: React.FC = () => {
         supplier: order.suppliers?.name || existing?.supplier || 'Fornecedor nao vinculado',
         items: existing?.items || order.purchase_order_items?.length || 0,
         date: existing?.date || order.created_at,
-        event: existing?.event || event?.protocol || order.quotations?.eventRef || 'Sem sinistro',
+        event: existing?.event || ctx.eventLabel,
         amount: Number(order.total || 0),
-        status: (existing?.status || fallbackStatus) as DeliveryStatus,
-        customer: associate?.name,
-        vehicle: vehicle ? `${vehicle.brand || ''} ${vehicle.model || ''}${vehicle.plate ? ` - ${vehicle.plate}` : ''}`.trim() : undefined,
+        status: normalizeStatus(existing?.status || (order.status === 'Recebida' ? 'Entregue' : 'Pendente')),
+        customer: ctx.customer || existing?.customer,
+        vehicle: ctx.vehicle || existing?.vehicle,
+        deliveredBy: existing?.delivered_by,
+        observation: existing?.observation,
+        movementHistory: history,
         source: existing ? 'delivery' : 'purchase_order'
       };
     });
 
-    const orphanDeliveries: DeliveryItem[] = (deliveryRows || [])
-      .filter((row: any) => !fromOrders.some(delivery => delivery.po === row.po))
-      .map((row: any) => ({
-        id: row.id,
-        po: row.po,
-        supplier: row.supplier,
-        items: row.items || 0,
-        date: row.date,
-        event: row.event,
-        amount: 0,
-        status: (row.status || 'Pendente') as DeliveryStatus,
-        source: 'delivery'
-      }));
+    const orphanDeliveries: DeliveryItem[] = await Promise.all(
+      (deliveryRows || [])
+        .filter((row: any) => !fromOrders.some(delivery => delivery.po === row.po))
+        .map(async (row: any) => {
+          let customer = row.customer;
+          let vehicle = row.vehicle;
+          let eventLabel = row.event;
+
+          if ((!customer || !vehicle) && row.po) {
+            const { data: linkedOrder } = await supabase
+              .from('purchase_orders')
+              .select('event_id, quotation_id, quotations(eventId, eventRef)')
+              .eq('code', row.po)
+              .maybeSingle();
+
+            if (linkedOrder) {
+              const ctx = resolveEventContext(linkedOrder);
+              customer = customer || ctx.customer;
+              vehicle = vehicle || ctx.vehicle;
+              eventLabel = eventLabel || ctx.eventLabel;
+            }
+          }
+
+          return {
+            id: row.id,
+            orderId: row.order_id,
+            po: row.po,
+            supplier: row.supplier,
+            items: row.items || 0,
+            date: row.date,
+            event: eventLabel,
+            amount: 0,
+            status: normalizeStatus(row.status),
+            customer,
+            vehicle,
+            deliveredBy: row.delivered_by,
+            observation: row.observation,
+            movementHistory: Array.isArray(row.movement_history) ? row.movement_history : [],
+            source: 'delivery' as const
+          };
+        })
+    );
 
     setDeliveries([...fromOrders, ...orphanDeliveries]);
     setLoading(false);
   };
 
-  const persistDelivery = async (delivery: DeliveryItem, newStatus: DeliveryStatus) => {
-    setUpdatingId(delivery.id);
+  const markAsDelivered = async () => {
+    if (!deliverModal) return;
+    if (!deliverForm.responsible.trim()) {
+      alert('Informe o responsável pela entrega.');
+      return;
+    }
+
+    setUpdatingId(deliverModal.id);
+    const now = new Date().toISOString();
+    const entry: MovementEntry = {
+      at: now,
+      action: 'Entregue',
+      user: deliverForm.responsible.trim(),
+      note: deliverForm.observation.trim() || undefined
+    };
+    const history = [...deliverModal.movementHistory, entry];
 
     const payload = {
-      po: delivery.po,
-      supplier: delivery.supplier,
-      items: delivery.items,
-      date: delivery.date || new Date().toISOString(),
-      event: delivery.event,
-      status: newStatus
+      po: deliverModal.po,
+      supplier: deliverModal.supplier,
+      items: deliverModal.items,
+      date: deliverModal.date || now,
+      event: deliverModal.event,
+      customer: deliverModal.customer,
+      vehicle: deliverModal.vehicle,
+      status: 'Entregue',
+      delivered_by: deliverForm.responsible.trim(),
+      observation: deliverForm.observation.trim(),
+      movement_history: history,
+      order_id: deliverModal.orderId || null
     };
 
-    const saveDelivery = delivery.source === 'purchase_order'
+    const saveDelivery = deliverModal.source === 'purchase_order'
       ? supabase.from('deliveries').insert([payload]).select().single()
-      : supabase.from('deliveries').update({ status: newStatus }).eq('id', delivery.id).select().single();
+      : supabase.from('deliveries').update(payload).eq('id', deliverModal.id).select().single();
 
     const { data, error } = await saveDelivery;
-    if (!error && delivery.orderId) {
-      await supabase
-        .from('purchase_orders')
-        .update({ status: newStatus === 'Conforme' ? 'Recebida' : 'Aprovada' })
-        .eq('id', delivery.orderId);
-      await syncDeliveryWorkflow(delivery, newStatus);
+
+    if (!error && deliverModal.orderId) {
+      await supabase.from('purchase_orders').update({ status: 'Recebida' }).eq('id', deliverModal.orderId);
+      await syncDeliveryWorkflow(deliverModal);
     }
 
     if (!error) {
-      setDeliveries(prev => prev.map(item => item.id === delivery.id ? { ...item, id: data?.id || item.id, status: newStatus, source: 'delivery' } : item));
+      setDeliveries(prev => prev.map(item =>
+        item.id === deliverModal.id
+          ? {
+              ...item,
+              id: data?.id || item.id,
+              status: 'Entregue',
+              deliveredBy: deliverForm.responsible.trim(),
+              observation: deliverForm.observation.trim(),
+              movementHistory: history,
+              source: 'delivery'
+            }
+          : item
+      ));
+      setDeliverModal(null);
+      setDeliverForm({ responsible: profile?.full_name || '', observation: '' });
     } else {
-      alert('Erro ao atualizar entrega');
+      alert('Erro ao registrar entrega');
     }
 
     setUpdatingId(null);
   };
 
-  const syncDeliveryWorkflow = async (delivery: DeliveryItem, newStatus: DeliveryStatus) => {
+  const syncDeliveryWorkflow = async (delivery: DeliveryItem) => {
     try {
       if (delivery.quotationId) {
         const { data: relatedOrders } = await supabase
@@ -187,7 +287,7 @@ const Deliveries: React.FC = () => {
             .maybeSingle();
 
           if (order?.event_id) {
-            const eventStatus = quotationStatus === 'Compra Realizada' ? 'Concluído' : newStatus === 'Divergente' ? 'Aguardando Aprovação' : 'Aprovado';
+            const eventStatus = quotationStatus === 'Compra Realizada' ? 'Concluído' : 'Aprovado';
             await supabase.from('events').update({ status: eventStatus }).eq('id', order.event_id);
           }
         }
@@ -207,12 +307,21 @@ const Deliveries: React.FC = () => {
     );
   }, [deliveries, searchTerm]);
 
-  const activeDeliveries = filteredDeliveries.filter(delivery => !['Conforme', 'Divergente'].includes(delivery.status));
-  const historyDeliveries = filteredDeliveries.filter(delivery => ['Conforme', 'Divergente'].includes(delivery.status));
-  const delayedCount = activeDeliveries.filter(delivery => new Date(delivery.date).getTime() < Date.now() - 24 * 60 * 60 * 1000).length;
+  const activeDeliveries = filteredDeliveries.filter(delivery => delivery.status === 'Pendente');
+  const historyDeliveries = filteredDeliveries.filter(delivery => delivery.status === 'Entregue');
+  const allMovements = useMemo(() => {
+    return historyDeliveries
+      .flatMap(delivery => delivery.movementHistory.map(entry => ({ ...entry, po: delivery.po, supplier: delivery.supplier })))
+      .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+  }, [historyDeliveries]);
+
   const totalPendingValue = activeDeliveries.reduce((sum, delivery) => sum + delivery.amount, 0);
-  const divergentCount = historyDeliveries.filter(delivery => delivery.status === 'Divergente').length;
-  const visibleDeliveries = activeTab === 'operacao' ? activeDeliveries : historyDeliveries;
+  const visibleDeliveries = activeTab === 'operacao' ? activeDeliveries : activeTab === 'historico' ? historyDeliveries : [];
+
+  const openDeliverModal = (delivery: DeliveryItem) => {
+    setDeliverModal(delivery);
+    setDeliverForm({ responsible: profile?.full_name || '', observation: '' });
+  };
 
   if (loading) return <div className="text-center py-20 text-slate-400">Carregando entregas...</div>;
 
@@ -221,7 +330,7 @@ const Deliveries: React.FC = () => {
       <div className="flex flex-col lg:flex-row justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Gestao de Entregas</h2>
-          <p className="text-sm text-slate-500 font-medium">Acompanhe OCs aprovadas, recebimento fisico e divergencias para auditoria.</p>
+          <p className="text-sm text-slate-500 font-medium">Registre entregas com responsável e acompanhe o histórico completo.</p>
         </div>
         <div className="flex bg-white p-1 rounded-xl border border-slate-200 self-start">
           <button onClick={() => setActiveTab('operacao')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'operacao' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-400 hover:text-slate-600'}`}>Operacao ({activeDeliveries.length})</button>
@@ -240,12 +349,12 @@ const Deliveries: React.FC = () => {
           <p className="text-2xl font-black text-slate-800 mt-2">R$ {totalPendingValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-3xl p-5">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Alertas / diverg.</p>
-          <p className="text-3xl font-black text-red-500 mt-2">{delayedCount + divergentCount}</p>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Movimentações</p>
+          <p className="text-3xl font-black text-blue-600 mt-2">{allMovements.length}</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-3xl p-5">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Concluidas</p>
-          <p className="text-3xl font-black text-green-600 mt-2">{historyDeliveries.filter(d => d.status === 'Conforme').length}</p>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Entregues</p>
+          <p className="text-3xl font-black text-green-600 mt-2">{historyDeliveries.length}</p>
         </div>
       </div>
 
@@ -263,21 +372,37 @@ const Deliveries: React.FC = () => {
       </div>
 
       {activeTab === 'gestao' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <div className="bg-white border border-slate-200 rounded-3xl p-6">
             <BarChart3 className="text-blue-600 mb-4" size={24} />
-            <h3 className="font-black text-slate-800 mb-2">Prioridade do gestor</h3>
-            <p className="text-sm text-slate-500 font-medium">Ataque primeiro pedidos atrasados, divergentes e OCs de maior valor em aberto. Divergente fica no Historico como pendencia de tratativa.</p>
+            <h3 className="font-black text-slate-800 mb-2">Operação</h3>
+            <p className="text-sm text-slate-500 font-medium">Somente entregas pendentes ficam em Operação. Ao marcar como Entregue, informe responsável e observação.</p>
           </div>
           <div className="bg-white border border-slate-200 rounded-3xl p-6">
-            <UserCheck className="text-green-600 mb-4" size={24} />
-            <h3 className="font-black text-slate-800 mb-2">Visao do colaborador</h3>
-            <p className="text-sm text-slate-500 font-medium">Separar, despachar e confirmar conformidade no recebimento fisico.</p>
+            <History className="text-green-600 mb-4" size={24} />
+            <h3 className="font-black text-slate-800 mb-2">Histórico</h3>
+            <p className="text-sm text-slate-500 font-medium">Todas as entregas concluídas e movimentações ficam registradas na aba Histórico.</p>
           </div>
-          <div className="bg-white border border-slate-200 rounded-3xl p-6">
-            <BriefcaseBusiness className="text-indigo-600 mb-4" size={24} />
-            <h3 className="font-black text-slate-800 mb-2">Controle financeiro</h3>
-            <p className="text-sm text-slate-500 font-medium">A OC so vira recebida quando marcada como Conforme, mantendo rastreio para auditoria.</p>
+        </div>
+      )}
+
+      {activeTab === 'historico' && allMovements.length > 0 && (
+        <div className="bg-white rounded-3xl border border-slate-200 p-6">
+          <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-4">Movimentações recentes</h3>
+          <div className="space-y-3 max-h-72 overflow-y-auto">
+            {allMovements.map((entry, idx) => (
+              <div key={`${entry.po}-${entry.at}-${idx}`} className="flex items-start justify-between gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                <div>
+                  <p className="text-sm font-black text-slate-800">{entry.po} — {entry.action}</p>
+                  <p className="text-xs font-bold text-slate-500 mt-1">{entry.supplier}</p>
+                  {entry.note && <p className="text-xs text-slate-600 mt-2">{entry.note}</p>}
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{new Date(entry.at).toLocaleString('pt-BR')}</p>
+                  {entry.user && <p className="text-xs font-bold text-blue-700 mt-1">{entry.user}</p>}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -291,7 +416,6 @@ const Deliveries: React.FC = () => {
                   <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">OC / Status</th>
                   <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Fornecedor</th>
                   <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Sinistro / Cliente</th>
-                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Itens</th>
                   <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Valor</th>
                   <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Acoes</th>
                 </tr>
@@ -302,29 +426,24 @@ const Deliveries: React.FC = () => {
                     <td className="px-6 py-5">
                       <p className="font-black text-slate-800 text-sm">{delivery.po}</p>
                       <span className={`inline-flex mt-1 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${statusStyle[delivery.status]}`}>
-                        {delivery.status === 'Divergente' ? 'Divergente - tratar' : statusLabel[delivery.status]}
+                        {statusLabel[delivery.status]}
                       </span>
                     </td>
                     <td className="px-6 py-5 text-xs font-bold text-slate-700">{delivery.supplier}</td>
                     <td className="px-6 py-5">
                       <p className="text-xs font-black text-blue-700">{delivery.event}</p>
-                      {delivery.customer && <p className="text-[11px] font-bold text-slate-500 mt-1">{delivery.customer}</p>}
-                      {delivery.vehicle && <p className="text-[11px] font-bold text-slate-400 mt-1">{delivery.vehicle}</p>}
+                      <p className="text-[11px] font-bold text-slate-500 mt-1">{delivery.customer || 'Cliente não informado'}</p>
+                      <p className="text-[11px] font-bold text-slate-400 mt-1">{delivery.vehicle || 'Veículo não informado'}</p>
                     </td>
-                    <td className="px-6 py-5 text-center text-xs font-black text-slate-700">{delivery.items}</td>
                     <td className="px-6 py-5 text-right text-sm font-black text-slate-800">R$ {delivery.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                    <td className="px-6 py-5">
+                    <td className="px-6 py-5 text-right">
                       {activeTab === 'operacao' ? (
-                        <div className="flex justify-end gap-2">
-                          <button disabled={updatingId === delivery.id} onClick={() => persistDelivery(delivery, 'Em Separacao')} className="px-3 py-2 rounded-xl bg-blue-50 text-blue-700 text-[10px] font-black uppercase">Separar</button>
-                          <button disabled={updatingId === delivery.id} onClick={() => persistDelivery(delivery, 'Despachado')} className="px-3 py-2 rounded-xl bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase">Despachar</button>
-                          <button disabled={updatingId === delivery.id} onClick={() => persistDelivery(delivery, 'Conforme')} className="px-3 py-2 rounded-xl bg-green-600 text-white text-[10px] font-black uppercase">Conforme</button>
-                          <button disabled={updatingId === delivery.id} onClick={() => persistDelivery(delivery, 'Divergente')} className="px-3 py-2 rounded-xl bg-white border border-red-200 text-red-600 text-[10px] font-black uppercase">Divergente</button>
-                        </div>
+                        <button disabled={updatingId === delivery.id} onClick={() => openDeliverModal(delivery)} className="px-4 py-2 rounded-xl bg-green-600 text-white text-[10px] font-black uppercase">Marcar entregue</button>
                       ) : (
-                        <p className="text-right text-[10px] font-black uppercase tracking-widest text-slate-400">
-                          {delivery.status === 'Divergente' ? 'Revisar fornecedor/itens' : 'Recebimento fechado'}
-                        </p>
+                        <div className="text-[10px] font-bold text-slate-500">
+                          {delivery.deliveredBy && <p>Resp.: {delivery.deliveredBy}</p>}
+                          {delivery.observation && <p className="mt-1">{delivery.observation}</p>}
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -346,7 +465,7 @@ const Deliveries: React.FC = () => {
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="text-lg font-black text-slate-800">{delivery.po}</h3>
                         <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${statusStyle[delivery.status]}`}>
-                          {delivery.status === 'Divergente' ? 'Divergente - tratar' : statusLabel[delivery.status]}
+                          {statusLabel[delivery.status]}
                         </span>
                       </div>
                       <p className="text-xs text-slate-500 font-bold mt-1">{delivery.supplier}</p>
@@ -373,20 +492,23 @@ const Deliveries: React.FC = () => {
                   </div>
                 </div>
 
-                {(delivery.customer || delivery.vehicle) && (
-                  <div className="mb-5 p-4 rounded-2xl bg-blue-50/60 border border-blue-100 text-xs font-bold text-slate-700">
-                    {delivery.customer && <p>Cliente: <span className="text-slate-900">{delivery.customer}</span></p>}
-                    {delivery.vehicle && <p className="mt-1">Veiculo: <span className="text-slate-900">{delivery.vehicle}</span></p>}
-                  </div>
-                )}
+                <div className="mb-5 p-4 rounded-2xl bg-blue-50/60 border border-blue-100 text-xs font-bold text-slate-700">
+                  <p>Cliente: <span className="text-slate-900">{delivery.customer || 'Não informado'}</span></p>
+                  <p className="mt-1">Veiculo: <span className="text-slate-900">{delivery.vehicle || 'Não informado'}</span></p>
+                  {delivery.status === 'Entregue' && delivery.deliveredBy && (
+                    <p className="mt-2 text-green-700">Entregue por: {delivery.deliveredBy}</p>
+                  )}
+                  {delivery.observation && <p className="mt-1 text-slate-600">Obs.: {delivery.observation}</p>}
+                </div>
 
                 {activeTab === 'operacao' && (
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-                    <button disabled={updatingId === delivery.id} onClick={() => persistDelivery(delivery, 'Em Separacao')} className="flex items-center justify-center gap-2 py-3 bg-blue-50 text-blue-700 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-100 transition-all"><ClipboardList size={14} /> Separar</button>
-                    <button disabled={updatingId === delivery.id} onClick={() => persistDelivery(delivery, 'Despachado')} className="flex items-center justify-center gap-2 py-3 bg-indigo-50 text-indigo-700 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-100 transition-all"><Route size={14} /> Despachar</button>
-                    <button disabled={updatingId === delivery.id} onClick={() => persistDelivery(delivery, 'Conforme')} className="flex items-center justify-center gap-2 py-3 bg-green-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-600/10"><CheckCircle size={14} /> Conforme</button>
-                    <button disabled={updatingId === delivery.id} onClick={() => persistDelivery(delivery, 'Divergente')} className="flex items-center justify-center gap-2 py-3 bg-white border border-red-200 text-red-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 transition-all"><AlertTriangle size={14} /> Divergente</button>
-                  </div>
+                  <button
+                    disabled={updatingId === delivery.id}
+                    onClick={() => openDeliverModal(delivery)}
+                    className="w-full flex items-center justify-center gap-2 py-3 bg-green-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-600/10"
+                  >
+                    <CheckCircle size={14} /> Marcar como entregue
+                  </button>
                 )}
               </div>
             ))
@@ -398,6 +520,40 @@ const Deliveries: React.FC = () => {
           )}
         </div>
         )
+      )}
+
+      {deliverModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setDeliverModal(null)} />
+          <div className="relative bg-white w-full max-w-md rounded-[32px] shadow-2xl p-8">
+            <h3 className="text-xl font-black text-slate-800 mb-2">Registrar entrega</h3>
+            <p className="text-sm text-slate-500 mb-6">{deliverModal.po} — {deliverModal.supplier}</p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Responsável *</label>
+                <input
+                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none"
+                  value={deliverForm.responsible}
+                  onChange={e => setDeliverForm({ ...deliverForm, responsible: e.target.value })}
+                  placeholder="Nome de quem recebeu/entregou"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Observação</label>
+                <textarea
+                  className="w-full min-h-[100px] p-4 bg-slate-50 border border-slate-100 rounded-2xl font-medium text-slate-700 outline-none resize-none"
+                  value={deliverForm.observation}
+                  onChange={e => setDeliverForm({ ...deliverForm, observation: e.target.value })}
+                  placeholder="Detalhes da entrega, divergências, local..."
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4 mt-6">
+              <button onClick={() => setDeliverModal(null)} className="py-3 bg-slate-100 rounded-2xl font-black text-xs uppercase text-slate-500">Cancelar</button>
+              <button onClick={markAsDelivered} className="py-3 bg-green-600 text-white rounded-2xl font-black text-xs uppercase">Confirmar entrega</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1,0 +1,70 @@
+import { supabase } from './supabaseClient';
+
+const BUCKET = 'event-attachments';
+
+export interface EventAttachment {
+  id?: string;
+  event_id?: string;
+  name: string;
+  type: string;
+  url: string;
+  size?: string;
+  file?: File;
+  isNew?: boolean;
+}
+
+export function getAttachmentKind(mime: string, name: string) {
+  const lower = name.toLowerCase();
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'video';
+  if (mime === 'application/pdf' || lower.endsWith('.pdf')) return 'pdf';
+  if (lower.endsWith('.doc') || lower.endsWith('.docx')) return 'word';
+  return 'file';
+}
+
+export async function uploadEventAttachments(eventId: string, attachments: EventAttachment[]) {
+  const saved: EventAttachment[] = [];
+
+  for (const att of attachments) {
+    if (!att.isNew || !att.file) {
+      if (att.url && !att.isNew) saved.push(att);
+      continue;
+    }
+
+    const safeName = att.file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const path = `${eventId}/${Date.now()}-${safeName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from(BUCKET)
+      .upload(path, att.file, { upsert: false, contentType: att.file.type || undefined });
+
+    if (uploadError) throw uploadError;
+
+    const { data: publicData } = supabase.storage.from(BUCKET).getPublicUrl(path);
+    const url = publicData.publicUrl;
+
+    const { data, error } = await supabase
+      .from('event_attachments')
+      .insert([{
+        event_id: eventId,
+        url,
+        name: att.file.name,
+        type: att.file.type || getAttachmentKind('', att.file.name)
+      }])
+      .select()
+      .single();
+
+    if (error) throw error;
+    saved.push({ ...data, size: att.size });
+  }
+
+  return saved;
+}
+
+export async function deleteEventAttachment(id: string, url?: string) {
+  await supabase.from('event_attachments').delete().eq('id', id);
+  if (url?.includes(`/storage/v1/object/public/${BUCKET}/`)) {
+    const path = url.split(`/storage/v1/object/public/${BUCKET}/`)[1];
+    if (path) await supabase.storage.from(BUCKET).remove([decodeURIComponent(path)]);
+  }
+}

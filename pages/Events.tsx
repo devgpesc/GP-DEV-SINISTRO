@@ -10,6 +10,10 @@ import { supabase } from '../services/supabaseClient';
 import { eventService } from '../services/eventService';
 import { useToast } from '../context/ToastContext';
 import PremiumModal, { FormSection, FieldLabel, fieldClassName } from '../components/PremiumModal';
+import { useEventTypes } from '../hooks/useEventTypes';
+import { ATTACHMENT_ACCEPT } from '../utils/defaults';
+import { getAttachmentKind } from '../services/attachmentService';
+import FileViewerModal from '../components/FileViewerModal';
 
 const StatusBadge = ({ status }: { status: EventStatus }) => {
   const styles: any = {
@@ -42,6 +46,7 @@ const PriorityBadge = ({ priority }: { priority: Priority }) => {
 
 const Events: React.FC = () => {
   const { addToast } = useToast();
+  const { eventTypes } = useEventTypes();
   const [events, setEvents] = useState<Event[]>([]);
   const [associates, setAssociates] = useState<Associate[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -64,6 +69,7 @@ const Events: React.FC = () => {
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [viewerFile, setViewerFile] = useState<{ name: string; type: string; url: string } | null>(null);
 
   const [formData, setFormData] = useState({
     protocolMode: 'auto' as 'auto' | 'manual',
@@ -144,9 +150,11 @@ const Events: React.FC = () => {
       const newAttachments = Array.from(files).map((file: File) => ({
         id: Math.random().toString(36).substr(2, 9),
         name: file.name,
-        type: file.type,
+        type: file.type || getAttachmentKind('', file.name),
         size: (file.size / 1024).toFixed(2) + ' KB',
-        url: URL.createObjectURL(file), // Simula URL para preview
+        url: URL.createObjectURL(file),
+        file,
+        isNew: true,
         createdAt: new Date().toISOString()
       }));
       setFormData(prev => ({
@@ -157,10 +165,22 @@ const Events: React.FC = () => {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const removeAttachment = (id: string) => {
+  const openAttachment = (att: any) => {
+    setViewerFile({ name: att.name, type: att.type, url: att.url });
+  };
+
+  const removeAttachment = async (att: any) => {
+    if (att.id && !att.isNew && eventToEdit) {
+      try {
+        await eventService.removeAttachment(att.id, att.url);
+      } catch {
+        addToast('error', 'Erro', 'Não foi possível remover o anexo.');
+        return;
+      }
+    }
     setFormData(prev => ({
       ...prev,
-      attachments: prev.attachments.filter(a => a.id !== id)
+      attachments: prev.attachments.filter(a => a.id !== att.id)
     }));
   };
   // -----------------------
@@ -329,7 +349,7 @@ const Events: React.FC = () => {
                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Tipo</label>
                <select className="w-full p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm outline-none" value={filters.type} onChange={e => setFilters({...filters, type: e.target.value})}>
                  <option value="">Todos</option>
-                 {Object.values(EventType).map(t => <option key={t} value={t}>{t}</option>)}
+                 {eventTypes.map(t => <option key={t} value={t}>{t}</option>)}
                </select>
              </div>
              <div>
@@ -537,7 +557,7 @@ const Events: React.FC = () => {
                   value={formData.type}
                   onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
                 >
-                  {Object.values(EventType).map((t) => (
+                  {eventTypes.map((t) => (
                     <option key={t} value={t}>{t}</option>
                   ))}
                 </select>
@@ -557,7 +577,7 @@ const Events: React.FC = () => {
           <FormSection
             step={3}
             title="Documentos e evidências"
-            description="Fotos, laudos e PDFs do sinistro."
+            description="Fotos, vídeos, laudos, PDFs e documentos do sinistro."
             locked={isFormLocked}
           >
             <div className="flex justify-end mb-4">
@@ -568,7 +588,7 @@ const Events: React.FC = () => {
               >
                 <Plus size={14} /> Adicionar arquivo
               </button>
-              <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelect} multiple accept="image/*,application/pdf" />
+              <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelect} multiple accept={ATTACHMENT_ACCEPT} />
             </div>
             {formData.attachments.length === 0 ? (
               <div className="p-10 border-2 border-dashed border-slate-200 rounded-2xl text-center bg-slate-50/50">
@@ -579,18 +599,23 @@ const Events: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {formData.attachments.map((att: any) => (
                   <div key={att.id} className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3 group">
-                    <div className="w-11 h-11 bg-white rounded-xl flex items-center justify-center border overflow-hidden shrink-0">
-                      {att.type.startsWith('image/') ? (
+                    <button type="button" onClick={() => openAttachment(att)} className="w-11 h-11 bg-white rounded-xl flex items-center justify-center border overflow-hidden shrink-0 hover:border-blue-300">
+                      {String(att.type).startsWith('image/') || att.type === 'image' ? (
                         <img src={att.url} alt="" className="w-full h-full object-cover" />
+                      ) : String(att.type).startsWith('video/') || att.type === 'video' ? (
+                        <ImageIcon size={18} className="text-blue-500" />
                       ) : (
                         <File size={18} className="text-slate-400" />
                       )}
-                    </div>
+                    </button>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-bold text-slate-700 truncate">{att.name}</p>
                       <p className="text-[10px] text-slate-400">{att.size}</p>
                     </div>
-                    <button type="button" onClick={() => removeAttachment(att.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg">
+                    <button type="button" onClick={() => openAttachment(att)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg" title="Abrir">
+                      <Eye size={14} />
+                    </button>
+                    <button type="button" onClick={() => removeAttachment(att)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg">
                       <Trash2 size={14} />
                     </button>
                   </div>
@@ -600,6 +625,7 @@ const Events: React.FC = () => {
           </FormSection>
         </div>
       </PremiumModal>
+      <FileViewerModal file={viewerFile} onClose={() => setViewerFile(null)} />
     </div>
   );
 };

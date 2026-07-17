@@ -10,7 +10,8 @@ export enum EventType {
   COLLISION = 'Colisão',
   THEFT = 'Furto',
   ROBBERY = 'Roubo',
-  PERIPHERAL = 'Periférico'
+  PERIPHERAL = 'Periférico',
+  AGREEMENT = 'Acordo'
 }
 
 export enum Priority {
@@ -107,7 +108,7 @@ export interface Quotation {
   code: string;
   eventId?: string;
   eventRef?: string;
-  status: 'Em Aberto' | 'Análise' | 'Aprovada' | 'Finalizada' | 'Cancelada';
+  status: 'Em Aberto' | 'Análise' | 'Aprovada' | 'Finalizada' | 'Cancelada' | 'Aguardando Aprovação' | 'Compra Autorizada' | 'Compra Realizada';
   created_at: string;
   deadline?: string;
 }

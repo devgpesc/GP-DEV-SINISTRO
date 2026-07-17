@@ -1,6 +1,7 @@
 
 import { supabase } from './supabaseClient';
 import { Event } from '../types';
+import { uploadEventAttachments, deleteEventAttachment, EventAttachment } from './attachmentService';
 
 export const eventService = {
   async getEvents(): Promise<Event[]> {
@@ -21,19 +22,16 @@ export const eventService = {
   },
 
   async createEvent(eventData: Partial<Event>) {
-    // 1. AUTENTICAÇÃO OBRIGATÓRIA
     const { data: { user }, error: authError } = await (supabase.auth as any).getUser();
     
     if (authError || !user || !user.id) {
         throw new Error('Sessão inválida. É necessário estar logado para registrar um sinistro.');
     }
 
-    // 2. VALIDAÇÃO
     if (!eventData.vehicleId || !eventData.associateId) {
         throw new Error('É obrigatório vincular um Associado e um Veículo.');
     }
 
-    // 3. PREPARAR PAYLOAD LIMPO (Remove campos que não são colunas da tabela events)
     const { attachments, history, id, ...cleanEventData } = eventData;
 
     const payload = {
@@ -44,7 +42,6 @@ export const eventService = {
       associateId: eventData.associateId
     };
 
-    // 4. INSERT REAL
     const { data, error } = await supabase
       .from('events')
       .insert([payload])
@@ -53,7 +50,6 @@ export const eventService = {
     
     if (error) throw error;
     
-    // 5. INSERIR HISTÓRICO INICIAL
     if (data && data.id) {
         await supabase.from('event_history').insert([{
             event_id: data.id,
@@ -63,16 +59,18 @@ export const eventService = {
             user_id: user.id,
             created_at: new Date().toISOString()
         }]);
+
+        if (attachments?.length) {
+          await uploadEventAttachments(data.id, attachments as EventAttachment[]);
+        }
     }
 
     return data;
   },
 
   async updateEvent(id: string, eventData: Partial<Event>) {
-    // 1. LIMPEZA DE DADOS (CRÍTICO: Remove attachments para evitar erro de coluna inexistente)
     const { attachments, history, id: _id, ...cleanEventData } = eventData;
 
-    // 2. UPDATE SEGURO
     const { error } = await supabase
       .from('events')
       .update(cleanEventData)
@@ -80,7 +78,16 @@ export const eventService = {
 
     if (error) throw error;
 
-    // TODO: Implementar lógica de salvar anexos na tabela 'event_attachments' aqui se necessário
-    // Por enquanto, apenas evita o crash da aplicação.
+    if (attachments) {
+      const incoming = attachments as EventAttachment[];
+      const newOnes = incoming.filter(a => a.isNew && a.file);
+      if (newOnes.length) {
+        await uploadEventAttachments(id, newOnes);
+      }
+    }
+  },
+
+  async removeAttachment(id: string, url?: string) {
+    await deleteEventAttachment(id, url);
   }
 };
