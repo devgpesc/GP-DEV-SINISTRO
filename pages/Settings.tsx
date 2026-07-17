@@ -8,15 +8,7 @@ import { apiKeyService, ApiKeyRecord } from '../services/apiKeyService';
 import ActionModal from '../components/ActionModal';
 import { Invitation, AuditLog } from '../types';
 import { DEFAULT_EVENT_TYPES } from '../utils/defaults';
-
-// ... (SYSTEM_FEATURES const e imports mantidos)
-const SYSTEM_FEATURES = [
-  { id: 'financial_view', label: 'Ver Financeiro', desc: 'Acesso a valores e relatórios de custo.' },
-  { id: 'approve_purchases', label: 'Aprovar Compras', desc: 'Permissão para aprovar Ordens de Compra (OC).' },
-  { id: 'manage_users', label: 'Gerir Equipe', desc: 'Adicionar e editar outros usuários.' },
-  { id: 'delete_records', label: 'Exclusão', desc: 'Pode excluir registros permanentemente.' },
-  { id: 'view_reports', label: 'Relatórios BI', desc: 'Acesso à central de inteligência.' }
-];
+import { CANONICAL_PERMISSIONS, normalizePermissions, sanitizePermissionsForSave } from '../services/permissionKeys';
 
 const Settings: React.FC = () => {
   const { addToast } = useToast();
@@ -247,7 +239,7 @@ const Settings: React.FC = () => {
           full_name: user.full_name || '',
           role: user.role || 'Usuário',
           membership_role: user.membership_role || 'member',
-          permissions: user.permissions || {}
+          permissions: normalizePermissions(user.permissions),
       });
       setUserModalOpen(true);
   };
@@ -283,7 +275,7 @@ const Settings: React.FC = () => {
           target_user_id: userForm.id,
           target_full_name: userForm.full_name,
           target_role: userForm.role,
-          target_permissions: userForm.permissions,
+          target_permissions: sanitizePermissionsForSave(userForm.permissions),
           target_membership_role: userForm.membership_role
       };
       const { error } = await supabase.rpc('update_tenant_member_profile', payload);
@@ -369,7 +361,7 @@ const Settings: React.FC = () => {
     { id: 'event_types', label: 'Tipos de Sinistro', icon: Shield },
     ...(access.canManageTeam ? [{ id: 'users', label: 'Equipe e Permissões', icon: Users }] : []),
     ...(access.canManageSettings ? [{ id: 'api_connect', label: 'API / Integrações', icon: LinkIcon }] : []),
-    ...(profile?.role === 'Admin' || profile?.role === 'super_admin' ? [{ id: 'audit', label: 'Auditoria', icon: ClipboardList }] : []),
+    ...(access.canManageSettings ? [{ id: 'audit', label: 'Auditoria', icon: ClipboardList }] : []),
     { id: 'integrations', label: 'Outras Integrações', icon: Globe },
   ];
 
@@ -752,28 +744,23 @@ const Settings: React.FC = () => {
                       </div>
 
                       <div>
-                          <label className="block text-[10px] font-black uppercase text-slate-400 mb-3 border-b border-slate-100 pb-2">Permissões de Módulos</label>
-                          <div className="grid grid-cols-2 gap-3 max-h-40 overflow-y-auto custom-scrollbar">
-                              {[
-                                  { id: 'dashboard', label: 'Dashboard' },
-                                  { id: 'sinistros', label: 'Sinistros' },
-                                  { id: 'cotacoes', label: 'Cotações' },
-                                  { id: 'compras', label: 'Compras' },
-                                  { id: 'entregas', label: 'Entregas' },
-                                  { id: 'associados', label: 'Associados' },
-                                  { id: 'fornecedores', label: 'Fornecedores' },
-                                  { id: 'veiculos', label: 'Veículos' },
-                                  { id: 'catalogo', label: 'Catálogo' },
-                                  { id: 'relatorios', label: 'Relatórios' }
-                              ].map(feat => (
-                                  <label key={feat.id} className="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors border border-transparent hover:border-slate-100">
+                          <label className="block text-[10px] font-black uppercase text-slate-400 mb-3 border-b border-slate-100 pb-2">Permissões granulares</label>
+                          <p className="text-[11px] font-semibold text-slate-400 mb-3">
+                            Gerentes e administradores da empresa já têm acesso amplo. Use estas flags para liberar funções específicas a membros comuns.
+                          </p>
+                          <div className="space-y-2 max-h-52 overflow-y-auto custom-scrollbar">
+                              {CANONICAL_PERMISSIONS.map((feat) => (
+                                  <label key={feat.id} className="flex items-start gap-3 p-3 rounded-xl hover:bg-slate-50 cursor-pointer transition-colors border border-transparent hover:border-slate-100">
                                       <input 
                                           type="checkbox" 
-                                          className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
-                                          checked={userForm.permissions[feat.id] || false}
+                                          className="mt-0.5 w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                                          checked={!!userForm.permissions[feat.id]}
                                           onChange={() => togglePermission(feat.id)}
                                       />
-                                      <span className="text-xs font-bold text-slate-600">{feat.label}</span>
+                                      <span>
+                                        <span className="block text-xs font-bold text-slate-700">{feat.label}</span>
+                                        <span className="block text-[11px] font-medium text-slate-400">{feat.desc}</span>
+                                      </span>
                                   </label>
                               ))}
                           </div>
