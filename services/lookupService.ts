@@ -58,7 +58,7 @@ export const lookupService = {
   /**
    * Consulta dados de CNPJ no backend ou API Pública.
    */
-  async fetchCNPJ(cnpj: string): Promise<{name?: string, fantasy?: string, city?: string, email?: string, phone?: string} | null> {
+  async fetchCNPJ(cnpj: string): Promise<{name?: string, fantasy?: string, city?: string, email?: string, phone?: string, cep?: string, address?: string} | null> {
     const cleanCnpj = cnpj.replace(/\D/g, '');
     if (cleanCnpj.length !== 14) return null;
 
@@ -94,12 +94,31 @@ export const lookupService = {
           fantasy: data.nome_fantasia || data.razao_social,
           city: data.municipio,
           email: data.email,
-          phone: data.ddd_telefone_1 ? `(${data.ddd_telefone_1}) ${data.telefone_1}` : ''
+          phone: data.ddd_telefone_1 ? `(${data.ddd_telefone_1}) ${data.telefone_1}` : '',
+          cep: data.cep,
+          address: data.logradouro ? `${data.logradouro}${data.numero ? `, ${data.numero}` : ''}` : undefined
         };
       } catch (e) {
         console.error("Erro definitivo na busca de CNPJ:", e);
         return null;
       }
+    }
+  },
+
+  async fetchCEP(cep: string): Promise<{ address?: string; city?: string; cep?: string } | null> {
+    const clean = cep.replace(/\D/g, '');
+    if (clean.length !== 8) return null;
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${clean}/json/`);
+      const data = await response.json();
+      if (data.erro) return null;
+      return {
+        cep: clean,
+        address: `${data.logradouro || ''}${data.bairro ? `, ${data.bairro}` : ''}`.trim(),
+        city: `${data.localidade || ''} - ${data.uf || ''}`.trim()
+      };
+    } catch {
+      return null;
     }
   }
 };

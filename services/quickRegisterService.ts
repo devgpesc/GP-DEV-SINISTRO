@@ -1,0 +1,80 @@
+import { supabase } from './supabaseClient';
+import { lookupService } from './lookupService';
+
+export async function quickCreateAssociate(input: {
+  name: string;
+  document?: string;
+  type?: 'PF' | 'PJ';
+}) {
+  const name = input.name.trim();
+  if (!name) throw new Error('Informe o nome do associado.');
+
+  const docToUse = (input.document || '').replace(/\D/g, '') || '00000000000';
+  const type = input.type || (docToUse.length === 14 ? 'PJ' : 'PF');
+
+  let resolvedName = name;
+  if (type === 'PJ' && docToUse.length === 14) {
+    const cnpjData = await lookupService.fetchCNPJ(docToUse);
+    if (cnpjData?.name || cnpjData?.fantasy) {
+      resolvedName = cnpjData.fantasy || cnpjData.name || name;
+    }
+  }
+
+  const { data: existing } = await supabase
+    .from('associates')
+    .select('id')
+    .eq('document', docToUse)
+    .maybeSingle();
+
+  if (existing?.id) {
+    await supabase.from('associates').update({ name: resolvedName, type }).eq('id', existing.id);
+    return existing.id;
+  }
+
+  const { data, error } = await supabase
+    .from('associates')
+    .insert([{ name: resolvedName, document: docToUse, type, created_at: new Date().toISOString() }])
+    .select('id')
+    .single();
+
+  if (error) throw error;
+  return data.id as string;
+}
+
+export async function quickCreateVehicle(input: { plate: string; associateId: string }) {
+  const cleanPlate = input.plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (cleanPlate.length < 7) throw new Error('Informe uma placa válida.');
+
+  const { data: existing } = await supabase
+    .from('vehicles')
+    .select('id')
+    .eq('plate', cleanPlate)
+    .maybeSingle();
+
+  if (existing?.id) {
+    await supabase.from('vehicles').update({ associate_id: input.associateId }).eq('id', existing.id);
+    return existing.id;
+  }
+
+  const currentYear = new Date().getFullYear().toString();
+  const { data, error } = await supabase
+    .from('vehicles')
+    .insert([{
+      plate: cleanPlate,
+      associate_id: input.associateId,
+      status: 'Ativo',
+      brand: 'A DEFINIR',
+      model: 'CADASTRO RAPIDO',
+      color: 'BRANCA',
+      fuel: 'FLEX',
+      type: 'Automovel',
+      year_fab: currentYear,
+      year_model: currentYear,
+      created_at: new Date().toISOString(),
+    }])
+    .select('id')
+    .single();
+
+  if (error) throw error;
+  return data.id as string;
+}

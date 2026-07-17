@@ -198,11 +198,15 @@ const Suppliers: React.FC = () => {
     if (cleanCep.length < 8) return;
     setIsLookingCep(true);
     try {
-        const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
-        const data = await response.json();
-        if (!data.erro) {
-            setFormData(prev => ({ ...prev, address: `${data.logradouro}, ${data.bairro}`, city: `${data.localidade} - ${data.uf}` }));
-        }
+      const data = await lookupService.fetchCEP(cleanCep);
+      if (data) {
+        setFormData(prev => ({
+          ...prev,
+          cep: data.cep || cleanCep,
+          address: data.address || prev.address,
+          city: data.city || prev.city,
+        }));
+      }
     } catch (e) { console.error(e); } finally { setIsLookingCep(false); }
   };
 
@@ -214,7 +218,26 @@ const Suppliers: React.FC = () => {
     try {
       const data = await lookupService.fetchCNPJ(cleanCnpj);
       if (data) {
-        setFormData(prev => ({ ...prev, name: data.name || data.fantasy || prev.name, city: data.city || prev.city, email: data.email || prev.email, whatsapp: data.phone || prev.whatsapp }));
+        setFormData(prev => ({
+          ...prev,
+          name: data.name || data.fantasy || prev.name,
+          city: data.city || prev.city,
+          email: data.email || prev.email,
+          whatsapp: data.phone || prev.whatsapp,
+          cep: data.cep || prev.cep,
+          address: data.address || prev.address,
+        }));
+        if (data.cep && data.cep.replace(/\D/g, '').length === 8) {
+          const cepData = await lookupService.fetchCEP(data.cep);
+          if (cepData) {
+            setFormData(prev => ({
+              ...prev,
+              cep: cepData.cep || prev.cep,
+              address: cepData.address || prev.address,
+              city: cepData.city || prev.city,
+            }));
+          }
+        }
         setLookupMessage('Encontrado!');
       } else {
         setLookupMessage('Não encontrado.');

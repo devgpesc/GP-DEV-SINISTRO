@@ -54,8 +54,8 @@ const ActionModal: React.FC<ActionModalProps> = ({
             </button>
           )}
           <button 
-            onClick={() => {
-              if (onConfirm) onConfirm();
+            onClick={async () => {
+              if (onConfirm) await onConfirm();
               onClose();
             }} 
             className={`py-3.5 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all shadow-xl ${currentStyle.btn}`}

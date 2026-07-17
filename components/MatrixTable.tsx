@@ -22,6 +22,7 @@ import { quotationService, ManualPurchaseSelection } from '../services/quotation
 import { QuotationItem, Supplier, SupplierPrice } from '../types';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../services/supabaseClient';
+import { openMatrixPrintPreview } from '../utils/matrixPrint';
 import * as XLSX from 'xlsx';
 
 interface MatrixProps {
@@ -69,8 +70,10 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
     eventProtocol?: string;
     associateName?: string;
     vehicleLabel?: string;
+    participationQuota?: number | null;
     createdAt?: string;
   } | null>(null);
+  const [printMenuOpen, setPrintMenuOpen] = useState(false);
 
   useEffect(() => {
     if (quotationId) loadData();
@@ -105,7 +108,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
 
       const { data: quotationRow } = await supabase
         .from('quotations')
-        .select('id, code, eventRef, eventId, created_at')
+        .select('id, code, eventRef, eventId, created_at, participation_quota')
         .eq('id', quotationId)
         .maybeSingle();
 
@@ -113,16 +116,18 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
       let associateName = '';
       let vehicleLabel = '';
       let eventProtocol = quotationRow?.eventRef || '';
+      let eventParticipationQuota: number | null = null;
 
       if (eventRefId) {
         const { data: eventRow } = await supabase
           .from('events')
-          .select('id, protocol, associateId, vehicleId')
+          .select('id, protocol, associateId, vehicleId, participation_quota')
           .eq('id', eventRefId)
           .maybeSingle();
 
         if (eventRow) {
           eventProtocol = eventRow.protocol || eventProtocol;
+          eventParticipationQuota = eventRow.participation_quota ?? null;
 
           const [{ data: associateRow }, { data: vehicleRow }] = await Promise.all([
             eventRow.associateId ? supabase.from('associates').select('name').eq('id', eventRow.associateId).maybeSingle() : Promise.resolve({ data: null as any }),
@@ -142,6 +147,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
         eventProtocol: eventProtocol || undefined,
         associateName: associateName || undefined,
         vehicleLabel: vehicleLabel || undefined,
+        participationQuota: quotationRow?.participation_quota ?? eventParticipationQuota,
         createdAt: quotationRow?.created_at || undefined,
       });
     } catch (error) {
@@ -388,7 +394,29 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
     }
   };
 
-  const handlePrint = () => window.print();
+  const openPrintPreview = (layout: 'landscape' | 'list') => {
+    if (!headerMeta) return;
+    openMatrixPrintPreview({
+      headerMeta: {
+        quotationCode: headerMeta.quotationCode,
+        eventProtocol: headerMeta.eventProtocol,
+        associateName: headerMeta.associateName,
+        vehicleLabel: headerMeta.vehicleLabel,
+        participationQuota: headerMeta.participationQuota,
+      },
+      items: filteredItems.map(item => ({ id: item.id, name: item.name, quantity: item.quantity, unit: item.unit })),
+      suppliers: filteredSuppliers.map(s => ({ id: s.id, name: s.name, city: s.city })),
+      prices: prices.map(p => ({
+        quotation_item_id: p.quotation_item_id,
+        supplier_id: p.supplier_id,
+        price: p.price,
+        delivery_days: p.delivery_days,
+        availability: p.availability,
+      })),
+      layout,
+    });
+    setPrintMenuOpen(false);
+  };
 
   const exportCsv = () => {
     const headers = ['Item', 'Qtd', 'Fornecedor', 'Valor', 'Prazo', 'Disponivel', 'Selecionado', 'Justificativa'];
@@ -537,8 +565,14 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
             {[10, 15, 20, 30, 50].map((qty) => <option key={qty} value={qty}>{qty} itens/página</option>)}
           </select>
         </div>
-        <div className="flex gap-2">
-          <button onClick={handlePrint} className="p-2 bg-white text-slate-600 hover:text-blue-600 rounded-xl transition-all shadow-sm" title="Imprimir/PDF"><FileText size={18} /></button>
+        <div className="flex gap-2 relative">
+          <button onClick={() => setPrintMenuOpen(v => !v)} className="p-2 bg-white text-slate-600 hover:text-blue-600 rounded-xl transition-all shadow-sm" title="Visualizar impressão"><FileText size={18} /></button>
+          {printMenuOpen && (
+            <div className="absolute right-0 top-full mt-2 z-30 bg-white border border-slate-200 rounded-2xl shadow-xl p-2 min-w-[180px]">
+              <button onClick={() => openPrintPreview('landscape')} className="w-full text-left px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider text-slate-700 hover:bg-blue-50 hover:text-blue-700">Paisagem</button>
+              <button onClick={() => openPrintPreview('list')} className="w-full text-left px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider text-slate-700 hover:bg-blue-50 hover:text-blue-700">Lista</button>
+            </div>
+          )}
           <button onClick={exportCsv} className="p-2 bg-white text-slate-600 hover:text-green-600 rounded-xl transition-all shadow-sm" title="Exportar CSV/Excel"><Download size={18} /></button>
           <button onClick={exportXlsx} className="px-3 py-2 bg-white text-slate-600 hover:text-emerald-700 rounded-xl transition-all shadow-sm text-xs font-black uppercase tracking-wider" title="Exportar XLSX">XLSX</button>
         </div>

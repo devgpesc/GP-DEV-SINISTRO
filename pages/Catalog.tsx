@@ -4,6 +4,7 @@ import { Plus, Search, Package, Settings, Trash2, Edit3, Tag, LayoutGrid, List, 
 import { CatalogItem } from '../types';
 import { supabase } from '../services/supabaseClient';
 import { useToast } from '../context/ToastContext';
+import ActionModal from '../components/ActionModal';
 
 const Catalog: React.FC = () => {
   const { addToast } = useToast();
@@ -17,6 +18,7 @@ const Catalog: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [itemToEdit, setItemToEdit] = useState<CatalogItem | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<CatalogItem | null>(null);
   
   // Form State
   const [formData, setFormData] = useState<Partial<CatalogItem>>({
@@ -112,16 +114,16 @@ const Catalog: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm('Tem certeza que deseja remover este item do catálogo?')) {
-      const { error } = await supabase.from('catalog_items').delete().eq('id', id);
-      if (error) {
-          addToast('error', 'Erro ao Excluir', error.message);
-      } else {
-          setItems(items.filter(i => i.id !== id));
-          addToast('success', 'Item Removido', 'O item foi excluído com sucesso.');
-      }
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
+    const { error } = await supabase.from('catalog_items').delete().eq('id', itemToDelete.id);
+    if (error) {
+      addToast('error', 'Erro ao Excluir', error.message);
+    } else {
+      setItems(items.filter(i => i.id !== itemToDelete.id));
+      addToast('success', 'Item Removido', 'O item foi excluído com sucesso.');
     }
+    setItemToDelete(null);
   };
 
   const filteredItems = items.filter(i => 
@@ -175,7 +177,7 @@ const Catalog: React.FC = () => {
                  </div>
                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button onClick={(e) => { e.stopPropagation(); handleOpenModal(item); }} className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Edit3 size={18}/></button>
-                    <button onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }} className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={18}/></button>
+                    <button onClick={(e) => { e.stopPropagation(); setItemToDelete(item); }} className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={18}/></button>
                  </div>
               </div>
               <h3 className="font-bold text-slate-800">{item.name}</h3>
@@ -212,7 +214,7 @@ const Catalog: React.FC = () => {
                       <td className="px-6 py-4 text-right">
                          <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button onClick={(e) => { e.stopPropagation(); handleOpenModal(item); }} className="p-2 text-slate-400 hover:text-blue-600 rounded-lg"><Edit3 size={16}/></button>
-                            <button onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }} className="p-2 text-slate-400 hover:text-red-600 rounded-lg"><Trash2 size={16}/></button>
+                            <button onClick={(e) => { e.stopPropagation(); setItemToDelete(item); }} className="p-2 text-slate-400 hover:text-red-600 rounded-lg"><Trash2 size={16}/></button>
                          </div>
                       </td>
                    </tr>
@@ -310,6 +312,16 @@ const Catalog: React.FC = () => {
           </div>
         </div>
       )}
+
+      <ActionModal
+        isOpen={!!itemToDelete}
+        onClose={() => setItemToDelete(null)}
+        onConfirm={confirmDelete}
+        title="Remover item do catálogo?"
+        description="Tem certeza que deseja remover este item do catálogo? Esta ação não pode ser desfeita."
+        type="danger"
+        confirmText="Sim, remover"
+      />
     </div>
   );
 };

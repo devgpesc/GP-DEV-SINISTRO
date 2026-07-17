@@ -111,6 +111,8 @@ export interface Quotation {
   status: 'Em Aberto' | 'Análise' | 'Aprovada' | 'Finalizada' | 'Cancelada' | 'Aguardando Aprovação' | 'Compra Autorizada' | 'Compra Realizada';
   created_at: string;
   deadline?: string;
+  participation_quota?: number | null;
+  attachments?: any[];
 }
 
 export interface QuotationItem {
@@ -203,6 +205,7 @@ export interface Event {
   associateId: string;
   description: string;
   createdAt: string;
+  participation_quota?: number | null;
   attachments: any[];
   history: any[];
 }

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Search, ChevronRight, ArrowLeft, BarChart3, Trash2, Rocket, List, Package, Users, Edit3, Box, Zap, Save, Loader2, Check, CheckSquare, LayoutGrid, Wrench, UserPlus } from 'lucide-react';
+import { Plus, Search, ChevronRight, ArrowLeft, BarChart3, Trash2, Rocket, List, Package, Users, Edit3, Box, Zap, Save, Loader2, Check, CheckSquare, LayoutGrid, Wrench, UserPlus, Paperclip, Eye } from 'lucide-react';
 import MatrixTable from '../components/MatrixTable';
 import { supabase } from '../services/supabaseClient';
 import { eventService } from '../services/eventService';
@@ -8,6 +8,8 @@ import { Event, EventStatus, EventType, Priority, Supplier, CatalogItem } from '
 import { useToast } from '../context/ToastContext';
 import ActionModal from '../components/ActionModal';
 import { useEventTypes } from '../hooks/useEventTypes';
+import { ATTACHMENT_ACCEPT } from '../utils/defaults';
+import { lookupService } from '../services/lookupService';
 
 const Quotations: React.FC = () => {
   const { addToast } = useToast();
@@ -36,7 +38,9 @@ const Quotations: React.FC = () => {
     eventId: '',
     eventProtocol: '',
     items: [] as WizardItem[], 
-    selectedSuppliers: [] as string[] 
+    selectedSuppliers: [] as string[],
+    participationQuota: '',
+    attachments: [] as any[],
   });
 
   // --- STATES DO CATÁLOGO INTELIGENTE ---
@@ -47,6 +51,7 @@ const Quotations: React.FC = () => {
   const [searchResults, setSearchResults] = useState<CatalogItem[]>([]);
   const [isSearchingCatalog, setIsSearchingCatalog] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const rfqFileInputRef = useRef<HTMLInputElement>(null);
   // --------------------------------------
 
   const [quotes, setQuotes] = useState<any[]>([]);
@@ -63,6 +68,7 @@ const Quotations: React.FC = () => {
     plate: '',
     type: EventType.COLLISION,
     description: '',
+    participationQuota: '',
   });
   const selectedEvent = realEvents.find(ev => ev.id === newQuote.eventId);
 
@@ -140,7 +146,9 @@ const Quotations: React.FC = () => {
               category: i.category,
               item_type: i.item_type || 'Peça'
           })) || [],
-          selectedSuppliers: qSuppliers?.map((qs: any) => qs.supplier_id) || []
+          selectedSuppliers: qSuppliers?.map((qs: any) => qs.supplier_id) || [],
+          participationQuota: quote.participation_quota != null ? String(quote.participation_quota) : '',
+          attachments: Array.isArray(quote.attachments) ? quote.attachments : [],
       });
       
       setStep(2);
@@ -169,10 +177,14 @@ const Quotations: React.FC = () => {
         const selectedEvent = realEvents.find(e => e.id === newQuote.eventId);
         let quoteId = editingQuoteId;
 
+        const quotaValue = newQuote.participationQuota ? Number(newQuote.participationQuota) : null;
+
         if (editingQuoteId) {
             await supabase.from('quotations').update({
                 suppliers: newQuote.selectedSuppliers.length,
                 "itemCount": newQuote.items.length,
+                participation_quota: quotaValue,
+                attachments: newQuote.attachments,
                 updated_at: new Date().toISOString()
             }).eq('id', editingQuoteId);
 
@@ -189,6 +201,8 @@ const Quotations: React.FC = () => {
                 suppliers: newQuote.selectedSuppliers.length,
                 "itemCount": newQuote.items.length,
                 "eventId": newQuote.eventId,
+                participation_quota: quotaValue,
+                attachments: newQuote.attachments,
                 created_at: new Date().toISOString()
             }]).select().single();
 
@@ -321,7 +335,41 @@ const Quotations: React.FC = () => {
       plate: '',
       type: EventType.COLLISION,
       description: '',
+      participationQuota: '',
     });
+  };
+
+  const handleQuickDocLookup = async () => {
+    const cleanDoc = quickForm.document.replace(/\D/g, '');
+    if (cleanDoc.length !== 14) return;
+    const data = await lookupService.fetchCNPJ(cleanDoc);
+    if (data) {
+      setQuickForm(prev => ({
+        ...prev,
+        clientName: data.fantasy || data.name || prev.clientName,
+      }));
+      addToast('success', 'CNPJ encontrado', 'Nome preenchido automaticamente.');
+    }
+  };
+
+  const handleRfqFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files?.length) return;
+    const newAttachments = Array.from(files).map((file: File) => ({
+      id: Math.random().toString(36).slice(2, 11),
+      name: file.name,
+      type: file.type,
+      size: `${(file.size / 1024).toFixed(2)} KB`,
+      url: URL.createObjectURL(file),
+      file,
+      isNew: true,
+    }));
+    setNewQuote(prev => ({ ...prev, attachments: [...prev.attachments, ...newAttachments] }));
+    if (rfqFileInputRef.current) rfqFileInputRef.current.value = '';
+  };
+
+  const removeRfqAttachment = (id: string) => {
+    setNewQuote(prev => ({ ...prev, attachments: prev.attachments.filter(a => a.id !== id) }));
   };
 
   const handleQuickRegister = async () => {
@@ -409,6 +457,7 @@ const Quotations: React.FC = () => {
         vehicleId,
         associateId,
         description: quickForm.description.trim() || 'Sinistro aberto via cadastro rapido na cotacao.',
+        participation_quota: quickForm.participationQuota ? Number(quickForm.participationQuota) : null,
         status: EventStatus.WAITING,
         createdAt: new Date().toISOString(),
         attachments: [],
@@ -420,6 +469,7 @@ const Quotations: React.FC = () => {
         ...prev,
         eventId: createdEvent.id,
         eventProtocol: createdEvent.protocol,
+        participationQuota: quickForm.participationQuota || (createdEvent.participation_quota != null ? String(createdEvent.participation_quota) : ''),
       }));
       setShowQuickRegister(false);
       resetQuickForm();
@@ -456,7 +506,7 @@ const Quotations: React.FC = () => {
              <button onClick={() => setViewMode('grid')} className={`p-3 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}><LayoutGrid size={20}/></button>
              <button onClick={() => setViewMode('list')} className={`p-3 rounded-xl transition-all ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}><List size={20}/></button>
           </div>
-          <button onClick={() => { setStep(2); setWizardStep(1); setEditingQuoteId(null); setNewQuote({eventId: '', eventProtocol: '', items: [], selectedSuppliers: []}); }} className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 shadow-xl shadow-blue-600/20 whitespace-nowrap">
+          <button onClick={() => { setStep(2); setWizardStep(1); setEditingQuoteId(null); setNewQuote({eventId: '', eventProtocol: '', items: [], selectedSuppliers: [], participationQuota: '', attachments: []}); }} className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 shadow-xl shadow-blue-600/20 whitespace-nowrap">
             <Plus size={20} /> Nova Cotação
           </button>
         </div>
@@ -564,7 +614,12 @@ const Quotations: React.FC = () => {
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Eventos Disponíveis</label>
                   <select className="w-full p-5 bg-slate-50 border border-slate-100 rounded-3xl outline-none focus:ring-4 focus:ring-blue-500/5 font-bold text-slate-800 disabled:opacity-50" value={newQuote.eventId} onChange={(e) => {
                       const evt = realEvents.find(ev => ev.id === e.target.value);
-                      setNewQuote({...newQuote, eventId: e.target.value, eventProtocol: evt?.protocol || ''});
+                      setNewQuote({
+                        ...newQuote,
+                        eventId: e.target.value,
+                        eventProtocol: evt?.protocol || '',
+                        participationQuota: evt?.participation_quota != null ? String(evt.participation_quota) : newQuote.participationQuota,
+                      });
                   }} disabled={!!editingQuoteId}>
                     <option value="">Selecione...</option>
                     {realEvents.map(e => <option key={e.id} value={e.id}>{e.protocol} - {e.category} ({e.status})</option>)}
@@ -600,9 +655,10 @@ const Quotations: React.FC = () => {
                             />
                             <input
                               className="w-full p-3 rounded-xl border border-slate-200 bg-white text-sm font-bold outline-none"
-                              placeholder="CPF/CNPJ (opcional)"
+                              placeholder="CPF/CNPJ (opcional — CNPJ busca automática)"
                               value={quickForm.document}
                               onChange={(e) => setQuickForm((prev) => ({ ...prev, document: e.target.value }))}
+                              onBlur={handleQuickDocLookup}
                             />
                           </div>
                           <select
@@ -614,6 +670,15 @@ const Quotations: React.FC = () => {
                               <option key={type} value={type}>{type}</option>
                             ))}
                           </select>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="w-full p-3 rounded-xl border border-slate-200 bg-white text-sm font-bold outline-none"
+                            placeholder="Cota de participação do veículo (opcional)"
+                            value={quickForm.participationQuota}
+                            onChange={(e) => setQuickForm((prev) => ({ ...prev, participationQuota: e.target.value }))}
+                          />
                           <textarea
                             className="w-full p-3 rounded-xl border border-slate-200 bg-white text-sm font-medium outline-none min-h-[70px]"
                             placeholder="Descricao do sinistro (opcional)"
@@ -642,6 +707,46 @@ const Quotations: React.FC = () => {
                       )}
                     </div>
                   )}
+
+                  <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 space-y-3">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Cota de participação do veículo</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="w-full p-4 bg-white border border-slate-100 rounded-2xl font-bold outline-none"
+                      placeholder="R$ 0,00 (opcional)"
+                      value={newQuote.participationQuota}
+                      onChange={(e) => setNewQuote({ ...newQuote, participationQuota: e.target.value })}
+                    />
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Anexos da cotação</label>
+                      <button type="button" onClick={() => rfqFileInputRef.current?.click()} className="text-[10px] font-black uppercase bg-blue-50 text-blue-600 px-3 py-1.5 rounded-xl hover:bg-blue-100 flex items-center gap-1">
+                        <Paperclip size={12} /> Adicionar
+                      </button>
+                      <input type="file" ref={rfqFileInputRef} className="hidden" multiple accept={ATTACHMENT_ACCEPT} onChange={handleRfqFileSelect} />
+                    </div>
+                    {newQuote.attachments.length === 0 ? (
+                      <p className="text-xs font-bold text-slate-400">Nenhum anexo — fotos, vídeos, laudos ou PDFs.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {newQuote.attachments.map((att: any) => (
+                          <div key={att.id} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-100">
+                            <Paperclip size={14} className="text-slate-400 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-slate-700 truncate">{att.name}</p>
+                              <p className="text-[10px] text-slate-400">{att.size}</p>
+                            </div>
+                            {att.url && (
+                              <a href={att.url} target="_blank" rel="noreferrer" className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><Eye size={14} /></a>
+                            )}
+                            <button type="button" onClick={() => removeRfqAttachment(att.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={14} /></button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   {selectedEvent && (
                     <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">

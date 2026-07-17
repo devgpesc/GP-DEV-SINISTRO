@@ -3,7 +3,7 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   Plus, Search, Eye, X, AlertCircle, 
   FileText, Trash2, ShieldAlert, Edit3, User, Link as LinkIcon, Lock, CheckCircle2,
-  Filter, Calendar, Paperclip, Image as ImageIcon, Download, File, Loader2
+  Filter, Calendar, Paperclip, Image as ImageIcon, Download, File, Loader2, UserPlus
 } from 'lucide-react';
 import { EventStatus, EventType, Priority, Event, Vehicle, Associate } from '../types';
 import { supabase } from '../services/supabaseClient';
@@ -13,6 +13,8 @@ import PremiumModal, { FormSection, FieldLabel, fieldClassName } from '../compon
 import { useEventTypes } from '../hooks/useEventTypes';
 import { ATTACHMENT_ACCEPT } from '../utils/defaults';
 import { getAttachmentKind } from '../services/attachmentService';
+import { quickCreateAssociate, quickCreateVehicle } from '../services/quickRegisterService';
+import { lookupService } from '../services/lookupService';
 import FileViewerModal from '../components/FileViewerModal';
 
 const StatusBadge = ({ status }: { status: EventStatus }) => {
@@ -80,8 +82,14 @@ const Events: React.FC = () => {
     vehicleId: '',
     associateId: '',
     description: '',
+    participationQuota: '',
     attachments: [] as any[]
   });
+  const [showQuickAssociate, setShowQuickAssociate] = useState(false);
+  const [showQuickVehicle, setShowQuickVehicle] = useState(false);
+  const [quickAssociate, setQuickAssociate] = useState({ name: '', document: '', type: 'PF' as 'PF' | 'PJ' });
+  const [quickVehicle, setQuickVehicle] = useState({ plate: '' });
+  const [isQuickSaving, setIsQuickSaving] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -124,6 +132,7 @@ const Events: React.FC = () => {
       vehicleId: evt.vehicleId,
       associateId: evt.associateId,
       description: evt.description,
+      participationQuota: evt.participation_quota != null ? String(evt.participation_quota) : '',
       attachments: evt.attachments || []
     });
     setIsModalOpen(true);
@@ -139,6 +148,7 @@ const Events: React.FC = () => {
         vehicleId: '',
         associateId: '',
         description: '',
+        participationQuota: '',
         attachments: []
     });
     setIsModalOpen(true);
@@ -168,6 +178,70 @@ const Events: React.FC = () => {
 
   const openAttachment = (att: any) => {
     setViewerFile({ name: att.name, type: att.type, url: att.url });
+  };
+
+  const handleQuickAssociateDocLookup = async () => {
+    const cleanDoc = quickAssociate.document.replace(/\D/g, '');
+    if (quickAssociate.type !== 'PJ' || cleanDoc.length !== 14) return;
+    setIsQuickSaving(true);
+    try {
+      const data = await lookupService.fetchCNPJ(cleanDoc);
+      if (data) {
+        setQuickAssociate(prev => ({
+          ...prev,
+          name: data.fantasy || data.name || prev.name,
+        }));
+        addToast('success', 'CNPJ encontrado', 'Dados preenchidos automaticamente.');
+      }
+    } finally {
+      setIsQuickSaving(false);
+    }
+  };
+
+  const handleQuickAssociateSave = async () => {
+    if (!quickAssociate.name.trim()) {
+      addToast('warning', 'Nome obrigatório', 'Informe o nome do associado.');
+      return;
+    }
+    setIsQuickSaving(true);
+    try {
+      const id = await quickCreateAssociate({
+        name: quickAssociate.name,
+        document: quickAssociate.document,
+        type: quickAssociate.type,
+      });
+      const { data: as } = await supabase.from('associates').select('*');
+      setAssociates(as || []);
+      setFormData(prev => ({ ...prev, associateId: id, vehicleId: '' }));
+      setShowQuickAssociate(false);
+      setQuickAssociate({ name: '', document: '', type: 'PF' });
+      addToast('success', 'Associado criado', 'Vincule o veículo envolvido.');
+    } catch (error: any) {
+      addToast('error', 'Erro', error.message || 'Falha no cadastro rápido.');
+    } finally {
+      setIsQuickSaving(false);
+    }
+  };
+
+  const handleQuickVehicleSave = async () => {
+    if (!formData.associateId) {
+      addToast('warning', 'Associado obrigatório', 'Selecione ou cadastre o associado primeiro.');
+      return;
+    }
+    setIsQuickSaving(true);
+    try {
+      const id = await quickCreateVehicle({ plate: quickVehicle.plate, associateId: formData.associateId });
+      const { data: vs } = await supabase.from('vehicles').select('*');
+      setVehicles(vs || []);
+      setFormData(prev => ({ ...prev, vehicleId: id }));
+      setShowQuickVehicle(false);
+      setQuickVehicle({ plate: '' });
+      addToast('success', 'Veículo criado', 'Veículo vinculado ao sinistro.');
+    } catch (error: any) {
+      addToast('error', 'Erro', error.message || 'Falha no cadastro rápido.');
+    } finally {
+      setIsQuickSaving(false);
+    }
   };
 
   const removeAttachment = async (att: any) => {
@@ -206,6 +280,7 @@ const Events: React.FC = () => {
             vehicleId: formData.vehicleId,
             associateId: formData.associateId,
             description: formData.description,
+            participation_quota: formData.participationQuota ? Number(formData.participationQuota) : null,
             attachments: formData.attachments,
             status: eventToEdit ? eventToEdit.status : EventStatus.WAITING,
             history: eventToEdit ? eventToEdit.history : []
@@ -483,7 +558,7 @@ const Events: React.FC = () => {
           >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <FieldLabel required>Associado / Proprietário</FieldLabel>
+                <FieldLabel required>Associado / Terceiro</FieldLabel>
                 <select
                   className={fieldClassName}
                   value={formData.associateId}
@@ -495,6 +570,28 @@ const Events: React.FC = () => {
                     <option key={a.id} value={a.id}>{a.name} ({a.document})</option>
                   ))}
                 </select>
+                {!eventToEdit && (
+                  <button
+                    type="button"
+                    onClick={() => { setShowQuickAssociate(v => !v); setShowQuickVehicle(false); }}
+                    className="mt-2 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-700"
+                  >
+                    <UserPlus size={12} /> {showQuickAssociate ? 'Fechar cadastro rápido' : 'Cadastro rápido'}
+                  </button>
+                )}
+                {showQuickAssociate && !eventToEdit && (
+                  <div className="mt-3 p-4 rounded-2xl border border-blue-100 bg-blue-50/40 space-y-3">
+                    <div className="flex p-1 bg-slate-100 rounded-xl">
+                      <button type="button" onClick={() => setQuickAssociate(p => ({ ...p, type: 'PF' }))} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase ${quickAssociate.type === 'PF' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}>PF</button>
+                      <button type="button" onClick={() => setQuickAssociate(p => ({ ...p, type: 'PJ' }))} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase ${quickAssociate.type === 'PJ' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}>PJ</button>
+                    </div>
+                    <input className={fieldClassName} placeholder="Nome / Razão social *" value={quickAssociate.name} onChange={e => setQuickAssociate(p => ({ ...p, name: e.target.value }))} />
+                    <input className={fieldClassName} placeholder={quickAssociate.type === 'PJ' ? 'CNPJ (busca automática)' : 'CPF (opcional)'} value={quickAssociate.document} onChange={e => setQuickAssociate(p => ({ ...p, document: e.target.value }))} onBlur={handleQuickAssociateDocLookup} />
+                    <button type="button" disabled={isQuickSaving} onClick={handleQuickAssociateSave} className="w-full py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase disabled:opacity-50">
+                      {isQuickSaving ? 'Salvando...' : 'Criar e vincular'}
+                    </button>
+                  </div>
+                )}
               </div>
               <div>
                 <FieldLabel required>Veículo envolvido</FieldLabel>
@@ -515,6 +612,23 @@ const Events: React.FC = () => {
                     <option key={v.id} value={v.id}>{v.plate} — {v.model}</option>
                   ))}
                 </select>
+                {!eventToEdit && formData.associateId && (
+                  <button
+                    type="button"
+                    onClick={() => { setShowQuickVehicle(v => !v); setShowQuickAssociate(false); }}
+                    className="mt-2 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-700"
+                  >
+                    <UserPlus size={12} /> {showQuickVehicle ? 'Fechar cadastro rápido' : 'Cadastro rápido de veículo'}
+                  </button>
+                )}
+                {showQuickVehicle && formData.associateId && !eventToEdit && (
+                  <div className="mt-3 p-4 rounded-2xl border border-blue-100 bg-blue-50/40 space-y-3">
+                    <input className={`${fieldClassName} uppercase`} placeholder="Placa *" value={quickVehicle.plate} onChange={e => setQuickVehicle({ plate: e.target.value })} maxLength={8} />
+                    <button type="button" disabled={isQuickSaving} onClick={handleQuickVehicleSave} className="w-full py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase disabled:opacity-50">
+                      {isQuickSaving ? 'Salvando...' : 'Criar e vincular'}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </FormSection>
@@ -568,6 +682,18 @@ const Events: React.FC = () => {
                     <option key={t} value={t}>{t}</option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <FieldLabel>Cota de participação do veículo</FieldLabel>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className={fieldClassName}
+                  value={formData.participationQuota}
+                  onChange={(e) => setFormData({ ...formData, participationQuota: e.target.value })}
+                  placeholder="R$ 0,00 (opcional)"
+                />
               </div>
               <div>
                 <FieldLabel>Descrição do ocorrido</FieldLabel>

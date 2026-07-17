@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Truck, CheckCircle, Clock, Archive, BarChart3, PackageCheck, Search, UserCheck, BriefcaseBusiness, LayoutGrid, List, History } from 'lucide-react';
+import { Truck, CheckCircle, Clock, Archive, BarChart3, PackageCheck, Search, UserCheck, BriefcaseBusiness, LayoutGrid, List, History, Edit3, Trash2 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import ActionModal from '../components/ActionModal';
 
 type DeliveryStatus = 'Pendente' | 'Entregue';
 
@@ -48,6 +50,7 @@ const normalizeStatus = (status?: string): DeliveryStatus => {
 
 const Deliveries: React.FC = () => {
   const { profile } = useAuth();
+  const { addToast } = useToast();
   const [activeTab, setActiveTab] = useState<'operacao' | 'gestao' | 'historico'>('operacao');
   const [deliveries, setDeliveries] = useState<DeliveryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,6 +59,10 @@ const Deliveries: React.FC = () => {
   const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards');
   const [deliverModal, setDeliverModal] = useState<DeliveryItem | null>(null);
   const [deliverForm, setDeliverForm] = useState({ responsible: '', observation: '' });
+  const [editModal, setEditModal] = useState<DeliveryItem | null>(null);
+  const [editForm, setEditForm] = useState({ supplier: '', customer: '', vehicle: '', event: '', items: 0, observation: '' });
+  const [deleteTarget, setDeleteTarget] = useState<DeliveryItem | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   useEffect(() => {
     loadDeliveries();
@@ -201,7 +208,7 @@ const Deliveries: React.FC = () => {
   const markAsDelivered = async () => {
     if (!deliverModal) return;
     if (!deliverForm.responsible.trim()) {
-      alert('Informe o responsável pela entrega.');
+      addToast('warning', 'Campo obrigatório', 'Informe o responsável pela entrega.');
       return;
     }
 
@@ -258,7 +265,7 @@ const Deliveries: React.FC = () => {
       setDeliverModal(null);
       setDeliverForm({ responsible: profile?.full_name || '', observation: '' });
     } else {
-      alert('Erro ao registrar entrega');
+      addToast('error', 'Erro', 'Erro ao registrar entrega.');
     }
 
     setUpdatingId(null);
@@ -317,6 +324,123 @@ const Deliveries: React.FC = () => {
 
   const totalPendingValue = activeDeliveries.reduce((sum, delivery) => sum + delivery.amount, 0);
   const visibleDeliveries = activeTab === 'operacao' ? activeDeliveries : activeTab === 'historico' ? historyDeliveries : [];
+
+  const openEditModal = (delivery: DeliveryItem) => {
+    setEditModal(delivery);
+    setEditForm({
+      supplier: delivery.supplier,
+      customer: delivery.customer || '',
+      vehicle: delivery.vehicle || '',
+      event: delivery.event,
+      items: delivery.items,
+      observation: delivery.observation || '',
+    });
+  };
+
+  const saveEdit = async () => {
+    if (!editModal) return;
+    if (!editForm.supplier.trim()) {
+      addToast('warning', 'Campo obrigatório', 'Informe o fornecedor.');
+      return;
+    }
+    setIsSavingEdit(true);
+    const payload = {
+      po: editModal.po,
+      supplier: editForm.supplier.trim(),
+      items: editForm.items,
+      date: editModal.date,
+      event: editForm.event.trim(),
+      customer: editForm.customer.trim() || null,
+      vehicle: editForm.vehicle.trim() || null,
+      observation: editForm.observation.trim(),
+      status: editModal.status,
+      order_id: editModal.orderId || null,
+    };
+
+    const { data, error } = editModal.source === 'delivery'
+      ? await supabase.from('deliveries').update(payload).eq('id', editModal.id).select().single()
+      : await supabase.from('deliveries').insert([payload]).select().single();
+
+    if (!error) {
+      setDeliveries(prev => prev.map(item =>
+        item.id === editModal.id
+          ? {
+              ...item,
+              id: data?.id || item.id,
+              supplier: editForm.supplier.trim(),
+              customer: editForm.customer.trim() || undefined,
+              vehicle: editForm.vehicle.trim() || undefined,
+              event: editForm.event.trim(),
+              items: editForm.items,
+              observation: editForm.observation.trim(),
+              source: 'delivery' as const,
+            }
+          : item
+      ));
+      setEditModal(null);
+      addToast('success', 'Atualizado', 'Entrega editada com sucesso.');
+    } else {
+      addToast('error', 'Erro', 'Não foi possível salvar as alterações.');
+    }
+    setIsSavingEdit(false);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    if (deleteTarget.source !== 'delivery') {
+      addToast('warning', 'Indisponível', 'Esta entrega ainda não possui registro para exclusão.');
+      setDeleteTarget(null);
+      return;
+    }
+    const { error } = await supabase.from('deliveries').delete().eq('id', deleteTarget.id);
+    if (!error) {
+      await loadDeliveries();
+      addToast('success', 'Excluída', 'Entrega removida com sucesso.');
+    } else {
+      addToast('error', 'Erro', 'Não foi possível excluir a entrega.');
+    }
+    setDeleteTarget(null);
+  };
+
+  const renderActions = (delivery: DeliveryItem) => (
+    <div className="flex items-center justify-end gap-2 flex-wrap">
+      {activeTab === 'operacao' && (
+        <>
+          <button
+            type="button"
+            onClick={() => openEditModal(delivery)}
+            className="p-2 rounded-xl text-slate-500 hover:text-blue-600 hover:bg-blue-50"
+            title="Editar"
+          >
+            <Edit3 size={16} />
+          </button>
+          {delivery.source === 'delivery' && (
+            <button
+              type="button"
+              onClick={() => setDeleteTarget(delivery)}
+              className="p-2 rounded-xl text-slate-500 hover:text-red-600 hover:bg-red-50"
+              title="Excluir"
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
+          <button
+            disabled={updatingId === delivery.id}
+            onClick={() => openDeliverModal(delivery)}
+            className="px-4 py-2 rounded-xl bg-green-600 text-white text-[10px] font-black uppercase"
+          >
+            Marcar entregue
+          </button>
+        </>
+      )}
+      {activeTab === 'historico' && (
+        <div className="text-[10px] font-bold text-slate-500 text-right">
+          {delivery.deliveredBy && <p>Resp.: {delivery.deliveredBy}</p>}
+          {delivery.observation && <p className="mt-1">{delivery.observation}</p>}
+        </div>
+      )}
+    </div>
+  );
 
   const openDeliverModal = (delivery: DeliveryItem) => {
     setDeliverModal(delivery);
@@ -436,16 +560,7 @@ const Deliveries: React.FC = () => {
                       <p className="text-[11px] font-bold text-slate-400 mt-1">{delivery.vehicle || 'Veículo não informado'}</p>
                     </td>
                     <td className="px-6 py-5 text-right text-sm font-black text-slate-800">R$ {delivery.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                    <td className="px-6 py-5 text-right">
-                      {activeTab === 'operacao' ? (
-                        <button disabled={updatingId === delivery.id} onClick={() => openDeliverModal(delivery)} className="px-4 py-2 rounded-xl bg-green-600 text-white text-[10px] font-black uppercase">Marcar entregue</button>
-                      ) : (
-                        <div className="text-[10px] font-bold text-slate-500">
-                          {delivery.deliveredBy && <p>Resp.: {delivery.deliveredBy}</p>}
-                          {delivery.observation && <p className="mt-1">{delivery.observation}</p>}
-                        </div>
-                      )}
-                    </td>
+                    <td className="px-6 py-5 text-right">{renderActions(delivery)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -502,13 +617,31 @@ const Deliveries: React.FC = () => {
                 </div>
 
                 {activeTab === 'operacao' && (
-                  <button
-                    disabled={updatingId === delivery.id}
-                    onClick={() => openDeliverModal(delivery)}
-                    className="w-full flex items-center justify-center gap-2 py-3 bg-green-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-600/10"
-                  >
-                    <CheckCircle size={14} /> Marcar como entregue
-                  </button>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openEditModal(delivery)}
+                      className="flex-1 flex items-center justify-center gap-2 py-3 bg-slate-100 text-slate-700 rounded-2xl text-[10px] font-black uppercase"
+                    >
+                      <Edit3 size={14} /> Editar
+                    </button>
+                    {delivery.source === 'delivery' && (
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTarget(delivery)}
+                        className="flex items-center justify-center gap-2 px-4 py-3 bg-red-50 text-red-600 rounded-2xl text-[10px] font-black uppercase"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                    <button
+                      disabled={updatingId === delivery.id}
+                      onClick={() => openDeliverModal(delivery)}
+                      className="flex-[2] flex items-center justify-center gap-2 py-3 bg-green-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-600/10"
+                    >
+                      <CheckCircle size={14} /> Marcar como entregue
+                    </button>
+                  </div>
                 )}
               </div>
             ))
@@ -521,6 +654,58 @@ const Deliveries: React.FC = () => {
         </div>
         )
       )}
+
+      {editModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setEditModal(null)} />
+          <div className="relative bg-white w-full max-w-lg rounded-[32px] shadow-2xl p-8 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-black text-slate-800 mb-2">Editar entrega</h3>
+            <p className="text-sm text-slate-500 mb-6">{editModal.po}</p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Fornecedor *</label>
+                <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" value={editForm.supplier} onChange={e => setEditForm({ ...editForm, supplier: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Sinistro / Evento</label>
+                <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" value={editForm.event} onChange={e => setEditForm({ ...editForm, event: e.target.value })} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Cliente</label>
+                  <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" value={editForm.customer} onChange={e => setEditForm({ ...editForm, customer: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Veículo</label>
+                  <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" value={editForm.vehicle} onChange={e => setEditForm({ ...editForm, vehicle: e.target.value })} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Itens</label>
+                <input type="number" min={0} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" value={editForm.items} onChange={e => setEditForm({ ...editForm, items: Number(e.target.value) })} />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Observação</label>
+                <textarea className="w-full min-h-[80px] p-4 bg-slate-50 border border-slate-100 rounded-2xl font-medium outline-none resize-none" value={editForm.observation} onChange={e => setEditForm({ ...editForm, observation: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4 mt-6">
+              <button onClick={() => setEditModal(null)} className="py-3 bg-slate-100 rounded-2xl font-black text-xs uppercase text-slate-500">Cancelar</button>
+              <button disabled={isSavingEdit} onClick={saveEdit} className="py-3 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase disabled:opacity-50">{isSavingEdit ? 'Salvando...' : 'Salvar'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ActionModal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+        title="Excluir entrega?"
+        description={`Tem certeza que deseja remover a entrega ${deleteTarget?.po}? Esta ação não pode ser desfeita.`}
+        type="danger"
+        confirmText="Sim, excluir"
+      />
 
       {deliverModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
