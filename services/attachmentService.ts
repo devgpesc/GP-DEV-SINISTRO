@@ -22,6 +22,17 @@ export function getAttachmentKind(mime: string, name: string) {
   return 'file';
 }
 
+export function normalizeAttachmentRow(row: any): EventAttachment {
+  return {
+    id: row.id,
+    event_id: row.event_id,
+    url: row.url,
+    name: row.name || row.file_name || row.filename || 'Anexo',
+    type: row.type || row.mime_type || 'file',
+    size: row.size,
+  };
+}
+
 export async function uploadEventAttachments(eventId: string, attachments: EventAttachment[]) {
   const saved: EventAttachment[] = [];
 
@@ -55,7 +66,7 @@ export async function uploadEventAttachments(eventId: string, attachments: Event
       .single();
 
     if (error) throw error;
-    saved.push({ ...data, size: att.size });
+    saved.push({ ...normalizeAttachmentRow(data), size: att.size });
   }
 
   return saved;

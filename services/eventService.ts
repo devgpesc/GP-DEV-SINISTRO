@@ -1,7 +1,7 @@
 
 import { supabase } from './supabaseClient';
 import { Event } from '../types';
-import { uploadEventAttachments, deleteEventAttachment, EventAttachment } from './attachmentService';
+import { uploadEventAttachments, deleteEventAttachment, EventAttachment, normalizeAttachmentRow } from './attachmentService';
 
 export const eventService = {
   async getEvents(): Promise<Event[]> {
@@ -18,7 +18,10 @@ export const eventService = {
       console.error("Erro ao buscar eventos no Supabase:", error);
       return [];
     }
-    return data || [];
+    return (data || []).map((event: any) => ({
+      ...event,
+      attachments: (event.attachments || []).map(normalizeAttachmentRow),
+    }));
   },
 
   async createEvent(eventData: Partial<Event>) {
@@ -61,7 +64,13 @@ export const eventService = {
         }]);
 
         if (attachments?.length) {
-          await uploadEventAttachments(data.id, attachments as EventAttachment[]);
+          try {
+            await uploadEventAttachments(data.id, attachments as EventAttachment[]);
+          } catch (attachmentError) {
+            await supabase.from('event_history').delete().eq('event_id', data.id);
+            await supabase.from('events').delete().eq('id', data.id);
+            throw attachmentError;
+          }
         }
     }
 
