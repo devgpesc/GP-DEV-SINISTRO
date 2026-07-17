@@ -4,6 +4,7 @@ const { BrowserRouter: Router, Routes, Route, Navigate } = ReactRouterDOM as any
 import { AuthProvider, useAuth } from './context/AuthContext.tsx';
 import { ToastProvider } from './context/ToastContext.tsx';
 import { PrivateRoute } from './components/PrivateRoute.tsx';
+import { PermissionRoute } from './components/PermissionRoute.tsx';
 import Layout from './components/Layout.tsx';
 
 // Pages
@@ -53,8 +54,12 @@ const App: React.FC = () => {
                       <Route path="/associados" element={<Associates />} />
                       <Route path="/veiculos" element={<Vehicles />} />
                       <Route path="/catalogo" element={<Catalog />} />
-                      <Route path="/relatorios" element={<Reports />} />
-                      <Route path="/configuracoes" element={<Settings />} />
+                      <Route path="/relatorios" element={
+                        <PermissionRoute require="canViewReports"><Reports /></PermissionRoute>
+                      } />
+                      <Route path="/configuracoes" element={
+                        <PermissionRoute require="canManageSettings"><Settings /></PermissionRoute>
+                      } />
                       <Route path="/notificacoes" element={<Notifications />} />
                       <Route path="/saas-admin" element={
                           <AdminRoute><SaasAdmin /></AdminRoute>

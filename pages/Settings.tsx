@@ -4,6 +4,7 @@ import { supabase } from '../services/supabaseClient';
 import { useToast } from '../context/ToastContext';
 import { auditService } from '../services/auditService';
 import { useAuth } from '../context/AuthContext';
+import { apiKeyService, ApiKeyRecord } from '../services/apiKeyService';
 import ActionModal from '../components/ActionModal';
 import { Invitation, AuditLog } from '../types';
 import { DEFAULT_EVENT_TYPES } from '../utils/defaults';
@@ -19,7 +20,7 @@ const SYSTEM_FEATURES = [
 
 const Settings: React.FC = () => {
   const { addToast } = useToast();
-  const { profile, currentTenant } = useAuth();
+  const { profile, currentTenant, access } = useAuth();
   const [activeTab, setActiveTab] = useState('ai_config');
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -61,6 +62,11 @@ const Settings: React.FC = () => {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [apiKeys, setApiKeys] = useState<ApiKeyRecord[]>([]);
+  const [loadingApiKeys, setLoadingApiKeys] = useState(false);
+  const [newApiKeyName, setNewApiKeyName] = useState('');
+  const [createdApiKey, setCreatedApiKey] = useState<string | null>(null);
+  const [creatingApiKey, setCreatingApiKey] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -72,6 +78,9 @@ const Settings: React.FC = () => {
     }
     if (activeTab === 'audit') {
         loadAuditLogs();
+    }
+    if (activeTab === 'api_connect' && currentTenant?.id) {
+        loadApiKeys();
     }
   }, [activeTab, currentTenant?.id]);
 
@@ -160,6 +169,48 @@ const Settings: React.FC = () => {
       const logs = await auditService.getLogs();
       setAuditLogs(logs);
       setLoadingLogs(false);
+  };
+
+  const loadApiKeys = async () => {
+    if (!currentTenant?.id) return;
+    setLoadingApiKeys(true);
+    try {
+      const keys = await apiKeyService.list(currentTenant.id);
+      setApiKeys(keys);
+    } catch (err: any) {
+      addToast('error', 'Erro', err.message || 'Falha ao carregar chaves de API.');
+    } finally {
+      setLoadingApiKeys(false);
+    }
+  };
+
+  const handleCreateApiKey = async () => {
+    if (!currentTenant?.id || !newApiKeyName.trim()) {
+      addToast('warning', 'Nome obrigatório', 'Informe um nome para identificar a chave.');
+      return;
+    }
+    setCreatingApiKey(true);
+    try {
+      const created = await apiKeyService.create(currentTenant.id, newApiKeyName.trim(), ['read']);
+      setCreatedApiKey(created.key);
+      setNewApiKeyName('');
+      await loadApiKeys();
+      addToast('success', 'Chave criada', 'Copie a chave agora — ela não será exibida novamente.');
+    } catch (err: any) {
+      addToast('error', 'Erro', err.message || 'Não foi possível criar a chave.');
+    } finally {
+      setCreatingApiKey(false);
+    }
+  };
+
+  const handleRevokeApiKey = async (keyId: string) => {
+    try {
+      await apiKeyService.revoke(keyId);
+      await loadApiKeys();
+      addToast('success', 'Revogada', 'Chave de API desativada.');
+    } catch (err: any) {
+      addToast('error', 'Erro', err.message || 'Falha ao revogar chave.');
+    }
   };
 
   const handleSaveAll = async () => {
@@ -316,7 +367,8 @@ const Settings: React.FC = () => {
     { id: 'ai_config', label: 'Inteligência Artificial', icon: Brain },
     { id: 'general', label: 'Geral', icon: Building },
     { id: 'event_types', label: 'Tipos de Sinistro', icon: Shield },
-    { id: 'users', label: 'Equipe e Permissões', icon: Users },
+    ...(access.canManageTeam ? [{ id: 'users', label: 'Equipe e Permissões', icon: Users }] : []),
+    ...(access.canManageSettings ? [{ id: 'api_connect', label: 'API / Integrações', icon: LinkIcon }] : []),
     ...(profile?.role === 'Admin' || profile?.role === 'super_admin' ? [{ id: 'audit', label: 'Auditoria', icon: ClipboardList }] : []),
     { id: 'integrations', label: 'Outras Integrações', icon: Globe },
   ];
@@ -534,6 +586,69 @@ const Settings: React.FC = () => {
                                   </tbody>
                               </table>
                           </div>
+                      )}
+                  </div>
+              )}
+
+              {activeTab === 'api_connect' && (
+                  <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
+                      <div className="flex items-center gap-3 pb-6 border-b border-slate-50">
+                          <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl"><LinkIcon size={24}/></div>
+                          <div>
+                              <h3 className="text-lg font-black text-slate-800">Conexão via API</h3>
+                              <p className="text-xs text-slate-400 font-medium">Gere chaves para integrar ERPs, BI ou automações externas.</p>
+                          </div>
+                      </div>
+
+                      <div className="p-6 bg-blue-50/60 rounded-3xl border border-blue-100">
+                          <p className="text-sm font-bold text-slate-700 mb-2">Documentação técnica</p>
+                          <p className="text-xs text-slate-500 mb-4">Consulte o arquivo <code className="bg-white px-2 py-1 rounded">docs/API-INTEGRACAO.md</code> no repositório ou acesse <code className="bg-white px-2 py-1 rounded">GET /api/v1</code> para metadados dos endpoints.</p>
+                          <p className="text-xs font-bold text-slate-600">Base URL produção: <span className="font-mono">{window.location.origin}/api/v1</span></p>
+                      </div>
+
+                      <div className="flex flex-col md:flex-row gap-3">
+                          <input
+                            className="flex-1 p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none"
+                            placeholder="Nome da integração (ex: ERP Matriz)"
+                            value={newApiKeyName}
+                            onChange={(e) => setNewApiKeyName(e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            disabled={creatingApiKey}
+                            onClick={handleCreateApiKey}
+                            className="px-6 py-4 bg-blue-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest disabled:opacity-50"
+                          >
+                            {creatingApiKey ? 'Gerando...' : 'Gerar chave'}
+                          </button>
+                      </div>
+
+                      {createdApiKey && (
+                        <div className="p-5 rounded-2xl bg-amber-50 border border-amber-200">
+                          <p className="text-xs font-black uppercase tracking-widest text-amber-700 mb-2">Chave gerada — copie agora</p>
+                          <div className="flex gap-2">
+                            <input readOnly className="flex-1 p-3 bg-white border border-amber-100 rounded-xl font-mono text-xs" value={createdApiKey} />
+                            <button type="button" onClick={() => { navigator.clipboard.writeText(createdApiKey); addToast('success', 'Copiado', 'Chave copiada.'); }} className="px-4 py-2 bg-amber-600 text-white rounded-xl text-xs font-black uppercase">Copiar</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {loadingApiKeys ? (
+                        <div className="py-12 text-center"><Loader2 className="animate-spin mx-auto text-blue-600"/></div>
+                      ) : (
+                        <div className="space-y-3">
+                          {apiKeys.map((key) => (
+                            <div key={key.id} className="p-4 rounded-2xl border border-slate-100 flex items-center justify-between gap-4">
+                              <div>
+                                <p className="font-black text-slate-800">{key.name}</p>
+                                <p className="text-xs font-mono text-slate-500 mt-1">{key.key_prefix}••••••••</p>
+                                <p className="text-[10px] text-slate-400 mt-1">Criada em {new Date(key.created_at).toLocaleString('pt-BR')}{key.last_used_at ? ` • Último uso ${new Date(key.last_used_at).toLocaleString('pt-BR')}` : ''}</p>
+                              </div>
+                              <button type="button" onClick={() => handleRevokeApiKey(key.id)} className="px-4 py-2 rounded-xl bg-red-50 text-red-600 text-xs font-black uppercase">Revogar</button>
+                            </div>
+                          ))}
+                          {apiKeys.length === 0 && <p className="text-sm font-bold text-slate-400 text-center py-8">Nenhuma chave ativa.</p>}
+                        </div>
                       )}
                   </div>
               )}

@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { Loader2, Car, LogOut } from 'lucide-react';
 
 export const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading, memberships, isSuperAdmin, signOut } = useAuth();
 
   // 1. BLOQUEIO DE RENDERIZAÇÃO COM OPÇÃO DE SAÍDA:
   // Se o Supabase ainda está verificando o cookie/localStorage, mostramos um Loading.
@@ -41,6 +41,10 @@ export const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children
   // 2. VERIFICAÇÃO FINAL:
   if (!user) {
     return <Navigate to="/login" />;
+  }
+
+  if (!loading && memberships.length === 0 && !isSuperAdmin) {
+    return <Navigate to="/login" replace />;
   }
 
   // 3. SUCESSO:

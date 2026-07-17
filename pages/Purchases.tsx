@@ -2,16 +2,20 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   ShoppingCart, Search, Filter, CheckCircle2, XCircle, Printer, MoreVertical, 
-  DollarSign, UserCheck, X, Eye, EyeOff, Loader2, Info, Trash2, ShieldCheck, AlertTriangle, Truck, Calendar, User, Car
+  DollarSign, UserCheck, X, Eye, EyeOff, Loader2, Info, Trash2, ShieldCheck, AlertTriangle, Truck, Calendar, User, Car, History, ClipboardList
 } from 'lucide-react';
 import { PurchaseOrder } from '../types';
 import { supabase } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { openPurchaseOrderPreview, PrintOrientation } from '../utils/purchaseOrderPrint';
+import { purchaseOrderService, getActionLabel, PurchaseOrderHistoryEntry } from '../services/purchaseOrderService';
+import { auditService } from '../services/auditService';
 
 const Purchases: React.FC = () => {
   const { access } = useAuth();
   const canApprove = access.canApprovePurchases;
+  const canCancel = access.canCancelPurchases;
+  const canDelete = access.canDeleteRecords;
   
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('Todos');
@@ -31,6 +35,12 @@ const Purchases: React.FC = () => {
     amount?: number;
     approvalNote?: string;
   }>({ isOpen: false, type: null, orderId: null, orderCode: null, approvalNote: '' });
+
+  const [historyModal, setHistoryModal] = useState<{ order: any | null; entries: PurchaseOrderHistoryEntry[]; loading: boolean }>({
+    order: null,
+    entries: [],
+    loading: false,
+  });
 
   useEffect(() => {
     loadOrders();
@@ -248,13 +258,27 @@ const Purchases: React.FC = () => {
   };
 
   const updateOrderStatus = async (id: string, newStatus: PurchaseOrder['status'], orderContext?: any, extra?: Record<string, unknown>) => {
+    const previous = orders.find(o => o.id === id);
     const { error } = await supabase.from('purchase_orders').update({ status: newStatus, ...extra }).eq('id', id);
     if (!error) {
         setOrders(prev => prev.map(o => o.id === id ? { ...o, status: newStatus, ...extra } : o));
         await syncWorkflowStatus(orderContext, newStatus);
+        auditService.log('Update Status', 'PurchaseOrder', id, {
+          code: orderContext?.code || previous?.code,
+          from_status: previous?.status,
+          to_status: newStatus,
+          ...extra,
+        });
     } else {
-        setToast({ show: true, title: 'Erro', message: 'Falha ao atualizar status.', type: 'info' });
+        setToast({ show: true, title: 'Erro', message: error.message || 'Falha ao atualizar status.', type: 'info' });
     }
+  };
+
+  const openHistory = async (order: any) => {
+    setHistoryModal({ order, entries: [], loading: true });
+    const entries = await purchaseOrderService.getHistory(order.id);
+    setHistoryModal({ order, entries, loading: false });
+    setOpenMenuId(null);
   };
 
   const handleRequestApprove = (order: any) => {
@@ -330,14 +354,19 @@ const Purchases: React.FC = () => {
         await updateOrderStatus(confirmModal.orderId, 'Cancelada', order);
         setToast({ show: true, title: 'Cancelado', message: `Ordem ${confirmModal.orderCode} foi cancelada.`, type: 'info' });
       } else if (confirmModal.type === 'delete') {
+        if (!canDelete) {
+          setToast({ show: true, title: 'Acesso negado', message: 'Você não possui permissão para excluir OCs.', type: 'info' });
+          return;
+        }
         const order = orders.find(o => o.id === confirmModal.orderId);
         const { error } = await supabase.from('purchase_orders').delete().eq('id', confirmModal.orderId);
         if (!error) {
             setOrders(prev => prev.filter(o => o.id !== confirmModal.orderId));
             await syncWorkflowStatus(order, 'Cancelada');
+            auditService.log('Delete', 'PurchaseOrder', confirmModal.orderId!, { code: confirmModal.orderCode });
             setToast({ show: true, title: 'Excluído', message: `Ordem ${confirmModal.orderCode} removida.`, type: 'success' });
         } else {
-            setToast({ show: true, title: 'Erro', message: 'Não foi possível excluir.', type: 'info' });
+            setToast({ show: true, title: 'Erro', message: error.message || 'Não foi possível excluir.', type: 'info' });
         }
       }
       setConfirmModal({ isOpen: false, type: null, orderId: null, orderCode: null });
@@ -564,16 +593,18 @@ const Purchases: React.FC = () => {
                                                         <AlertTriangle size={16}/>
                                                     </button>
                                                 )}
+                                                <button onClick={() => openHistory(order)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-indigo-600 rounded-xl hover:border-indigo-200 transition-all shadow-sm" title="Histórico / Auditoria"><History size={18}/></button>
                                                 <button onClick={() => setViewOrder(order)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-blue-600 rounded-xl hover:border-blue-200 transition-all shadow-sm" title="Ver Detalhes"><Eye size={18}/></button>
                                                 <button onClick={() => handlePrintEnhanced(order)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-blue-600 rounded-xl hover:border-blue-200 transition-all shadow-sm hidden sm:block" title="Visualizar no navegador"><Printer size={18}/></button>
                                                 <div className="relative">
                                                     <button onClick={() => setOpenMenuId(openMenuId === order.id ? null : order.id)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-50 transition-all shadow-sm"><MoreVertical size={18}/></button>
                                                     {openMenuId === order.id && (
                                                         <div className="absolute right-0 bottom-full lg:bottom-auto lg:top-full mb-2 lg:mb-0 lg:mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-20 animate-in fade-in zoom-in duration-200">
-                                                            {order.status !== 'Cancelada' && <button onClick={() => handleRequestCancel(order)} className="w-full text-left px-4 py-3 text-xs font-bold text-amber-600 hover:bg-amber-50 border-b border-slate-50">Cancelar OC</button>}
+                                                            {order.status !== 'Cancelada' && canCancel && <button onClick={() => handleRequestCancel(order)} className="w-full text-left px-4 py-3 text-xs font-bold text-amber-600 hover:bg-amber-50 border-b border-slate-50">Cancelar OC</button>}
+                                                            <button onClick={() => openHistory(order)} className="w-full text-left px-4 py-3 text-xs font-bold text-indigo-600 hover:bg-indigo-50 border-b border-slate-50">Histórico / Auditoria</button>
                                                             {order.deliveryStatus === 'Divergente' && <button onClick={() => handleResolveDivergence(order)} className="w-full text-left px-4 py-3 text-xs font-bold text-red-600 hover:bg-red-50 border-b border-slate-50">Tratar divergência</button>}
                                                             <button onClick={() => { setOpenMenuId(null); handlePrintEnhanced(order, 'landscape'); }} className="w-full text-left px-4 py-3 text-xs font-bold text-blue-600 hover:bg-blue-50 border-b border-slate-50">Visualizar paisagem</button>
-                                                            <button onClick={() => handleRequestDelete(order)} className="w-full text-left px-4 py-3 text-xs font-bold text-red-600 hover:bg-red-50">Excluir Registro</button>
+                                                            {canDelete && <button onClick={() => handleRequestDelete(order)} className="w-full text-left px-4 py-3 text-xs font-bold text-red-600 hover:bg-red-50">Excluir Registro</button>}
                                                         </div>
                                                     )}
                                                 </div>
@@ -655,6 +686,52 @@ const Purchases: React.FC = () => {
                     </button>
                 </div>
             </div>
+        </div>
+      )}
+
+      {historyModal.order && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setHistoryModal({ order: null, entries: [], loading: false })} />
+          <div className="relative bg-white w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl"><ClipboardList size={20}/></div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-800">Auditoria da OC</h3>
+                  <p className="text-xs font-bold text-slate-500">{historyModal.order.code}</p>
+                </div>
+              </div>
+              <button onClick={() => setHistoryModal({ order: null, entries: [], loading: false })}><X size={20}/></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              {historyModal.loading ? (
+                <div className="py-16 text-center"><Loader2 className="animate-spin mx-auto text-indigo-600" size={28}/></div>
+              ) : historyModal.entries.length === 0 ? (
+                <p className="text-center text-sm font-bold text-slate-400 py-12">Nenhum evento registrado ainda.</p>
+              ) : (
+                <div className="space-y-4">
+                  {historyModal.entries.map((entry) => (
+                    <div key={entry.id} className="relative pl-6 border-l-2 border-indigo-100">
+                      <div className="absolute -left-[7px] top-1 w-3 h-3 rounded-full bg-indigo-500" />
+                      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                          <span className="text-xs font-black uppercase tracking-widest text-indigo-700">{getActionLabel(entry.action)}</span>
+                          <span className="text-[10px] font-mono text-slate-400">{new Date(entry.created_at).toLocaleString('pt-BR')}</span>
+                        </div>
+                        {(entry.from_status || entry.to_status) && (
+                          <p className="text-xs font-bold text-slate-600 mb-1">
+                            Status: {entry.from_status || '—'} → {entry.to_status || '—'}
+                          </p>
+                        )}
+                        {entry.comment && <p className="text-xs text-slate-600 mt-2 bg-white p-3 rounded-xl border border-slate-100">{entry.comment}</p>}
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-3">Por: {entry.user_name || 'Sistema'}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

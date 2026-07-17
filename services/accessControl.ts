@@ -15,6 +15,12 @@ export type AccessProfile = {
   canUseOperations: boolean;
   /** Aprovar OCs e ver fila financeira */
   canApprovePurchases: boolean;
+  /** Cancelar OCs pendentes */
+  canCancelPurchases: boolean;
+  /** Excluir registros permanentemente */
+  canDeleteRecords: boolean;
+  /** Ver valores financeiros detalhados */
+  canViewFinancial: boolean;
   /** Relatórios BI / executivos */
   canViewReports: boolean;
   /** Configurações da empresa e equipe */
@@ -51,6 +57,12 @@ export const resolveAccessProfile = (
     canUseOperations: hasTenantAccess,
     canApprovePurchases:
       isTenantManager || !!permissions.approve_purchases,
+    canCancelPurchases:
+      isTenantManager || !!permissions.approve_purchases,
+    canDeleteRecords:
+      isTenantManager || !!permissions.delete_records,
+    canViewFinancial:
+      isTenantManager || !!permissions.financial_view,
     canViewReports: isTenantManager || !!permissions.view_reports,
     canManageSettings: isTenantManager || isSuperAdmin,
     canManageTeam: isTenantManager || !!permissions.manage_users,

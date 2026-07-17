@@ -228,18 +228,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (mounted.current) setCurrentTenant(selectedTenant);
 
     } catch (err: any) {
-      console.warn('[Auth] Carregamento parcial ou offline:', err.message);
-      
-      // Fallback Seguro: Se for erro de rede, permite "Modo Rápido", mas se for falta de permissão, não.
-      // Assumimos que o bloqueio principal é feito no Login.tsx e na lógica acima.
+      console.warn('[Auth] Falha ao carregar contexto:', err.message);
       if (mounted.current) {
-          setProfile({
-            id: userId,
-            email: userEmail,
-            role: 'Usuário',
-            full_name: userMeta?.full_name || 'Usuário (Modo Rápido)',
-            permissions: {}
-          });
+        await (supabase.auth as any).signOut();
+        setSession(null);
+        setUser(null);
+        setProfile(null);
+        setMemberships([]);
+        setCurrentTenant(null);
       }
     }
   }, [completePendingRegistration]);
