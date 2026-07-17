@@ -92,7 +92,51 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-        run: npx vercel deploy --prebuilt --prod --yes --no-wait --token="$VERCEL_TOKEN"
+        run: |
+          set -euo pipefail
+
+          deploy_and_verify() {
+            local output exit_code=0
+            output=$(npx vercel deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN" 2>&1) || exit_code=$?
+            printf '%s\n' "$output"
+
+            url=$(printf '%s\n' "$output" | grep -Eo 'https://[^ ]+\.vercel\.app' | tail -1)
+            if [ -z "$url" ]; then
+              return "${exit_code:-1}"
+            fi
+
+            echo "Aguardando deploy: $url"
+            for i in $(seq 1 40); do
+              inspect=$(npx vercel inspect "$url" --token="$VERCEL_TOKEN" 2>&1 || true)
+              printf '%s\n' "$inspect"
+              if printf '%s\n' "$inspect" | grep -q '● Ready'; then
+                echo "Deploy confirmado: $url"
+                return 0
+              fi
+              if printf '%s\n' "$inspect" | grep -qiE 'Error|Failed|Canceled|Blocked'; then
+                echo "Deploy falhou na Vercel"
+                return 1
+              fi
+              sleep 15
+            done
+
+            echo "Timeout aguardando deploy ficar Ready"
+            return 1
+          }
+
+          for attempt in 1 2 3; do
+            echo "Tentativa de deploy $attempt/3..."
+            if deploy_and_verify; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Nova tentativa em 30s..."
+              sleep 30
+            fi
+          done
+
+          echo "Deploy falhou apos 3 tentativas"
+          exit 1
 
   deploy-preview:
     if: github.event_name == 'pull_request'
