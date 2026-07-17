@@ -182,10 +182,14 @@ const AuthCallback: React.FC = () => {
 
         if (session?.user) {
           await finishPendingInviteOrRegistration(inviteToken);
-          await refreshContext();
+          const contextLoaded = await refreshContext(session.user);
+          if (!contextLoaded) {
+            throw new Error(
+              'Login confirmado, mas nao foi possivel carregar sua empresa. Tente novamente em alguns segundos.',
+            );
+          }
           addToast('success', 'Acesso confirmado', 'Sua conta foi ativada com sucesso.');
-          window.history.replaceState({}, document.title, '/');
-          navigate('/', { replace: true });
+          window.location.replace('/');
           return;
         }
 

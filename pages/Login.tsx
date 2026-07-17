@@ -16,7 +16,7 @@ const Login: React.FC = () => {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const inviteToken = searchParams.get('invite');
-  const { user } = useAuth();
+  const { user, memberships, isSuperAdmin } = useAuth();
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -28,11 +28,12 @@ const Login: React.FC = () => {
   const [company] = useState({ name: 'Grupo Esc Sistemas', product: 'EventsCar' });
 
   useEffect(() => {
-    // Only redirect if a user is already present when the component mounts, 
-    // or if the component is purely idle. During login, localLoading is true.
-    if (user && !localLoading) {
-      if (inviteToken) {
-         // Auto-redeem for OAuth redirects or previously logged in users
+    if (!user || localLoading) return;
+
+    const hasAccess = isSuperAdmin || memberships.length > 0;
+    if (!hasAccess) return;
+
+    if (inviteToken) {
          const redeemInvite = async () => {
              try {
                 const { error: acceptError } = await supabase.rpc('accept_invite', { invite_token: inviteToken });
@@ -47,8 +48,7 @@ const Login: React.FC = () => {
       } else {
          navigate('/', { replace: true });
       }
-    }
-  }, [user, localLoading, navigate, inviteToken]);
+  }, [user, localLoading, navigate, inviteToken, memberships.length, isSuperAdmin]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,7 +86,6 @@ const Login: React.FC = () => {
       }
 
       if (profile?.role === 'super_admin') {
-          // Super Admin da plataforma sempre passa
           setLocalLoading(false);
           navigate('/', { replace: true });
           return; 
@@ -115,6 +114,7 @@ const Login: React.FC = () => {
       }
 
       // Sucesso - O AuthContext detectara a sessao e redirecionara
+      setLocalLoading(false);
       navigate('/', { replace: true });
     } catch (err: any) {
       console.error(err);

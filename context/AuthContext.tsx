@@ -41,7 +41,7 @@ interface AuthContextType {
   access: AccessProfile;
   checkPermission: (feature: string) => boolean;
   switchTenant: (tenantId: string) => void;
-  refreshContext: () => Promise<void>;
+  refreshContext: (overrideUser?: User) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -122,11 +122,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // TIMEOUT DE SEGURANÇA PARA DADOS (3.5 Segundos)
       // Se o banco demorar, não trava o login.
-      const dbTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('DB_TIMEOUT')), 3500));
+      const dbTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('DB_TIMEOUT')), 8000));
 
       const fetchProfile = supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
-      const fetchMembers = supabase.from('organization_members').select('*, saas_tenants(*)').eq('user_id', userId);
-      // Fetch tenants where the user is just the owner (for those not in organization_members)
+      const fetchMembers = supabase
+        .from('organization_members')
+        .select('id, tenant_id, user_id, role, created_at')
+        .eq('user_id', userId);
       const fetchOwnedTenants = supabase.from('saas_tenants').select('*').eq('owner_id', userId);
 
       // Race: Dados vs Timeout
@@ -145,6 +147,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           throw new Error('Erro ao buscar memberships: ' + membersRes.error.message);
       }
 
+      const memberRows = membersRes.data || [];
+      const tenantIds = [...new Set(memberRows.map((m: any) => m.tenant_id).filter(Boolean))];
+      let linkedTenants: any[] = [];
+      if (tenantIds.length > 0) {
+        const { data: tenantRows, error: tenantError } = await supabase
+          .from('saas_tenants')
+          .select('*')
+          .in('id', tenantIds);
+        if (tenantError) {
+          console.warn('[Auth] Falha ao buscar tenants vinculados:', tenantError.message);
+        } else {
+          linkedTenants = tenantRows || [];
+        }
+      }
+
+      const tenantById = new Map(linkedTenants.map((tenant: any) => [tenant.id, tenant]));
+
       // 1. Perfil
       const finalProfile: UserProfile = profileRes.data || {
         id: userId,
@@ -162,9 +181,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let combinedMemberships: EnrichedMembership[] = [];
       
       if (membersRes.data) {
-          combinedMemberships = membersRes.data.map((m: any) => ({
+          combinedMemberships = memberRows.map((m: any) => ({
             ...m,
-            saas_tenants: m.saas_tenants || { id: m.tenant_id, name: 'Empresa do Sistema', status: 'active' }
+            saas_tenants: tenantById.get(m.tenant_id) || {
+              id: m.tenant_id,
+              name: 'Empresa do Sistema',
+              status: 'active',
+            },
           }));
       }
 
@@ -232,8 +255,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const onAuthCallback =
         typeof window !== 'undefined' && window.location.pathname === '/auth/callback';
       if (onAuthCallback) {
-        // O AuthCallback conclui o OAuth e chama refreshContext() antes de redirecionar.
-        return;
+        throw err;
       }
       if (mounted.current) {
         await (supabase.auth as any).signOut();
@@ -404,11 +426,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
   };
 
-  const refreshContext = async () => {
-      if (user) {
-          await loadContextData(user.id, user.email, user.user_metadata);
+  const refreshContext = useCallback(async (overrideUser?: User): Promise<boolean> => {
+      let targetUser = overrideUser ?? user;
+      if (!targetUser) {
+        const { data: { session: currentSession } } = await (supabase.auth as any).getSession();
+        targetUser = currentSession?.user ?? null;
       }
-  };
+      if (!targetUser) return false;
+
+      if (mounted.current) {
+        setSession((prev: Session | null) => prev ?? { user: targetUser });
+        setUser(targetUser);
+      }
+
+      try {
+        await loadContextData(targetUser.id, targetUser.email, targetUser.user_metadata);
+        return true;
+      } catch (error) {
+        console.warn('[Auth] refreshContext falhou:', error);
+        return false;
+      }
+  }, [user, loadContextData]);
 
   const value = {
     user,
