@@ -360,10 +360,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signInWithGoogle = async () => {
     setLoading(true);
+    let invite = '';
+    try {
+      invite =
+        localStorage.getItem('sb-autoclaims-invite-token') ||
+        sessionStorage.getItem('sb-autoclaims-invite-token') ||
+        '';
+    } catch {
+      invite = '';
+    }
+    const callbackPath = invite
+      ? `/auth/callback?invite=${encodeURIComponent(invite)}`
+      : '/auth/callback';
     const { error } = await (supabase.auth as any).signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: getAuthRedirectUrl('/auth/callback'), 
+        redirectTo: getAuthRedirectUrl(callbackPath),
         queryParams: { access_type: 'offline', prompt: 'consent' },
       },
     });

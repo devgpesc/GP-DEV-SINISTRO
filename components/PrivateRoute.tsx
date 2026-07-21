@@ -118,5 +118,19 @@ const MembershipGate: React.FC = () => {
     );
   }
 
-  return <Navigate to="/pending-access" replace />;
+  const invite =
+    typeof window !== 'undefined'
+      ? (() => {
+          try {
+            return localStorage.getItem('sb-autoclaims-invite-token')
+              || sessionStorage.getItem('sb-autoclaims-invite-token');
+          } catch {
+            return null;
+          }
+        })()
+      : null;
+  const pendingPath = invite
+    ? `/pending-access?invite=${encodeURIComponent(invite)}`
+    : '/pending-access';
+  return <Navigate to={pendingPath} replace />;
 };

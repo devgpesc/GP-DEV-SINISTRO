@@ -79,13 +79,39 @@ const withTimeoutReject = async <T,>(promise: Promise<T>, ms: number, message: s
 };
 
 export const ensureInviteAccess = async (token?: string | null) => {
+  const trimmed = String(token || '').trim();
+
+  // Com token: aceitar primeiro (mais confiavel que sync por e-mail).
+  if (trimmed) {
+    try {
+      const result = await withTimeoutReject(
+        acceptInvite(trimmed),
+        10000,
+        'Tempo esgotado ao aceitar convite.',
+      );
+      if (result) return result;
+    } catch (error: any) {
+      const message = (error?.message || '').toLowerCase();
+      if (
+        !message.includes('invalido') &&
+        !message.includes('utilizado') &&
+        !message.includes('tempo esgotado')
+      ) {
+        throw error;
+      }
+    }
+  }
+
   try {
     const synced = await withTimeoutReject(
       syncInviteMembership(),
-      12000,
+      10000,
       'Tempo esgotado ao vincular convite. Tente novamente.',
     );
     if (synced?.status === 'linked' || synced?.status === 'already_member') {
+      return synced;
+    }
+    if (synced?.status === 'no_invite' && !trimmed) {
       return synced;
     }
   } catch (error: any) {
@@ -95,29 +121,15 @@ export const ensureInviteAccess = async (token?: string | null) => {
     }
   }
 
-  if (token) {
-    try {
-      const result = await withTimeoutReject(acceptInvite(token), 12000, 'Tempo esgotado ao aceitar convite.');
-      if (result) return result;
-    } catch (error: any) {
-      const message = (error?.message || '').toLowerCase();
-      if (!message.includes('invalido') && !message.includes('utilizado') && !message.includes('tempo esgotado')) {
-        throw error;
-      }
-    }
-
+  if (trimmed) {
     return withTimeoutReject(
       syncInviteMembership(),
-      12000,
+      8000,
       'Tempo esgotado ao vincular convite. Tente novamente.',
     );
   }
 
-  return withTimeoutReject(
-    syncInviteMembership(),
-    12000,
-    'Tempo esgotado ao vincular convite. Tente novamente.',
-  );
+  return { status: 'no_invite' };
 };
 
 export const createInvitation = async (params: {

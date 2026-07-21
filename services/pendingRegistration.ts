@@ -32,14 +32,45 @@ export const clearPendingRegistration = () => {
 
 const INVITE_TOKEN_STORAGE_KEY = 'sb-autoclaims-invite-token';
 
+/** Persiste em localStorage para sobreviver ao redirect OAuth do Google. */
 export const saveInviteToken = (token: string) => {
-  sessionStorage.setItem(INVITE_TOKEN_STORAGE_KEY, token);
+  const value = String(token || '').trim();
+  if (!value) return;
+  try {
+    localStorage.setItem(INVITE_TOKEN_STORAGE_KEY, value);
+  } catch {
+    /* ignore quota / private mode */
+  }
+  try {
+    sessionStorage.setItem(INVITE_TOKEN_STORAGE_KEY, value);
+  } catch {
+    /* ignore */
+  }
 };
 
 export const readInviteToken = (): string | null => {
-  return sessionStorage.getItem(INVITE_TOKEN_STORAGE_KEY);
+  try {
+    const fromLocal = localStorage.getItem(INVITE_TOKEN_STORAGE_KEY);
+    if (fromLocal) return fromLocal;
+  } catch {
+    /* ignore */
+  }
+  try {
+    return sessionStorage.getItem(INVITE_TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
 };
 
 export const clearInviteToken = () => {
-  sessionStorage.removeItem(INVITE_TOKEN_STORAGE_KEY);
+  try {
+    localStorage.removeItem(INVITE_TOKEN_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+  try {
+    sessionStorage.removeItem(INVITE_TOKEN_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
 };

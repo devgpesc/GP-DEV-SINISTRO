@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
-const { Link, Navigate } = ReactRouterDOM as any;
+const { Navigate } = ReactRouterDOM as any;
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../services/supabaseClient';
@@ -9,20 +9,25 @@ import {
   getInviteDetails,
   type InviteDetails,
 } from '../services/inviteService';
-import { readPendingRegistration, clearPendingRegistration, readInviteToken, clearInviteToken, saveInviteToken } from '../services/pendingRegistration';
+import {
+  readPendingRegistration,
+  clearPendingRegistration,
+  readInviteToken,
+  clearInviteToken,
+  saveInviteToken,
+} from '../services/pendingRegistration';
 import {
   ShieldAlert,
   Loader2,
   LogOut,
   Mail,
-  Building,
   Link as LinkIcon,
   CheckCircle2,
 } from 'lucide-react';
 import EscLogo from '../components/EscLogo';
 
 const PendingAccess: React.FC = () => {
-  const { user, loading: authLoading, memberships, signOut } = useAuth();
+  const { user, loading: authLoading, memberships, refreshContext, signOut } = useAuth();
   const { addToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
@@ -63,6 +68,14 @@ const PendingAccess: React.FC = () => {
     if ((members?.length || 0) > 0 || (owned?.length || 0) > 0) {
       clearPendingRegistration();
       clearInviteToken();
+      try {
+        await Promise.race([
+          refreshContext(user),
+          new Promise((resolve) => setTimeout(resolve, 4000)),
+        ]);
+      } catch {
+        /* ignore */
+      }
       window.location.replace('/');
       return true;
     }
@@ -80,15 +93,23 @@ const PendingAccess: React.FC = () => {
 
       if (status === 'no_invite') {
         if (token) {
-          const details = await getInviteDetails(token);
-          if (details) setPendingInvite({ ...details, token });
+          try {
+            const details = await getInviteDetails(token);
+            if (details) setPendingInvite({ ...details, token });
+          } catch {
+            /* ignore */
+          }
         }
-        throw new Error('Nenhum convite encontrado para este e-mail. Solicite um novo convite ao administrador.');
+        throw new Error(
+          'Nenhum convite encontrado para este e-mail. Solicite um novo convite ao administrador.',
+        );
       }
 
       const linked = await verifyMembershipAndRedirect();
       if (!linked) {
-        throw new Error('Convite processado, mas o acesso ainda nao foi liberado. Atualize a pagina ou tente novamente.');
+        throw new Error(
+          'Convite processado, mas o acesso ainda nao foi liberado. Atualize a pagina ou tente novamente.',
+        );
       }
 
       addToast('success', 'Convite aceito!', 'Seu acesso foi configurado com sucesso.');
@@ -107,9 +128,13 @@ const PendingAccess: React.FC = () => {
       window.location.replace('/');
       return;
     }
-    if (attemptedRef.current) return;
+    if (attemptedRef.current) {
+      setLoading(false);
+      return;
+    }
 
     attemptedRef.current = true;
+    let cancelled = false;
 
     const run = async () => {
       setLoading(true);
@@ -117,28 +142,40 @@ const PendingAccess: React.FC = () => {
 
       try {
         const alreadyLinked = await verifyMembershipAndRedirect();
-        if (alreadyLinked) return;
+        if (alreadyLinked || cancelled) return;
 
         const token = resolveInviteToken();
         if (token) {
           saveInviteToken(token);
-          const details = await getInviteDetails(token);
-          if (details) setPendingInvite({ ...details, token });
+          try {
+            const details = await getInviteDetails(token);
+            if (details && !cancelled) setPendingInvite({ ...details, token });
+          } catch {
+            /* convite ja usado ou invalido — segue para sync */
+          }
         }
 
         await linkInviteAccess(token);
       } catch (err: any) {
-        console.error('[PendingAccess]', err);
-        setError(err.message || 'Nao foi possivel vincular seu convite.');
+        if (!cancelled) {
+          console.error('[PendingAccess]', err);
+          setError(err.message || 'Nao foi possivel vincular seu convite.');
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
-    const safetyTimer = setTimeout(() => setLoading(false), 12000);
+    const safetyTimer = setTimeout(() => {
+      if (!cancelled) setLoading(false);
+    }, 10000);
+
     run().finally(() => clearTimeout(safetyTimer));
 
-    return () => clearTimeout(safetyTimer);
+    return () => {
+      cancelled = true;
+      clearTimeout(safetyTimer);
+    };
   }, [user, authLoading, memberships.length]);
 
   const handleManualAccept = async () => {
@@ -148,9 +185,18 @@ const PendingAccess: React.FC = () => {
       return;
     }
 
-    const extracted = raw.includes('invite=')
-      ? new URL(raw.startsWith('http') ? raw : `https://x.com/?${raw}`).searchParams.get('invite')
-      : raw;
+    let extracted: string | null = null;
+    if (raw.includes('invite=')) {
+      try {
+        extracted = new URL(raw.startsWith('http') ? raw : `https://x.com/?${raw}`).searchParams.get(
+          'invite',
+        );
+      } catch {
+        extracted = null;
+      }
+    } else {
+      extracted = raw;
+    }
 
     if (!extracted) {
       setError('Link de convite invalido.');
@@ -158,7 +204,6 @@ const PendingAccess: React.FC = () => {
     }
 
     saveInviteToken(extracted);
-    attemptedRef.current = false;
     setLoading(true);
     try {
       const details = await getInviteDetails(extracted);
@@ -171,22 +216,56 @@ const PendingAccess: React.FC = () => {
     }
   };
 
-  if (authLoading || (loading && !error)) {
+  // Nunca ficar preso em "verificando" se a sessao demorar: apos 8s mostra a UI.
+  const [authWaitTimedOut, setAuthWaitTimedOut] = useState(false);
+  useEffect(() => {
+    if (!authLoading) {
+      setAuthWaitTimedOut(false);
+      return;
+    }
+    const t = setTimeout(() => setAuthWaitTimedOut(true), 8000);
+    return () => clearTimeout(t);
+  }, [authLoading]);
+
+  if ((authLoading && !authWaitTimedOut) || (loading && !error && !authWaitTimedOut)) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4 p-6">
         <Loader2 className="animate-spin text-blue-600" size={32} />
         <p className="text-xs font-bold uppercase tracking-widest text-slate-400 text-center">
           {accepting ? 'Vinculando convite...' : 'Verificando acesso...'}
         </p>
-        {error && (
-          <p className="text-xs font-bold text-red-600 text-center max-w-sm">{error}</p>
-        )}
+        <button
+          type="button"
+          onClick={() => {
+            setLoading(false);
+            setAuthWaitTimedOut(true);
+          }}
+          className="mt-4 text-xs font-bold text-slate-400 hover:text-blue-600 uppercase tracking-widest"
+        >
+          Demorando? Continuar
+        </button>
       </div>
     );
   }
 
-  if (!user) {
+  if (!user && !authLoading) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4 p-6">
+        <Loader2 className="animate-spin text-blue-600" size={32} />
+        <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Carregando sessao...</p>
+        <button
+          type="button"
+          onClick={() => window.location.replace('/login')}
+          className="text-xs font-bold text-red-400 hover:text-red-600"
+        >
+          Ir para o login
+        </button>
+      </div>
+    );
   }
 
   if (memberships.length > 0) {
@@ -206,7 +285,8 @@ const PendingAccess: React.FC = () => {
               <CheckCircle2 className="mx-auto mb-4 text-green-500" size={40} />
               <h1 className="text-xl font-black text-slate-900">Convite encontrado</h1>
               <p className="mt-3 text-sm font-semibold text-slate-500">
-                Voce foi convidado(a) para acessar <strong className="text-slate-800">{pendingInvite.tenant_name}</strong>.
+                Voce foi convidado(a) para acessar{' '}
+                <strong className="text-slate-800">{pendingInvite.tenant_name}</strong>.
               </p>
               <p className="mt-2 text-xs text-slate-400">
                 E-mail do convite: <strong>{pendingInvite.email}</strong>
@@ -220,8 +300,8 @@ const PendingAccess: React.FC = () => {
                 Sua conta foi autenticada, mas nao esta vinculada a nenhuma empresa.
               </p>
               <p className="mt-3 text-sm font-semibold text-slate-600 bg-amber-50 border border-amber-100 rounded-2xl p-3 leading-relaxed">
-                Se voce ja teve acesso e foi removido, e necessario um <strong>novo convite</strong> do administrador.
-                Sem o link de convite, nao e possivel entrar na empresa.
+                Se voce ja teve acesso e foi removido, e necessario um <strong>novo convite</strong> do
+                administrador. Sem o link de convite, nao e possivel entrar na empresa.
               </p>
               <p className="mt-2 text-xs text-slate-400">
                 Peça um novo convite ou cole o link abaixo para validar.
@@ -238,7 +318,6 @@ const PendingAccess: React.FC = () => {
           <button
             type="button"
             onClick={() => {
-              attemptedRef.current = false;
               setLoading(true);
               setError(null);
               linkInviteAccess(resolveInviteToken())
