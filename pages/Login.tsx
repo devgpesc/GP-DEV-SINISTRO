@@ -5,6 +5,7 @@ const { useNavigate, Link, useLocation } = ReactRouterDOM as any;
 import { supabase } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { getAuthRedirectUrl } from '../services/authRedirect';
+import { saveInviteToken } from '../services/pendingRegistration';
 import { acceptInvite, getInviteDetails, type InviteDetails } from '../services/inviteService';
 import { 
   Loader2, ArrowRight, ShieldCheck, Mail, Lock, 
@@ -30,6 +31,7 @@ const Login: React.FC = () => {
 
   useEffect(() => {
     if (!inviteToken) return;
+    saveInviteToken(inviteToken);
     getInviteDetails(inviteToken)
       .then((details) => {
         if (details) {

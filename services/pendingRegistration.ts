@@ -29,3 +29,17 @@ export const readPendingRegistration = (): PendingRegistration | null => {
 export const clearPendingRegistration = () => {
   localStorage.removeItem(PENDING_REGISTRATION_STORAGE_KEY);
 };
+
+const INVITE_TOKEN_STORAGE_KEY = 'sb-autoclaims-invite-token';
+
+export const saveInviteToken = (token: string) => {
+  sessionStorage.setItem(INVITE_TOKEN_STORAGE_KEY, token);
+};
+
+export const readInviteToken = (): string | null => {
+  return sessionStorage.getItem(INVITE_TOKEN_STORAGE_KEY);
+};
+
+export const clearInviteToken = () => {
+  sessionStorage.removeItem(INVITE_TOKEN_STORAGE_KEY);
+};

@@ -9,6 +9,7 @@ import {
   getMyPendingInvite,
   type InviteDetails,
 } from '../services/inviteService';
+import { readPendingRegistration, clearPendingRegistration, readInviteToken, clearInviteToken, saveInviteToken } from '../services/pendingRegistration';
 import {
   ShieldAlert,
   Loader2,
@@ -20,8 +21,19 @@ import {
 } from 'lucide-react';
 import EscLogo from '../components/EscLogo';
 
+const withTimeout = async <T,>(promise: Promise<T>, ms: number): Promise<T | null> => {
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
+    ]);
+  } catch {
+    return null;
+  }
+};
+
 const PendingAccess: React.FC = () => {
-  const { user, signOut, refreshContext } = useAuth();
+  const { user, loading: authLoading, memberships, signOut, refreshContext } = useAuth();
   const { addToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
@@ -30,43 +42,105 @@ const PendingAccess: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const load = async () => {
+    if (authLoading) return;
+
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    if (memberships.length > 0) {
+      window.location.replace('/');
+      return;
+    }
+
+    let cancelled = false;
+
+    const resolveInviteToken = async (): Promise<string | null> => {
+      const params = new URLSearchParams(window.location.search);
+      const urlToken = params.get('invite');
+      if (urlToken) return urlToken;
+
+      const storedToken = readInviteToken();
+      if (storedToken) return storedToken;
+
+      const pending = readPendingRegistration();
+      if (pending?.inviteToken) return pending.inviteToken;
+
+      const myInvite = await withTimeout(getMyPendingInvite(), 8000);
+      return myInvite?.token || null;
+    };
+
+    const run = async () => {
       setLoading(true);
       setError(null);
+
       try {
-        const params = new URLSearchParams(window.location.search);
-        const urlToken = params.get('invite');
+        const token = await resolveInviteToken();
+        if (cancelled) return;
 
-        if (urlToken) {
-          const details = await getInviteDetails(urlToken);
+        if (token) {
+          saveInviteToken(token);
+          const details = await withTimeout(getInviteDetails(token), 8000);
           if (details) {
-            setPendingInvite({ ...details, token: urlToken });
-            setLoading(false);
-            return;
+            setPendingInvite({ ...details, token });
           }
-        }
 
-        const myInvite = await getMyPendingInvite();
-        if (myInvite) {
-          setPendingInvite(myInvite);
+          const emailMatches =
+            !details?.email ||
+            user.email?.toLowerCase() === details.email?.toLowerCase();
+
+          if (emailMatches) {
+            setAccepting(true);
+            try {
+              await acceptInvite(token);
+              const ok = await refreshContext();
+              clearPendingRegistration();
+              clearInviteToken();
+              if (ok) {
+                addToast('success', 'Convite aceito!', 'Seu acesso foi configurado com sucesso.');
+                window.location.replace('/');
+                return;
+              }
+            } catch (acceptErr: any) {
+              console.warn('[PendingAccess] auto-accept:', acceptErr);
+              setError(acceptErr.message || 'Nao foi possivel aceitar o convite automaticamente.');
+            } finally {
+              if (!cancelled) setAccepting(false);
+            }
+          }
         }
       } catch (err: any) {
         console.error('[PendingAccess]', err);
+        if (!cancelled) {
+          setError(err.message || 'Erro ao carregar convite.');
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
-    if (user) load();
-    else setLoading(false);
-  }, [user]);
+    const safetyTimer = setTimeout(() => {
+      if (!cancelled) setLoading(false);
+    }, 10000);
+
+    run().finally(() => clearTimeout(safetyTimer));
+
+    return () => {
+      cancelled = true;
+      clearTimeout(safetyTimer);
+    };
+  }, [user, authLoading, memberships.length, refreshContext, addToast]);
 
   const handleAcceptInvite = async (token: string) => {
     setAccepting(true);
     setError(null);
     try {
       await acceptInvite(token);
-      await refreshContext();
+      const ok = await refreshContext();
+      clearPendingRegistration();
+      clearInviteToken();
+      if (!ok) throw new Error('Nao foi possivel carregar sua empresa apos aceitar o convite.');
       addToast('success', 'Convite aceito!', 'Seu acesso foi configurado com sucesso.');
       window.location.replace('/');
     } catch (err: any) {
@@ -92,19 +166,27 @@ const PendingAccess: React.FC = () => {
       return;
     }
 
+    saveInviteToken(extracted);
     await handleAcceptInvite(extracted);
   };
 
-  if (!user && !loading) {
+  if (authLoading || (loading && !error && !pendingInvite)) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4">
+        <Loader2 className="animate-spin text-blue-600" size={32} />
+        <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
+          {accepting ? 'Aceitando convite...' : 'Verificando acesso...'}
+        </p>
+      </div>
+    );
+  }
+
+  if (!user) {
     return <Navigate to="/login" replace />;
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <Loader2 className="animate-spin text-blue-600" size={32} />
-      </div>
-    );
+  if (memberships.length > 0) {
+    return <Navigate to="/" replace />;
   }
 
   return (
@@ -140,8 +222,7 @@ const PendingAccess: React.FC = () => {
                 Sua conta foi autenticada, mas ainda nao possui vinculo com uma empresa.
               </p>
               <p className="mt-2 text-xs text-slate-400">
-                Para entrar em uma empresa existente, solicite um convite ao administrador.
-                Para criar uma nova empresa, use o cadastro empresarial.
+                Cole o link de convite recebido do administrador ou solicite um novo convite.
               </p>
             </>
           )}

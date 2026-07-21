@@ -5,7 +5,7 @@ import { supabase } from '../services/supabaseClient';
 import { useToast } from '../context/ToastContext';
 import { auditService } from '../services/auditService';
 import { getAuthRedirectUrl } from '../services/authRedirect';
-import { savePendingRegistration } from '../services/pendingRegistration';
+import { savePendingRegistration, saveInviteToken } from '../services/pendingRegistration';
 import { Mail, Lock, User, Loader2, ArrowLeft, Building, AlertCircle, Link as LinkIcon, Eye, EyeOff, Chrome, CheckCircle2 } from 'lucide-react';
 import EscLogo from '../components/EscLogo';
 
@@ -31,6 +31,7 @@ const Register: React.FC = () => {
     const token = searchParams.get('invite');
     if (token) {
       setInviteToken(token);
+      saveInviteToken(token);
       verifyInvite(token);
     }
   }, [searchParams]);
@@ -76,6 +77,8 @@ const Register: React.FC = () => {
     }
 
     try {
+      if (inviteToken) saveInviteToken(inviteToken);
+
       savePendingRegistration({
         email: normalizedEmail || undefined,
         name: trimmedName || undefined,

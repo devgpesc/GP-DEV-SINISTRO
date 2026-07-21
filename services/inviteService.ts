@@ -9,6 +9,7 @@ export type InviteDetails = {
   tenant_id: string;
   tenant_name: string;
   status: string;
+  token?: string;
 };
 
 export const buildInviteRegisterUrl = (token: string) =>
