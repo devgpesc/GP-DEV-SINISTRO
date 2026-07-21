@@ -9,6 +9,12 @@ import ActionModal from '../components/ActionModal';
 import { Invitation, AuditLog } from '../types';
 import { DEFAULT_EVENT_TYPES } from '../utils/defaults';
 import { CANONICAL_PERMISSIONS, MODULE_PERMISSIONS, normalizeModulePermissions, normalizePermissions, sanitizeModulePermissionsForSave, sanitizePermissionsForSave } from '../services/permissionKeys';
+import {
+  buildInviteLoginUrl,
+  buildInviteMailto,
+  buildInviteRegisterUrl,
+  createInvitation,
+} from '../services/inviteService';
 
 const Settings: React.FC = () => {
   const { addToast } = useToast();
@@ -55,6 +61,7 @@ const Settings: React.FC = () => {
   });
   const [inviteData, setInviteData] = useState({ name: '', email: '', role: 'member' });
   const [generatedLink, setGeneratedLink] = useState('');
+  const [generatedLoginLink, setGeneratedLoginLink] = useState('');
   const [copied, setCopied] = useState(false);
   const [isGeneratingInvite, setIsGeneratingInvite] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
@@ -86,6 +93,7 @@ const Settings: React.FC = () => {
   useEffect(() => {
     if (inviteModalOpen) {
         setGeneratedLink('');
+        setGeneratedLoginLink('');
         setCopied(false);
         setInviteError(null);
         loadInvitations();
@@ -304,7 +312,7 @@ const Settings: React.FC = () => {
       }
   };
   const generateInviteLink = async () => { 
-      if (!profile) return;
+      if (!profile || !currentTenant?.id) return;
 
       const trimmedName = inviteData.name.trim();
       const trimmedEmail = inviteData.email.trim().toLowerCase();
@@ -318,23 +326,21 @@ const Settings: React.FC = () => {
       setInviteError(null);
 
       try {
-          const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-          const link = `${window.location.origin}/register?invite=${token}`;
-
-          const { error } = await supabase.from('invitations').insert([{ 
+          const result = await createInvitation({
               email: trimmedEmail,
               name: trimmedName,
               role: inviteData.role || 'member',
-              tenant_id: currentTenant?.id || null,
-              token: token,
-              created_by: profile.id
-          }]);
-          if (error) throw error;
+              tenantId: currentTenant.id,
+          });
 
-          await auditService.log('Create Invite', 'Invitation', trimmedEmail, { link, role: inviteData.role || 'member' }); 
+          const registerUrl = buildInviteRegisterUrl(result.token);
+          const loginUrl = buildInviteLoginUrl(result.token);
+
+          await auditService.log('Create Invite', 'Invitation', trimmedEmail, { registerUrl, loginUrl, role: inviteData.role || 'member' }); 
           await loadInvitations();
-          setGeneratedLink(link);
-          addToast('success', 'Convite gerado', 'Link pronto para envio.');
+          setGeneratedLink(registerUrl);
+          setGeneratedLoginLink(loginUrl);
+          addToast('success', 'Convite gerado', 'Envie o link para o usuario aceitar o convite.');
       } catch (err: any) {
           setInviteError(err.message || 'Não foi possível gerar o convite.');
       } finally {
@@ -343,6 +349,17 @@ const Settings: React.FC = () => {
   };
   const handleDeleteInvite = async (id: string) => { await supabase.from('invitations').delete().eq('id', id); setInvitations(prev => prev.filter(i => i.id !== id)); };
   const copyInviteLink = () => { navigator.clipboard.writeText(generatedLink); setCopied(true); setTimeout(() => setCopied(false), 2000); addToast('success', 'Copiado', 'Link na área de transferência.'); };
+  const openInviteEmail = () => {
+      if (!generatedLink || !generatedLoginLink) return;
+      const mailto = buildInviteMailto({
+          email: inviteData.email.trim().toLowerCase(),
+          name: inviteData.name.trim(),
+          companyName: currentTenant?.name || 'sua empresa',
+          registerUrl: generatedLink,
+          loginUrl: generatedLoginLink,
+      });
+      window.open(mailto, '_blank');
+  };
 
   // --- TRADUTORES PARA AUDITORIA ---
   const translateAction = (act: string) => {
@@ -861,15 +878,29 @@ const Settings: React.FC = () => {
 
                           <button onClick={generateInviteLink} disabled={isGeneratingInvite} className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold text-xs uppercase hover:bg-slate-900 transition-all flex items-center justify-center gap-2 disabled:opacity-60">
                               {isGeneratingInvite ? <Loader2 size={16} className="animate-spin"/> : <LinkIcon size={16}/>} 
-                              {isGeneratingInvite ? 'Gerando...' : 'Gerar Link'}
+                              {isGeneratingInvite ? 'Gerando...' : 'Gerar Convite'}
                           </button>
                           {generatedLink && (
-                              <div className="animate-in fade-in slide-in-from-top-2">
-                                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Link do convite</p>
-                                  <div className="flex items-center gap-2">
-                                      <input readOnly className="flex-1 p-3 bg-green-50 border border-green-200 text-green-800 rounded-xl text-xs font-mono outline-none" value={generatedLink} />
-                                      <button onClick={copyInviteLink} className="p-3 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-colors">{copied ? <Check size={18}/> : <Copy size={18}/>}</button>
+                              <div className="animate-in fade-in slide-in-from-top-2 space-y-3">
+                                  <div>
+                                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Link para novo usuario (cadastro)</p>
+                                      <div className="flex items-center gap-2">
+                                          <input readOnly className="flex-1 p-3 bg-green-50 border border-green-200 text-green-800 rounded-xl text-xs font-mono outline-none" value={generatedLink} />
+                                          <button onClick={copyInviteLink} className="p-3 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-colors">{copied ? <Check size={18}/> : <Copy size={18}/>}</button>
+                                      </div>
                                   </div>
+                                  {generatedLoginLink && (
+                                      <div>
+                                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Link para quem ja tem conta (login)</p>
+                                          <input readOnly className="w-full p-3 bg-blue-50 border border-blue-200 text-blue-800 rounded-xl text-xs font-mono outline-none" value={generatedLoginLink} />
+                                      </div>
+                                  )}
+                                  <button onClick={openInviteEmail} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-xs uppercase hover:bg-blue-700 transition-all flex items-center justify-center gap-2">
+                                      <Send size={16}/> Enviar convite por e-mail
+                                  </button>
+                                  <p className="text-[10px] text-slate-400 font-semibold">
+                                      O usuario deve usar o e-mail <strong>{inviteData.email}</strong> para aceitar o convite (via senha, Google ou confirmacao de e-mail).
+                                  </p>
                               </div>
                           )}
                       </div>

@@ -308,7 +308,12 @@ const Register: React.FC = () => {
           {inviteToken ? (
             <p className="text-sm text-blue-600 font-bold mb-6 flex items-center gap-2"><LinkIcon size={14} /> Voce foi convidado para: {companyName}</p>
           ) : (
-            <p className="text-sm text-slate-500 font-medium mb-6">Comece a gerenciar sua frota e sinistros hoje.</p>
+            <>
+              <p className="text-sm text-slate-500 font-medium mb-2">Comece a gerenciar sua frota e sinistros hoje.</p>
+              <p className="text-xs text-amber-600 font-bold mb-6 bg-amber-50 border border-amber-100 rounded-xl p-3">
+                Para entrar em uma empresa existente, voce precisa de um convite do administrador. Nao e possivel se cadastrar diretamente em outra empresa.
+              </p>
+            </>
           )}
 
           {error && (

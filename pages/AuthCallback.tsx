@@ -188,8 +188,23 @@ const AuthCallback: React.FC = () => {
               'Login confirmado, mas nao foi possivel carregar sua empresa. Tente novamente em alguns segundos.',
             );
           }
+
+          const { data: memberships } = await supabase
+            .from('organization_members')
+            .select('id')
+            .eq('user_id', session.user.id)
+            .limit(1);
+
+          const { data: ownedTenants } = await supabase
+            .from('saas_tenants')
+            .select('id')
+            .eq('owner_id', session.user.id)
+            .limit(1);
+
+          const hasAccess = (memberships?.length || 0) > 0 || (ownedTenants?.length || 0) > 0;
+
           addToast('success', 'Acesso confirmado', 'Sua conta foi ativada com sucesso.');
-          window.location.replace('/');
+          window.location.replace(hasAccess ? '/' : '/pending-access');
           return;
         }
 

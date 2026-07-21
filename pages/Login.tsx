@@ -5,9 +5,10 @@ const { useNavigate, Link, useLocation } = ReactRouterDOM as any;
 import { supabase } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { getAuthRedirectUrl } from '../services/authRedirect';
+import { acceptInvite, getInviteDetails, type InviteDetails } from '../services/inviteService';
 import { 
   Loader2, ArrowRight, ShieldCheck, Mail, Lock, 
-  LayoutDashboard, Zap, Globe, AlertCircle, Eye, EyeOff
+  LayoutDashboard, Zap, Globe, AlertCircle, Eye, EyeOff, Link as LinkIcon
 } from 'lucide-react';
 import EscLogo from '../components/EscLogo';
 
@@ -16,39 +17,54 @@ const Login: React.FC = () => {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const inviteToken = searchParams.get('invite');
-  const { user, memberships, isSuperAdmin } = useAuth();
+  const { user, memberships, isSuperAdmin, refreshContext } = useAuth();
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [localLoading, setLocalLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inviteInfo, setInviteInfo] = useState<InviteDetails | null>(null);
   
-  // Configuracao visual da marca
   const [company] = useState({ name: 'Grupo Esc Sistemas', product: 'EventsCar' });
+
+  useEffect(() => {
+    if (!inviteToken) return;
+    getInviteDetails(inviteToken)
+      .then((details) => {
+        if (details) {
+          setInviteInfo(details);
+          setEmail(details.email || '');
+        }
+      })
+      .catch(() => setError('Convite invalido ou expirado.'));
+  }, [inviteToken]);
 
   useEffect(() => {
     if (!user || localLoading) return;
 
     const hasAccess = isSuperAdmin || memberships.length > 0;
-    if (!hasAccess) return;
+    if (hasAccess) {
+      navigate('/', { replace: true });
+      return;
+    }
 
-    if (inviteToken) {
-         const redeemInvite = async () => {
-             try {
-                const { error: acceptError } = await supabase.rpc('accept_invite', { invite_token: inviteToken });
-                if (acceptError) throw acceptError;
-             } catch (e) {
-                console.warn("Auto-redeem fail", e);
-             } finally {
-                navigate('/', { replace: true });
-             }
-         };
-         redeemInvite();
-      } else {
-         navigate('/', { replace: true });
-      }
+    if (!inviteToken) {
+      navigate('/pending-access', { replace: true });
+    }
   }, [user, localLoading, navigate, inviteToken, memberships.length, isSuperAdmin]);
+
+  const processInviteAfterAuth = async (): Promise<boolean> => {
+    if (!inviteToken) return false;
+    try {
+      await acceptInvite(inviteToken);
+      await refreshContext();
+      return true;
+    } catch (err: any) {
+      setError(err.message || 'Nao foi possivel aceitar o convite.');
+      return false;
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,42 +74,34 @@ const Login: React.FC = () => {
     setError(null);
 
     try {
-      // 1. Autenticacao basica (Email/Senha)
-      // Casting supabase.auth to any
       const { data, error: authError } = await (supabase.auth as any).signInWithPassword({ email, password });
       
       if (authError) throw authError;
       if (!data.user) throw new Error("Usuario nao encontrado.");
 
-      // 2. Verificacao de permissao de acesso (vinculo com empresa)
-      // Verifica se o usuario tem perfil de Super Admin ou se pertence a alguma empresa ativa
-      
-      // Checa perfil primeiro
       const { data: profile } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', data.user.id)
         .maybeSingle();
-        
-      // PROCESSA CONVITE SE EXISTIR
-      if (inviteToken) {
-          try {
-              const { error: acceptError } = await supabase.rpc('accept_invite', { invite_token: inviteToken });
-              if (acceptError) throw acceptError;
-          } catch (e) {
-              console.warn("Erro ao processar convite no login", e);
-          }
-      }
 
       if (profile?.role === 'super_admin') {
-          setLocalLoading(false);
-          navigate('/', { replace: true });
-          return; 
+        setLocalLoading(false);
+        navigate('/', { replace: true });
+        return; 
       }
 
-      // Se nao for admin global, verifica vinculo com tenant ativo
-      // NOTA: Removido o inner join com saas_tenants pois usuarios normais nao tem permissao de leitura na tabela saas_tenants devido ao RLS.
-      const { data: memberships, error: memberError } = await supabase
+      if (inviteToken) {
+        const accepted = await processInviteAfterAuth();
+        if (accepted) {
+          navigate('/', { replace: true });
+          return;
+        }
+        setLocalLoading(false);
+        return;
+      }
+
+      const { data: memberships } = await supabase
         .from('organization_members')
         .select('id, tenant_id')
         .eq('user_id', data.user.id);
@@ -105,15 +113,12 @@ const Login: React.FC = () => {
 
       const hasMembership = (memberships && memberships.length > 0) || (ownedTenants && ownedTenants.length > 0);
 
-      if (memberError || !hasMembership) {
-          // Logout imediato se nao tiver permissao
-          await (supabase.auth as any).signOut();
-          setLocalLoading(false);
-          setError('Acesso negado: este usuario nao possui vinculo com uma empresa ativa.');
-          return;
+      if (!hasMembership) {
+        setLocalLoading(false);
+        navigate('/pending-access', { replace: true });
+        return;
       }
 
-      // Sucesso - O AuthContext detectara a sessao e redirecionara
       setLocalLoading(false);
       navigate('/', { replace: true });
     } catch (err: any) {
@@ -131,7 +136,6 @@ const Login: React.FC = () => {
     setLocalLoading(true);
     setError(null);
     try {
-      // Casting supabase.auth to any
       const { error } = await (supabase.auth as any).signInWithOAuth({
          provider: 'google',
          options: { 
@@ -150,21 +154,16 @@ const Login: React.FC = () => {
   return (
     <div className="min-h-screen flex bg-[#F8FAFC] font-sans selection:bg-blue-100 selection:text-blue-900">
       
-      {/* LADO ESQUERDO (Branding & Valor) - Visivel apenas em Desktop */}
       <div className="hidden lg:flex w-1/2 relative flex-col justify-between p-16 overflow-hidden bg-[#0F172A]">
-        {/* Background Pattern Sutil */}
         <div className="absolute inset-0 z-0 opacity-20" style={{ 
             backgroundImage: 'radial-gradient(#3b82f6 1px, transparent 1px)', 
             backgroundSize: '32px 32px' 
         }}></div>
         
-        {/* Gradiente Decorativo */}
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-600/20 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
 
         <div className="relative z-10">
-          {/* LOGO AREA */}
           <div className="mb-12">
-             {/* Logo Customizada */}
              <div className="flex items-center gap-3">
                 <EscLogo className="w-16 h-16 text-white" classNameText="text-white text-3xl" />
              </div>
@@ -195,21 +194,33 @@ const Login: React.FC = () => {
         </div>
       </div>
 
-      {/* LADO DIREITO (Login Form) */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-12 relative bg-[#F8FAFC]">
-        {/* Aumentado max-w para ficar maior e mais confortavel */}
         <div className="w-full max-w-xl animate-in slide-in-from-right-8 duration-700 fade-in">
           
-          {/* Mobile Logo Only */}
           <div className="lg:hidden flex items-center gap-2 mb-8 justify-center flex-col">
              <EscLogo className="w-12 h-12 text-slate-900" classNameText="text-slate-900 text-2xl" />
           </div>
 
           <div className="bg-white p-10 md:p-14 rounded-[40px] shadow-2xl shadow-slate-200/50 border border-slate-100">
             <div className="text-center mb-10">
-              <h2 className="text-3xl font-black text-slate-900 tracking-tight">Acesso ao Painel</h2>
-              <p className="text-slate-500 text-base mt-2 font-medium">Bem-vindo de volta! Insira suas credenciais.</p>
+              <h2 className="text-3xl font-black text-slate-900 tracking-tight">
+                {inviteInfo ? 'Entrar e aceitar convite' : 'Acesso ao Painel'}
+              </h2>
+              <p className="text-slate-500 text-base mt-2 font-medium">
+                {inviteInfo
+                  ? `Convite para ${inviteInfo.tenant_name}`
+                  : 'Bem-vindo de volta! Insira suas credenciais.'}
+              </p>
             </div>
+
+            {inviteInfo && (
+              <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-2xl flex items-start gap-3 text-blue-700">
+                <LinkIcon className="shrink-0 mt-0.5" size={18} />
+                <p className="text-xs font-bold leading-relaxed">
+                  Use o e-mail <strong>{inviteInfo.email}</strong> para entrar e vincular sua conta a empresa.
+                </p>
+              </div>
+            )}
 
             {error && (
                <div className="mb-8 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 text-red-600 animate-in slide-in-from-top-2">
@@ -220,7 +231,7 @@ const Login: React.FC = () => {
 
             <form onSubmit={handleLogin} className="space-y-6">
                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">E-mail Corporativo</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">E-mail</label>
                   <div className="relative group">
                       <Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={20} />
                       <input 
@@ -228,6 +239,7 @@ const Login: React.FC = () => {
                         required 
                         value={email}
                         onChange={e => setEmail(e.target.value)}
+                        readOnly={!!inviteInfo}
                         className="w-full pl-14 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none text-base font-semibold text-slate-800 focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all placeholder:text-slate-400"
                         placeholder="nome@empresa.com"
                       />
@@ -266,7 +278,7 @@ const Login: React.FC = () => {
                >
                   {localLoading ? <Loader2 className="animate-spin" size={22}/> : (
                     <>
-                      Entrar na Plataforma <ArrowRight size={20} className="opacity-80"/>
+                      {inviteInfo ? 'Entrar e aceitar convite' : 'Entrar na Plataforma'} <ArrowRight size={20} className="opacity-80"/>
                     </>
                   )}
                </button>
@@ -284,13 +296,24 @@ const Login: React.FC = () => {
                className="w-full py-4 bg-white border border-slate-200 text-slate-700 font-bold text-sm rounded-2xl flex items-center justify-center gap-3 hover:bg-slate-50 hover:border-slate-300 transition-all group disabled:opacity-60"
             >
                <Globe size={20} className="text-slate-400 group-hover:text-blue-600 transition-colors"/>
-               Google Workspace
+               Google (Gmail)
             </button>
 
-            <div className="mt-10 text-center">
+            <div className="mt-10 text-center space-y-2">
                <p className="text-slate-500 text-sm font-medium">
-                 Nao tem uma conta? <Link to="/register" className="text-blue-600 font-bold hover:underline">Criar conta empresarial</Link>
+                 Nao tem conta?{' '}
+                 <Link
+                   to={inviteToken ? `/register?invite=${inviteToken}` : '/register'}
+                   className="text-blue-600 font-bold hover:underline"
+                 >
+                   {inviteToken ? 'Criar conta com convite' : 'Criar conta empresarial'}
+                 </Link>
                </p>
+               {!inviteToken && (
+                 <p className="text-xs text-slate-400">
+                   Para entrar em empresa existente, solicite um convite ao administrador.
+                 </p>
+               )}
             </div>
           </div>
 

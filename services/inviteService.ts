@@ -1,0 +1,80 @@
+import { supabase } from './supabaseClient';
+import { getAppOrigin } from './authRedirect';
+
+export type InviteDetails = {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  tenant_id: string;
+  tenant_name: string;
+  status: string;
+};
+
+export const buildInviteRegisterUrl = (token: string) =>
+  `${getAppOrigin()}/register?invite=${encodeURIComponent(token)}`;
+
+export const buildInviteLoginUrl = (token: string) =>
+  `${getAppOrigin()}/login?invite=${encodeURIComponent(token)}`;
+
+export const getInviteDetails = async (token: string): Promise<InviteDetails | null> => {
+  const { data, error } = await supabase.rpc('get_invite_details', { invite_token: token });
+  if (error) throw error;
+  return data as InviteDetails | null;
+};
+
+export const getMyPendingInvite = async (): Promise<InviteDetails | null> => {
+  const { data, error } = await supabase.rpc('get_my_pending_invite');
+  if (error) throw error;
+  return data as InviteDetails | null;
+};
+
+export const acceptInvite = async (token: string) => {
+  const { data, error } = await supabase.rpc('accept_invite', { invite_token: token });
+  if (error) {
+    const message = (error.message || '').toLowerCase();
+    if (message.includes('outro e-mail')) {
+      throw new Error('Este convite foi enviado para outro e-mail. Use a conta correspondente ou solicite um novo convite.');
+    }
+    if (message.includes('invalido') || message.includes('utilizado')) {
+      throw new Error('Convite invalido ou ja utilizado. Solicite um novo convite ao administrador.');
+    }
+    throw error;
+  }
+  return data;
+};
+
+export const createInvitation = async (params: {
+  email: string;
+  name: string;
+  role: string;
+  tenantId: string;
+}) => {
+  const { data, error } = await supabase.rpc('create_invitation', {
+    p_email: params.email.trim().toLowerCase(),
+    p_name: params.name.trim(),
+    p_role: params.role || 'member',
+    p_tenant_id: params.tenantId,
+  });
+  if (error) throw error;
+  return data as { token: string; id: string };
+};
+
+export const buildInviteMailto = (params: {
+  email: string;
+  name: string;
+  companyName: string;
+  registerUrl: string;
+  loginUrl: string;
+}) => {
+  const subject = encodeURIComponent(`Convite para acessar ${params.companyName} - EventsCar`);
+  const body = encodeURIComponent(
+    `Ola ${params.name},\n\n` +
+      `Voce foi convidado(a) para acessar a plataforma EventsCar da empresa ${params.companyName}.\n\n` +
+      `Se ainda nao tem conta, cadastre-se pelo link:\n${params.registerUrl}\n\n` +
+      `Se ja tem conta, entre pelo link:\n${params.loginUrl}\n\n` +
+      `Use o e-mail ${params.email} para aceitar o convite.\n\n` +
+      `Atenciosamente,\nEquipe EventsCar`,
+  );
+  return `mailto:${params.email}?subject=${subject}&body=${body}`;
+};

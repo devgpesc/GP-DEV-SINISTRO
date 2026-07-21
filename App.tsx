@@ -20,6 +20,7 @@ import Settings from './pages/Settings.tsx';
 import Login from './pages/Login.tsx';
 import Register from './pages/Register.tsx';
 import AuthCallback from './pages/AuthCallback.tsx';
+import PendingAccess from './pages/PendingAccess.tsx';
 import SaasAdmin from './pages/SaasAdmin.tsx';
 import Associates from './pages/Associates.tsx';
 import Notifications from './pages/Notifications.tsx';
@@ -39,6 +40,7 @@ const App: React.FC = () => {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
+            <Route path="/pending-access" element={<PendingAccess />} />
             
             <Route path="/*" element={
                <PrivateRoute>

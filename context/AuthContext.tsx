@@ -218,29 +218,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (mounted.current) setMemberships(combinedMemberships);
 
-      // 3. SEGURANÇA: Se não tem memberships válidas e não é Super Admin, faz logout forçado
-      // Isso evita o "User (Modo Rápido)" para quem não deve ter acesso
-      const isSuperAdmin = finalProfile.role === 'super_admin';
-      
-      if (combinedMemberships.length === 0 && !isSuperAdmin) {
-          // Permitir se o usuário tem um convite na URL
-          const params = new URLSearchParams(window.location.search);
-          if (
-            !params.get('invite') &&
-            window.location.pathname !== '/register' &&
-            window.location.pathname !== '/auth/callback'
-          ) {
-              console.warn('[Auth] Usuário sem memberships ativas e sem convite. Forçando logout.');
-              await (supabase.auth as any).signOut();
-              if (mounted.current) {
-                  setSession(null);
-                  setUser(null);
-                  setLoading(false);
-              }
-              return;
-          }
-      }
-
       // 4. Seleção de Tenant
       let selectedTenant: SaasTenant | null = null;
       if (combinedMemberships.length > 0) {

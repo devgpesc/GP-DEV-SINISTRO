@@ -2,7 +2,7 @@ import React from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 const { Navigate } = ReactRouterDOM as any;
 import { useAuth } from '../context/AuthContext';
-import { Car, LogOut, ShieldAlert } from 'lucide-react';
+import { Car, LogOut } from 'lucide-react';
 
 export const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading, memberships, isSuperAdmin, signOut } = useAuth();
@@ -39,25 +39,7 @@ export const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   if (memberships.length === 0 && !isSuperAdmin) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
-        <div className="max-w-md rounded-3xl border border-amber-100 bg-white p-8 text-center shadow-xl">
-          <ShieldAlert className="mx-auto mb-4 text-amber-500" size={36} />
-          <h1 className="text-xl font-black text-slate-900">Acesso nao configurado</h1>
-          <p className="mt-3 text-sm font-semibold text-slate-500">
-            Sua conta foi autenticada, mas ainda nao possui vinculo com uma empresa ativa.
-            Solicite um convite ao administrador ou crie uma conta empresarial.
-          </p>
-          <button
-            type="button"
-            onClick={() => signOut().then(() => window.location.replace('/login'))}
-            className="mt-6 rounded-2xl bg-slate-900 px-6 py-3 text-xs font-black uppercase tracking-widest text-white"
-          >
-            Voltar ao login
-          </button>
-        </div>
-      </div>
-    );
+    return <Navigate to="/pending-access" replace />;
   }
 
   return <>{children}</>;
