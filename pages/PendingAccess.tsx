@@ -217,10 +217,14 @@ const PendingAccess: React.FC = () => {
               <ShieldAlert className="mx-auto mb-4 text-amber-500" size={40} />
               <h1 className="text-xl font-black text-slate-900">Acesso pendente</h1>
               <p className="mt-3 text-sm font-semibold text-slate-500">
-                Sua conta foi autenticada, mas ainda nao possui vinculo com uma empresa.
+                Sua conta foi autenticada, mas nao esta vinculada a nenhuma empresa.
+              </p>
+              <p className="mt-3 text-sm font-semibold text-slate-600 bg-amber-50 border border-amber-100 rounded-2xl p-3 leading-relaxed">
+                Se voce ja teve acesso e foi removido, e necessario um <strong>novo convite</strong> do administrador.
+                Sem o link de convite, nao e possivel entrar na empresa.
               </p>
               <p className="mt-2 text-xs text-slate-400">
-                Cole o link de convite ou clique em tentar novamente.
+                Peça um novo convite ou cole o link abaixo para validar.
               </p>
             </>
           )}
@@ -249,14 +253,14 @@ const PendingAccess: React.FC = () => {
 
           <div className="mt-6 space-y-3 text-left">
             <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest">
-              Ou cole o link do convite
+              Cole o link do novo convite
             </label>
             <div className="relative">
               <LinkIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
               <input
                 value={manualToken}
                 onChange={(e) => setManualToken(e.target.value)}
-                placeholder="Cole o link ou codigo do convite"
+                placeholder="https://eventos.escsistemas.com/login?invite=..."
                 className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-sm outline-none focus:ring-4 focus:ring-blue-500/10"
               />
             </div>
