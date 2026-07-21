@@ -87,12 +87,13 @@ export default async function handler(req, res) {
         .from('invitations')
         .select('id, tenant_id, role, email, status')
         .eq('email', email)
+        .eq('status', 'pending')
         .order('created_at', { ascending: false })
         .limit(1);
       invite = invites?.[0] || null;
     }
 
-    if (invite?.tenant_id && String(invite.email || '').toLowerCase() === email) {
+    if (invite?.tenant_id && String(invite.email || '').toLowerCase() === email && invite.status !== 'cancelled') {
       await admin.from('organization_members').upsert(
         {
           tenant_id: invite.tenant_id,

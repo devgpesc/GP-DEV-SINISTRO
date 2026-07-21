@@ -1,0 +1,54 @@
+<!--
+MODELO DE E-MAIL PARA CONVITE DA EMPRESA (EventsCar)
+Nao e template nativo do Supabase — use no "Enviar convite por e-mail" / futuro envio automatico.
+Substitua manualmente:
+  {{NOME}} {{EMAIL}} {{EMPRESA}} {{LINK_CADASTRO}} {{LINK_LOGIN}}
+-->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Convite empresa</title>
+</head>
+<body style="margin:0;padding:0;background:#F1F5F9;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#F1F5F9;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="560" cellspacing="0" cellpadding="0" style="max-width:560px;background:#FFFFFF;border-radius:24px;overflow:hidden;border:1px solid #E2E8F0;">
+          <tr>
+            <td style="background:#0F172A;padding:28px 32px;">
+              <div style="font-size:22px;font-weight:800;color:#FFFFFF;">Events<span style="color:#38BDF8;">Car</span></div>
+              <div style="margin-top:6px;font-size:12px;color:#94A3B8;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;">Convite corporativo</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:36px 32px 16px;">
+              <h1 style="margin:0 0 12px;font-size:22px;color:#0F172A;font-weight:800;">Ola, {{NOME}}</h1>
+              <p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:#475569;">
+                Voce foi convidado(a) para acessar o EventsCar da empresa
+                <strong style="color:#0F172A;">{{EMPRESA}}</strong>.
+              </p>
+              <div style="margin:0 0 24px;padding:14px 16px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:14px;font-size:13px;color:#1E40AF;font-weight:700;">
+                Use o e-mail: {{EMAIL}}
+              </div>
+              <p style="margin:0 0 10px;font-size:13px;color:#64748B;font-weight:700;">Ainda nao tem conta?</p>
+              <a href="{{LINK_CADASTRO}}" style="display:inline-block;margin-bottom:18px;background:#2563EB;color:#FFFFFF;text-decoration:none;font-weight:800;font-size:12px;letter-spacing:0.06em;text-transform:uppercase;padding:14px 22px;border-radius:12px;">
+                Criar conta e aceitar
+              </a>
+              <p style="margin:0 0 10px;font-size:13px;color:#64748B;font-weight:700;">Ja tem conta?</p>
+              <a href="{{LINK_LOGIN}}" style="display:inline-block;background:#0F172A;color:#FFFFFF;text-decoration:none;font-weight:800;font-size:12px;letter-spacing:0.06em;text-transform:uppercase;padding:14px 22px;border-radius:12px;">
+                Entrar e aceitar
+              </a>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 32px 28px;border-top:1px solid #F1F5F9;">
+              <p style="margin:0;font-size:11px;color:#94A3B8;">Este convite e exclusivo para a empresa {{EMPRESA}}. © EventsCar</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

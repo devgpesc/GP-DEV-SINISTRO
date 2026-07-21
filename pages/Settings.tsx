@@ -841,12 +841,21 @@ const Settings: React.FC = () => {
                   <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4 shrink-0">
                       <div className="flex items-center gap-3">
                           <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><UserPlus size={20}/></div>
-                          <h3 className="text-xl font-black text-slate-800">Convidar Membro</h3>
+                          <div>
+                            <h3 className="text-xl font-black text-slate-800">Convidar Membro</h3>
+                            <p className="text-[11px] font-bold text-blue-600 mt-0.5">
+                              Empresa: {currentTenant?.name || 'Empresa atual'}
+                            </p>
+                          </div>
                       </div>
                       <button onClick={() => setInviteModalOpen(false)}><X className="text-slate-400 hover:text-slate-600"/></button>
                   </div>
                   <div className="flex-1 overflow-y-auto pr-1">
                       <div className="space-y-5">
+                          <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-[11px] font-semibold text-slate-500 leading-relaxed">
+                            O convite vincula o usuario automaticamente a <strong className="text-slate-800">{currentTenant?.name}</strong>.
+                            Em outra empresa, troque a empresa no seletor antes de convidar.
+                          </div>
                           <div>
                               <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Nome</label>
                               <div className="relative">
