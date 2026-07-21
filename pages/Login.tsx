@@ -18,7 +18,7 @@ const Login: React.FC = () => {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const inviteToken = searchParams.get('invite') || readInviteToken();
-  const { user, memberships, isSuperAdmin, refreshContext } = useAuth();
+  const { user, loading: authLoading, memberships, isSuperAdmin, refreshContext } = useAuth();
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -43,21 +43,37 @@ const Login: React.FC = () => {
   }, [inviteToken]);
 
   useEffect(() => {
-    if (!user || localLoading) return;
+    if (!user || localLoading || authLoading) return;
 
-    const hasAccess = isSuperAdmin || memberships.length > 0;
-    if (hasAccess) {
-      navigate('/', { replace: true });
-      return;
-    }
+    const redirectIfReady = async () => {
+      if (isSuperAdmin || memberships.length > 0) {
+        navigate('/', { replace: true });
+        return;
+      }
 
-    if (!inviteToken) {
-      navigate('/pending-access', { replace: true });
-      return;
-    }
+      const { data: members } = await supabase
+        .from('organization_members')
+        .select('id')
+        .eq('user_id', user.id)
+        .limit(1);
 
-    navigate(`/pending-access?invite=${encodeURIComponent(inviteToken)}`, { replace: true });
-  }, [user, localLoading, navigate, inviteToken, memberships.length, isSuperAdmin]);
+      const { data: owned } = await supabase
+        .from('saas_tenants')
+        .select('id')
+        .eq('owner_id', user.id)
+        .limit(1);
+
+      if ((members?.length || 0) > 0 || (owned?.length || 0) > 0) {
+        await refreshContext();
+        navigate('/', { replace: true });
+        return;
+      }
+
+      // Sem acesso: nao redirecionar automaticamente — deixar usuario clicar em Entrar/Google
+    };
+
+    redirectIfReady();
+  }, [user, localLoading, authLoading, navigate, memberships.length, isSuperAdmin, refreshContext]);
 
   const processInviteAfterAuth = async (): Promise<boolean> => {
     const token = inviteToken || readInviteToken();
@@ -100,26 +116,47 @@ const Login: React.FC = () => {
         .maybeSingle();
 
       if (profile?.role === 'super_admin') {
+          setLocalLoading(false);
+          navigate('/', { replace: true });
+          return; 
+      }
+
+      const { data: members } = await supabase
+        .from('organization_members')
+        .select('id')
+        .eq('user_id', data.user.id)
+        .limit(1);
+
+      const { data: owned } = await supabase
+        .from('saas_tenants')
+        .select('id')
+        .eq('owner_id', data.user.id)
+        .limit(1);
+
+      if ((members?.length || 0) > 0 || (owned?.length || 0) > 0) {
+        await refreshContext();
         setLocalLoading(false);
         navigate('/', { replace: true });
-        return; 
+        return;
       }
 
       if (inviteToken) {
         const accepted = await processInviteAfterAuth();
-        if (accepted) {
-          const { data: memberships } = await supabase
-            .from('organization_members')
-            .select('id')
-            .eq('user_id', data.user.id)
-            .limit(1);
-          if (memberships?.length) {
-            navigate('/', { replace: true });
-            return;
-          }
+        const { data: membersAfter } = await supabase
+          .from('organization_members')
+          .select('id')
+          .eq('user_id', data.user.id)
+          .limit(1);
+
+        if (accepted || (membersAfter?.length || 0) > 0) {
+          await refreshContext();
+          setLocalLoading(false);
+          navigate('/', { replace: true });
+          return;
         }
+
         setLocalLoading(false);
-        navigate(`/pending-access?invite=${encodeURIComponent(inviteToken)}`, { replace: true });
+        setError('Nao foi possivel vincular o convite. Confirme se esta usando o e-mail ludimilar589@gmail.com.');
         return;
       }
 
@@ -136,9 +173,9 @@ const Login: React.FC = () => {
       const hasMembership = (memberships && memberships.length > 0) || (ownedTenants && ownedTenants.length > 0);
 
       if (!hasMembership) {
-        setLocalLoading(false);
-        navigate('/pending-access', { replace: true });
-        return;
+          setLocalLoading(false);
+          setError('Sua conta nao possui vinculo com uma empresa. Solicite um convite ao administrador.');
+          return;
       }
 
       setLocalLoading(false);
