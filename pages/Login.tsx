@@ -45,35 +45,10 @@ const Login: React.FC = () => {
   useEffect(() => {
     if (!user || localLoading || authLoading) return;
 
-    const redirectIfReady = async () => {
-      if (isSuperAdmin || memberships.length > 0) {
-        navigate('/', { replace: true });
-        return;
-      }
-
-      const { data: members } = await supabase
-        .from('organization_members')
-        .select('id')
-        .eq('user_id', user.id)
-        .limit(1);
-
-      const { data: owned } = await supabase
-        .from('saas_tenants')
-        .select('id')
-        .eq('owner_id', user.id)
-        .limit(1);
-
-      if ((members?.length || 0) > 0 || (owned?.length || 0) > 0) {
-        await refreshContext();
-        navigate('/', { replace: true });
-        return;
-      }
-
-      // Sem acesso: nao redirecionar automaticamente — deixar usuario clicar em Entrar/Google
-    };
-
-    redirectIfReady();
-  }, [user, localLoading, authLoading, navigate, memberships.length, isSuperAdmin, refreshContext]);
+    if (isSuperAdmin || memberships.length > 0) {
+      navigate('/', { replace: true });
+    }
+  }, [user, localLoading, authLoading, navigate, memberships.length, isSuperAdmin]);
 
   const processInviteAfterAuth = async (): Promise<boolean> => {
     const token = inviteToken || readInviteToken();
@@ -96,6 +71,33 @@ const Login: React.FC = () => {
     }
   };
 
+  const withTimeout = async <T,>(promise: PromiseLike<T>, ms: number, message: string): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        Promise.resolve(promise),
+        new Promise<T>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(message)), ms);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+
+  const activateUnconfirmedAccount = async (targetEmail: string) => {
+    const response = await fetch('/api/auth/activate-invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: targetEmail,
+        inviteToken: inviteToken || readInviteToken() || undefined,
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || 'Nao foi possivel ativar a conta.');
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (localLoading) return;
@@ -104,16 +106,45 @@ const Login: React.FC = () => {
     setError(null);
 
     try {
-      const { data, error: authError } = await (supabase.auth as any).signInWithPassword({ email, password });
-      
-      if (authError) throw authError;
-      if (!data.user) throw new Error("Usuario nao encontrado.");
+      const normalizedEmail = email.trim().toLowerCase();
+      let authResult: any = await withTimeout(
+        (supabase.auth as any).signInWithPassword({ email: normalizedEmail, password }),
+        15000,
+        'Tempo esgotado ao autenticar. Verifique sua conexao e tente novamente.',
+      );
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', data.user.id)
-        .maybeSingle();
+      let authError = authResult?.error;
+      let data = authResult?.data;
+
+      // Conta criada, mas e-mail de confirmacao nao chegou
+      const unconfirmed =
+        String(authError?.message || '').toLowerCase().includes('email not confirmed') ||
+        String(authError?.message || '').toLowerCase().includes('email_not_confirmed');
+
+      if (unconfirmed) {
+        await withTimeout(
+          activateUnconfirmedAccount(normalizedEmail),
+          20000,
+          'Tempo esgotado ao ativar a conta. Tente novamente.',
+        );
+        authResult = await withTimeout(
+          (supabase.auth as any).signInWithPassword({ email: normalizedEmail, password }),
+          15000,
+          'Tempo esgotado ao autenticar apos ativacao.',
+        );
+        authError = authResult?.error;
+        data = authResult?.data;
+      }
+
+      if (authError) throw authError;
+      if (!data?.user) throw new Error("Usuario nao encontrado.");
+
+      const profileRes: any = await withTimeout(
+        Promise.resolve(supabase.from('profiles').select('role').eq('id', data.user.id).maybeSingle()),
+        8000,
+        'Tempo esgotado ao carregar perfil.',
+      );
+      const profile = profileRes?.data;
 
       if (profile?.role === 'super_admin') {
           setLocalLoading(false);
@@ -121,27 +152,33 @@ const Login: React.FC = () => {
           return; 
       }
 
-      const { data: members } = await supabase
-        .from('organization_members')
-        .select('id')
-        .eq('user_id', data.user.id)
-        .limit(1);
+      const membersRes: any = await withTimeout(
+        Promise.resolve(supabase.from('organization_members').select('id').eq('user_id', data.user.id).limit(1)),
+        8000,
+        'Tempo esgotado ao verificar acesso.',
+      );
+      const members = membersRes?.data;
 
-      const { data: owned } = await supabase
-        .from('saas_tenants')
-        .select('id')
-        .eq('owner_id', data.user.id)
-        .limit(1);
+      const ownedRes: any = await withTimeout(
+        Promise.resolve(supabase.from('saas_tenants').select('id').eq('owner_id', data.user.id).limit(1)),
+        8000,
+        'Tempo esgotado ao verificar empresa.',
+      );
+      const owned = ownedRes?.data;
 
       if ((members?.length || 0) > 0 || (owned?.length || 0) > 0) {
-        await refreshContext();
+        await withTimeout(refreshContext(), 10000, 'Tempo esgotado ao carregar contexto.');
         setLocalLoading(false);
-        navigate('/', { replace: true });
+        window.location.replace('/');
         return;
       }
 
-      if (inviteToken) {
-        const accepted = await processInviteAfterAuth();
+      if (inviteToken || readInviteToken()) {
+        const accepted = await withTimeout(
+          processInviteAfterAuth(),
+          20000,
+          'Tempo esgotado ao vincular convite.',
+        );
         const { data: membersAfter } = await supabase
           .from('organization_members')
           .select('id')
@@ -149,41 +186,42 @@ const Login: React.FC = () => {
           .limit(1);
 
         if (accepted || (membersAfter?.length || 0) > 0) {
-          await refreshContext();
           setLocalLoading(false);
-          navigate('/', { replace: true });
+          window.location.replace('/');
           return;
         }
 
         setLocalLoading(false);
-        setError('Nao foi possivel vincular o convite. Confirme se esta usando o e-mail ludimilar589@gmail.com.');
+        setError('Nao foi possivel vincular o convite. Use o e-mail exatamente igual ao do convite.');
         return;
       }
 
-      const { data: memberships } = await supabase
-        .from('organization_members')
-        .select('id, tenant_id')
-        .eq('user_id', data.user.id);
-        
-      const { data: ownedTenants } = await supabase
-        .from('saas_tenants')
-        .select('id')
-        .eq('owner_id', data.user.id);
-
-      const hasMembership = (memberships && memberships.length > 0) || (ownedTenants && ownedTenants.length > 0);
-
-      if (!hasMembership) {
+      // Tenta ativar/vincular automaticamente por e-mail (caso tenha convite no banco)
+      try {
+        await withTimeout(activateUnconfirmedAccount(normalizedEmail), 15000, 'Ativacao demorou demais.');
+        await withTimeout(processInviteAfterAuth(), 15000, 'Vinculo demorou demais.');
+        const { data: membersRetry } = await supabase
+          .from('organization_members')
+          .select('id')
+          .eq('user_id', data.user.id)
+          .limit(1);
+        if ((membersRetry?.length || 0) > 0) {
           setLocalLoading(false);
-          setError('Sua conta nao possui vinculo com uma empresa. Solicite um convite ao administrador.');
+          window.location.replace('/');
           return;
+        }
+      } catch {
+        // segue para mensagem amigavel
       }
 
       setLocalLoading(false);
-      navigate('/', { replace: true });
+      setError('Sua conta nao possui vinculo com uma empresa. Solicite um convite ao administrador.');
     } catch (err: any) {
       console.error(err);
       if (err.message === 'Invalid login credentials') {
           setError('E-mail ou senha incorretos. Verifique suas credenciais.');
+      } else if (String(err.message || '').toLowerCase().includes('email not confirmed')) {
+          setError('E-mail ainda nao confirmado. Clique em "ativar conta" na tela de cadastro ou tente novamente.');
       } else {
           setError(err.message || 'Nao foi possivel conectar. Tente novamente mais tarde.');
       }

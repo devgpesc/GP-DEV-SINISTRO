@@ -251,6 +251,33 @@ const Register: React.FC = () => {
     }
   };
 
+  const handleActivateWithoutEmail = async () => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) return;
+
+    setResendingEmail(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/auth/activate-invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: normalizedEmail,
+          inviteToken: inviteToken || undefined,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'Falha ao ativar conta.');
+
+      addToast('success', 'Conta ativada!', 'Agora faca login com e-mail e senha.');
+      window.location.assign(inviteToken ? `/login?invite=${inviteToken}` : '/login');
+    } catch (err: any) {
+      setError(err.message || 'Nao foi possivel ativar a conta.');
+    } finally {
+      setResendingEmail(false);
+    }
+  };
+
   if (verifyingInvite) {
     return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-blue-600" size={32} /></div>;
   }
@@ -272,17 +299,25 @@ const Register: React.FC = () => {
           )}
           <button
             type="button"
-            onClick={handleResendConfirmation}
+            onClick={handleActivateWithoutEmail}
             disabled={resendingEmail}
             className="w-full py-4 mb-3 bg-blue-600 text-white rounded-[22px] font-black text-xs uppercase tracking-widest disabled:opacity-50"
           >
-            {resendingEmail ? 'Reenviando...' : 'Reenviar e-mail de confirmacao'}
+            {resendingEmail ? 'Ativando...' : 'Nao recebi o e-mail — ativar conta agora'}
+          </button>
+          <button
+            type="button"
+            onClick={handleResendConfirmation}
+            disabled={resendingEmail}
+            className="w-full py-4 mb-3 border border-slate-200 text-slate-700 rounded-[22px] font-black text-xs uppercase tracking-widest disabled:opacity-50"
+          >
+            {resendingEmail ? 'Aguarde...' : 'Reenviar e-mail de confirmacao'}
           </button>
           <Link
             to={inviteToken ? `/login?invite=${inviteToken}` : '/login'}
             className="block w-full py-4 border border-slate-200 rounded-[22px] font-black text-xs uppercase tracking-widest text-slate-600 hover:border-blue-200 hover:text-blue-600"
           >
-            Ja confirmei — ir para login
+            Ir para login
           </Link>
         </div>
       </div>

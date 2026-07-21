@@ -47,7 +47,7 @@ export const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children
 };
 
 const MembershipGate: React.FC = () => {
-  const { user, refreshContext } = useAuth();
+  const { user, refreshContext, signOut } = useAuth();
   const [checking, setChecking] = React.useState(true);
 
   React.useEffect(() => {
@@ -59,22 +59,40 @@ const MembershipGate: React.FC = () => {
         return;
       }
 
-      const { data: members } = await supabase
-        .from('organization_members')
-        .select('id')
-        .eq('user_id', user.id)
-        .limit(1);
+      try {
+        const membersPromise = supabase
+          .from('organization_members')
+          .select('id')
+          .eq('user_id', user.id)
+          .limit(1);
 
-      const { data: owned } = await supabase
-        .from('saas_tenants')
-        .select('id')
-        .eq('owner_id', user.id)
-        .limit(1);
+        const ownedPromise = supabase
+          .from('saas_tenants')
+          .select('id')
+          .eq('owner_id', user.id)
+          .limit(1);
 
-      if ((members?.length || 0) > 0 || (owned?.length || 0) > 0) {
-        await refreshContext();
-        window.location.replace('/');
-        return;
+        const result = await Promise.race([
+          Promise.all([membersPromise, ownedPromise]),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
+        ]);
+
+        if (!result) {
+          if (!cancelled) setChecking(false);
+          return;
+        }
+
+        const [membersRes, ownedRes] = result as any[];
+        if ((membersRes?.data?.length || 0) > 0 || (ownedRes?.data?.length || 0) > 0) {
+          await Promise.race([
+            refreshContext(),
+            new Promise((resolve) => setTimeout(resolve, 5000)),
+          ]);
+          window.location.replace('/');
+          return;
+        }
+      } catch (err) {
+        console.warn('[MembershipGate]', err);
       }
 
       if (!cancelled) setChecking(false);
@@ -86,8 +104,16 @@ const MembershipGate: React.FC = () => {
 
   if (checking) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4 p-6">
         <div className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+        <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Verificando empresa...</p>
+        <button
+          type="button"
+          onClick={() => signOut().then(() => window.location.replace('/login'))}
+          className="text-xs font-bold text-red-400 hover:text-red-600"
+        >
+          Demorando? Voltar ao login
+        </button>
       </div>
     );
   }

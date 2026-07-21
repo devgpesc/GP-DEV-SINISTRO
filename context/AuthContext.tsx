@@ -85,7 +85,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (normalizedPendingEmail && normalizedUserEmail && normalizedPendingEmail !== normalizedUserEmail) return;
 
     if (pending.inviteToken) {
-      await acceptInviteSafe(pending.inviteToken);
+      await Promise.race([
+        acceptInviteSafe(pending.inviteToken),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('INVITE_TIMEOUT')), 10000)),
+      ]).catch((err) => {
+        console.warn('[Auth] acceptInviteSafe timeout/erro:', err?.message || err);
+      });
       clearPendingRegistration();
       return;
     }
