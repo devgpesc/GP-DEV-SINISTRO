@@ -10,6 +10,7 @@ import {
   clearPendingRegistration,
   readPendingRegistration,
 } from '../services/pendingRegistration';
+import { acceptInviteSafe } from '../services/inviteService';
 
 const parseHashParams = () => new URLSearchParams(window.location.hash.replace(/^#/, ''));
 
@@ -58,15 +59,13 @@ const finishPendingInviteOrRegistration = async (inviteToken: string | null) => 
   const pending = readPendingRegistration();
 
   if (inviteToken) {
-    const { error } = await supabase.rpc('accept_invite', { invite_token: inviteToken });
-    if (error) throw error;
+    await acceptInviteSafe(inviteToken);
     clearPendingRegistration();
     return;
   }
 
   if (pending?.inviteToken) {
-    const { error } = await supabase.rpc('accept_invite', { invite_token: pending.inviteToken });
-    if (error) throw error;
+    await acceptInviteSafe(pending.inviteToken);
     clearPendingRegistration();
     return;
   }

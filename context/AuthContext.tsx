@@ -11,6 +11,7 @@ type Session = any;
 
 const TENANT_STORAGE_KEY = 'sb-autoclaims-tenant-id';
 import { readPendingRegistration, clearPendingRegistration } from '../services/pendingRegistration';
+import { acceptInviteSafe } from '../services/inviteService';
 import { AccessProfile, resolveAccessProfile } from '../services/accessControl';
 import { isRootPlatformAdminEmail, resolvePlatformRole } from '../services/platformAdmin';
 
@@ -84,8 +85,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (normalizedPendingEmail && normalizedUserEmail && normalizedPendingEmail !== normalizedUserEmail) return;
 
     if (pending.inviteToken) {
-      const { error } = await supabase.rpc('accept_invite', { invite_token: pending.inviteToken });
-      if (error) throw error;
+      await acceptInviteSafe(pending.inviteToken);
       clearPendingRegistration();
       return;
     }

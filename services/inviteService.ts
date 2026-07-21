@@ -44,6 +44,19 @@ export const acceptInvite = async (token: string) => {
   return data;
 };
 
+/** Aceita convite sem falhar se ja foi processado e o usuario ja tem acesso. */
+export const acceptInviteSafe = async (token: string) => {
+  try {
+    return await acceptInvite(token);
+  } catch (error: any) {
+    const message = (error?.message || '').toLowerCase();
+    if (!message.includes('invalido') && !message.includes('utilizado')) {
+      throw error;
+    }
+    return null;
+  }
+};
+
 export const createInvitation = async (params: {
   email: string;
   name: string;
