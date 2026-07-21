@@ -79,6 +79,22 @@ const withTimeoutReject = async <T,>(promise: Promise<T>, ms: number, message: s
 };
 
 export const ensureInviteAccess = async (token?: string | null) => {
+  try {
+    const synced = await withTimeoutReject(
+      syncInviteMembership(),
+      12000,
+      'Tempo esgotado ao vincular convite. Tente novamente.',
+    );
+    if (synced?.status === 'linked' || synced?.status === 'already_member') {
+      return synced;
+    }
+  } catch (error: any) {
+    const message = (error?.message || '').toLowerCase();
+    if (!message.includes('tempo esgotado') && !message.includes('no_invite')) {
+      throw error;
+    }
+  }
+
   if (token) {
     try {
       const result = await withTimeoutReject(acceptInvite(token), 12000, 'Tempo esgotado ao aceitar convite.');
@@ -89,6 +105,12 @@ export const ensureInviteAccess = async (token?: string | null) => {
         throw error;
       }
     }
+
+    return withTimeoutReject(
+      syncInviteMembership(),
+      12000,
+      'Tempo esgotado ao vincular convite. Tente novamente.',
+    );
   }
 
   return withTimeoutReject(

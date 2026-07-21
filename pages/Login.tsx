@@ -5,8 +5,8 @@ const { useNavigate, Link, useLocation } = ReactRouterDOM as any;
 import { supabase } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { getAuthRedirectUrl } from '../services/authRedirect';
-import { saveInviteToken } from '../services/pendingRegistration';
-import { acceptInvite, getInviteDetails, type InviteDetails } from '../services/inviteService';
+import { saveInviteToken, readInviteToken } from '../services/pendingRegistration';
+import { ensureInviteAccess, getInviteDetails, type InviteDetails } from '../services/inviteService';
 import { 
   Loader2, ArrowRight, ShieldCheck, Mail, Lock, 
   LayoutDashboard, Zap, Globe, AlertCircle, Eye, EyeOff, Link as LinkIcon
@@ -17,7 +17,7 @@ const Login: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
-  const inviteToken = searchParams.get('invite');
+  const inviteToken = searchParams.get('invite') || readInviteToken();
   const { user, memberships, isSuperAdmin, refreshContext } = useAuth();
   
   const [email, setEmail] = useState('');
@@ -53,13 +53,25 @@ const Login: React.FC = () => {
 
     if (!inviteToken) {
       navigate('/pending-access', { replace: true });
+      return;
     }
+
+    navigate(`/pending-access?invite=${encodeURIComponent(inviteToken)}`, { replace: true });
   }, [user, localLoading, navigate, inviteToken, memberships.length, isSuperAdmin]);
 
   const processInviteAfterAuth = async (): Promise<boolean> => {
-    if (!inviteToken) return false;
+    const token = inviteToken || readInviteToken();
+    if (!token) {
+      try {
+        await ensureInviteAccess(null);
+        await refreshContext();
+        return true;
+      } catch {
+        return false;
+      }
+    }
     try {
-      await acceptInvite(inviteToken);
+      await ensureInviteAccess(token);
       await refreshContext();
       return true;
     } catch (err: any) {
@@ -96,10 +108,18 @@ const Login: React.FC = () => {
       if (inviteToken) {
         const accepted = await processInviteAfterAuth();
         if (accepted) {
-          navigate('/', { replace: true });
-          return;
+          const { data: memberships } = await supabase
+            .from('organization_members')
+            .select('id')
+            .eq('user_id', data.user.id)
+            .limit(1);
+          if (memberships?.length) {
+            navigate('/', { replace: true });
+            return;
+          }
         }
         setLocalLoading(false);
+        navigate(`/pending-access?invite=${encodeURIComponent(inviteToken)}`, { replace: true });
         return;
       }
 
@@ -137,11 +157,13 @@ const Login: React.FC = () => {
   const handleGoogle = async () => {
     setLocalLoading(true);
     setError(null);
+    const token = inviteToken || readInviteToken();
+    if (token) saveInviteToken(token);
     try {
       const { error } = await (supabase.auth as any).signInWithOAuth({
          provider: 'google',
          options: { 
-            redirectTo: getAuthRedirectUrl(inviteToken ? `/auth/callback?invite=${inviteToken}` : '/auth/callback'),
+            redirectTo: getAuthRedirectUrl(token ? `/auth/callback?invite=${token}` : '/auth/callback'),
             queryParams: { access_type: 'offline', prompt: 'consent' },
          }
       });

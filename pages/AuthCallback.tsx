@@ -11,7 +11,7 @@ import {
   readPendingRegistration,
 } from '../services/pendingRegistration';
 import { acceptInviteSafe, ensureInviteAccess } from '../services/inviteService';
-import { saveInviteToken } from '../services/pendingRegistration';
+import { saveInviteToken, readInviteToken } from '../services/pendingRegistration';
 
 const parseHashParams = () => new URLSearchParams(window.location.hash.replace(/^#/, ''));
 
@@ -181,15 +181,16 @@ const AuthCallback: React.FC = () => {
         if (sessionError) throw sessionError;
 
         if (session?.user) {
-          if (inviteToken) saveInviteToken(inviteToken);
+          const storedInvite = inviteToken || readInviteToken() || readPendingRegistration()?.inviteToken;
+          if (storedInvite) saveInviteToken(storedInvite);
 
-          if (inviteToken || readPendingRegistration()?.inviteToken) {
-            try {
-              await ensureInviteAccess(inviteToken || readPendingRegistration()?.inviteToken || null);
-            } catch (inviteErr) {
-              console.warn('[AuthCallback] ensureInviteAccess:', inviteErr);
-            }
-          } else {
+          try {
+            await ensureInviteAccess(storedInvite || null);
+          } catch (inviteErr) {
+            console.warn('[AuthCallback] ensureInviteAccess:', inviteErr);
+          }
+
+          if (!storedInvite) {
             await finishPendingInviteOrRegistration(inviteToken);
           }
 
@@ -217,8 +218,8 @@ const AuthCallback: React.FC = () => {
           }
 
           addToast('success', 'Conta confirmada', 'Vinculando seu convite...');
-          const pendingPath = inviteToken
-            ? `/pending-access?invite=${encodeURIComponent(inviteToken)}`
+          const pendingPath = storedInvite
+            ? `/pending-access?invite=${encodeURIComponent(storedInvite)}`
             : '/pending-access';
           window.location.replace(pendingPath);
           return;
