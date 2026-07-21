@@ -1,12 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 const { Link, Navigate } = ReactRouterDOM as any;
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { supabase } from '../services/supabaseClient';
 import {
-  acceptInvite,
+  ensureInviteAccess,
   getInviteDetails,
-  getMyPendingInvite,
   type InviteDetails,
 } from '../services/inviteService';
 import { readPendingRegistration, clearPendingRegistration, readInviteToken, clearInviteToken, saveInviteToken } from '../services/pendingRegistration';
@@ -21,145 +21,136 @@ import {
 } from 'lucide-react';
 import EscLogo from '../components/EscLogo';
 
-const withTimeout = async <T,>(promise: Promise<T>, ms: number): Promise<T | null> => {
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
-    ]);
-  } catch {
-    return null;
-  }
-};
-
 const PendingAccess: React.FC = () => {
-  const { user, loading: authLoading, memberships, signOut, refreshContext } = useAuth();
+  const { user, loading: authLoading, memberships, signOut } = useAuth();
   const { addToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
   const [pendingInvite, setPendingInvite] = useState<(InviteDetails & { token?: string }) | null>(null);
   const [manualToken, setManualToken] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const attemptedRef = useRef(false);
+
+  const resolveInviteToken = (): string | null => {
+    const params = new URLSearchParams(window.location.search);
+    const urlToken = params.get('invite');
+    if (urlToken) return urlToken;
+
+    const storedToken = readInviteToken();
+    if (storedToken) return storedToken;
+
+    const pending = readPendingRegistration();
+    if (pending?.inviteToken) return pending.inviteToken;
+
+    return null;
+  };
+
+  const verifyMembershipAndRedirect = async (): Promise<boolean> => {
+    if (!user?.id) return false;
+
+    const { data: members } = await supabase
+      .from('organization_members')
+      .select('id')
+      .eq('user_id', user.id)
+      .limit(1);
+
+    const { data: owned } = await supabase
+      .from('saas_tenants')
+      .select('id')
+      .eq('owner_id', user.id)
+      .limit(1);
+
+    if ((members?.length || 0) > 0 || (owned?.length || 0) > 0) {
+      clearPendingRegistration();
+      clearInviteToken();
+      window.location.replace('/');
+      return true;
+    }
+
+    return false;
+  };
+
+  const linkInviteAccess = async (token?: string | null) => {
+    setAccepting(true);
+    setError(null);
+
+    try {
+      const result = await ensureInviteAccess(token);
+      const status = result?.status;
+
+      if (status === 'no_invite') {
+        if (token) {
+          const details = await getInviteDetails(token);
+          if (details) setPendingInvite({ ...details, token });
+        }
+        throw new Error('Nenhum convite encontrado para este e-mail. Solicite um novo convite ao administrador.');
+      }
+
+      const linked = await verifyMembershipAndRedirect();
+      if (!linked) {
+        throw new Error('Convite processado, mas o acesso ainda nao foi liberado. Atualize a pagina ou tente novamente.');
+      }
+
+      addToast('success', 'Convite aceito!', 'Seu acesso foi configurado com sucesso.');
+    } finally {
+      setAccepting(false);
+    }
+  };
 
   useEffect(() => {
     if (authLoading) return;
-
     if (!user) {
       setLoading(false);
       return;
     }
-
     if (memberships.length > 0) {
       window.location.replace('/');
       return;
     }
+    if (attemptedRef.current) return;
 
-    let cancelled = false;
-
-    const resolveInviteToken = async (): Promise<string | null> => {
-      const params = new URLSearchParams(window.location.search);
-      const urlToken = params.get('invite');
-      if (urlToken) return urlToken;
-
-      const storedToken = readInviteToken();
-      if (storedToken) return storedToken;
-
-      const pending = readPendingRegistration();
-      if (pending?.inviteToken) return pending.inviteToken;
-
-      const myInvite = await withTimeout(getMyPendingInvite(), 8000);
-      return myInvite?.token || null;
-    };
+    attemptedRef.current = true;
 
     const run = async () => {
       setLoading(true);
       setError(null);
 
       try {
-        const token = await resolveInviteToken();
-        if (cancelled) return;
+        const alreadyLinked = await verifyMembershipAndRedirect();
+        if (alreadyLinked) return;
 
+        const token = resolveInviteToken();
         if (token) {
           saveInviteToken(token);
-          const details = await withTimeout(getInviteDetails(token), 8000);
-          if (details) {
-            setPendingInvite({ ...details, token });
-          }
-
-          const emailMatches =
-            !details?.email ||
-            user.email?.toLowerCase() === details.email?.toLowerCase();
-
-          if (emailMatches) {
-            setAccepting(true);
-            try {
-              await acceptInvite(token);
-              const ok = await refreshContext();
-              clearPendingRegistration();
-              clearInviteToken();
-              if (ok) {
-                addToast('success', 'Convite aceito!', 'Seu acesso foi configurado com sucesso.');
-                window.location.replace('/');
-                return;
-              }
-            } catch (acceptErr: any) {
-              console.warn('[PendingAccess] auto-accept:', acceptErr);
-              setError(acceptErr.message || 'Nao foi possivel aceitar o convite automaticamente.');
-            } finally {
-              if (!cancelled) setAccepting(false);
-            }
-          }
+          const details = await getInviteDetails(token);
+          if (details) setPendingInvite({ ...details, token });
         }
+
+        await linkInviteAccess(token);
       } catch (err: any) {
         console.error('[PendingAccess]', err);
-        if (!cancelled) {
-          setError(err.message || 'Erro ao carregar convite.');
-        }
+        setError(err.message || 'Nao foi possivel vincular seu convite.');
       } finally {
-        if (!cancelled) setLoading(false);
+        setLoading(false);
       }
     };
 
-    const safetyTimer = setTimeout(() => {
-      if (!cancelled) setLoading(false);
-    }, 10000);
-
+    const safetyTimer = setTimeout(() => setLoading(false), 12000);
     run().finally(() => clearTimeout(safetyTimer));
 
-    return () => {
-      cancelled = true;
-      clearTimeout(safetyTimer);
-    };
-  }, [user, authLoading, memberships.length, refreshContext, addToast]);
-
-  const handleAcceptInvite = async (token: string) => {
-    setAccepting(true);
-    setError(null);
-    try {
-      await acceptInvite(token);
-      const ok = await refreshContext();
-      clearPendingRegistration();
-      clearInviteToken();
-      if (!ok) throw new Error('Nao foi possivel carregar sua empresa apos aceitar o convite.');
-      addToast('success', 'Convite aceito!', 'Seu acesso foi configurado com sucesso.');
-      window.location.replace('/');
-    } catch (err: any) {
-      setError(err.message || 'Nao foi possivel aceitar o convite.');
-    } finally {
-      setAccepting(false);
-    }
-  };
+    return () => clearTimeout(safetyTimer);
+  }, [user, authLoading, memberships.length]);
 
   const handleManualAccept = async () => {
-    const token = manualToken.trim();
-    if (!token) {
+    const raw = manualToken.trim();
+    if (!raw) {
       setError('Cole o codigo ou link do convite.');
       return;
     }
 
-    const extracted = token.includes('invite=')
-      ? new URL(token.startsWith('http') ? token : `https://x.com/?${token}`).searchParams.get('invite')
-      : token;
+    const extracted = raw.includes('invite=')
+      ? new URL(raw.startsWith('http') ? raw : `https://x.com/?${raw}`).searchParams.get('invite')
+      : raw;
 
     if (!extracted) {
       setError('Link de convite invalido.');
@@ -167,16 +158,29 @@ const PendingAccess: React.FC = () => {
     }
 
     saveInviteToken(extracted);
-    await handleAcceptInvite(extracted);
+    attemptedRef.current = false;
+    setLoading(true);
+    try {
+      const details = await getInviteDetails(extracted);
+      if (details) setPendingInvite({ ...details, token: extracted });
+      await linkInviteAccess(extracted);
+    } catch (err: any) {
+      setError(err.message || 'Nao foi possivel aceitar o convite.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  if (authLoading || (loading && !error && !pendingInvite)) {
+  if (authLoading || (loading && !error)) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4 p-6">
         <Loader2 className="animate-spin text-blue-600" size={32} />
-        <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
-          {accepting ? 'Aceitando convite...' : 'Verificando acesso...'}
+        <p className="text-xs font-bold uppercase tracking-widest text-slate-400 text-center">
+          {accepting ? 'Vinculando convite...' : 'Verificando acesso...'}
         </p>
+        {error && (
+          <p className="text-xs font-bold text-red-600 text-center max-w-sm">{error}</p>
+        )}
       </div>
     );
   }
@@ -207,12 +211,6 @@ const PendingAccess: React.FC = () => {
               <p className="mt-2 text-xs text-slate-400">
                 E-mail do convite: <strong>{pendingInvite.email}</strong>
               </p>
-              {user?.email?.toLowerCase() !== pendingInvite.email?.toLowerCase() && (
-                <div className="mt-4 p-3 bg-amber-50 border border-amber-100 rounded-2xl text-xs font-bold text-amber-700">
-                  Voce esta logado como <strong>{user?.email}</strong>, mas o convite foi enviado para <strong>{pendingInvite.email}</strong>.
-                  Saia e entre com o e-mail correto.
-                </div>
-              )}
             </>
           ) : (
             <>
@@ -222,7 +220,7 @@ const PendingAccess: React.FC = () => {
                 Sua conta foi autenticada, mas ainda nao possui vinculo com uma empresa.
               </p>
               <p className="mt-2 text-xs text-slate-400">
-                Cole o link de convite recebido do administrador ou solicite um novo convite.
+                Cole o link de convite ou clique em tentar novamente.
               </p>
             </>
           )}
@@ -233,49 +231,46 @@ const PendingAccess: React.FC = () => {
             </div>
           )}
 
-          {pendingInvite?.token && user?.email?.toLowerCase() === pendingInvite.email?.toLowerCase() && (
+          <button
+            type="button"
+            onClick={() => {
+              attemptedRef.current = false;
+              setLoading(true);
+              setError(null);
+              linkInviteAccess(resolveInviteToken())
+                .catch((err: any) => setError(err.message || 'Falha ao vincular convite.'))
+                .finally(() => setLoading(false));
+            }}
+            disabled={accepting}
+            className="mt-6 w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest disabled:opacity-50"
+          >
+            {accepting ? 'Vinculando...' : 'Tentar vincular convite novamente'}
+          </button>
+
+          <div className="mt-6 space-y-3 text-left">
+            <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest">
+              Ou cole o link do convite
+            </label>
+            <div className="relative">
+              <LinkIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+              <input
+                value={manualToken}
+                onChange={(e) => setManualToken(e.target.value)}
+                placeholder="Cole o link ou codigo do convite"
+                className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-sm outline-none focus:ring-4 focus:ring-blue-500/10"
+              />
+            </div>
             <button
               type="button"
-              onClick={() => handleAcceptInvite(pendingInvite.token!)}
+              onClick={handleManualAccept}
               disabled={accepting}
-              className="mt-6 w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest disabled:opacity-50"
+              className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold text-xs uppercase disabled:opacity-50"
             >
-              {accepting ? 'Aceitando convite...' : 'Aceitar convite e entrar'}
+              {accepting ? 'Vinculando...' : 'Validar convite'}
             </button>
-          )}
-
-          {!pendingInvite && (
-            <div className="mt-6 space-y-3 text-left">
-              <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest">
-                Tem um link de convite?
-              </label>
-              <div className="relative">
-                <LinkIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-                <input
-                  value={manualToken}
-                  onChange={(e) => setManualToken(e.target.value)}
-                  placeholder="Cole o link ou codigo do convite"
-                  className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-sm outline-none focus:ring-4 focus:ring-blue-500/10"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={handleManualAccept}
-                disabled={accepting}
-                className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold text-xs uppercase disabled:opacity-50"
-              >
-                {accepting ? 'Verificando...' : 'Validar convite'}
-              </button>
-            </div>
-          )}
+          </div>
 
           <div className="mt-6 flex flex-col gap-3">
-            <Link
-              to="/register"
-              className="flex items-center justify-center gap-2 w-full py-3 border border-slate-200 rounded-2xl font-bold text-xs uppercase text-slate-600 hover:border-blue-200 hover:text-blue-600"
-            >
-              <Building size={16} /> Criar nova conta empresarial
-            </Link>
             <button
               type="button"
               onClick={() => signOut().then(() => window.location.replace('/login'))}

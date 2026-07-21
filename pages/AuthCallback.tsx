@@ -10,7 +10,7 @@ import {
   clearPendingRegistration,
   readPendingRegistration,
 } from '../services/pendingRegistration';
-import { acceptInviteSafe } from '../services/inviteService';
+import { acceptInviteSafe, ensureInviteAccess } from '../services/inviteService';
 import { saveInviteToken } from '../services/pendingRegistration';
 
 const parseHashParams = () => new URLSearchParams(window.location.hash.replace(/^#/, ''));
@@ -183,13 +183,17 @@ const AuthCallback: React.FC = () => {
         if (session?.user) {
           if (inviteToken) saveInviteToken(inviteToken);
 
-          await finishPendingInviteOrRegistration(inviteToken);
-          const contextLoaded = await refreshContext(session.user);
-          if (!contextLoaded) {
-            throw new Error(
-              'Login confirmado, mas nao foi possivel carregar sua empresa. Tente novamente em alguns segundos.',
-            );
+          if (inviteToken || readPendingRegistration()?.inviteToken) {
+            try {
+              await ensureInviteAccess(inviteToken || readPendingRegistration()?.inviteToken || null);
+            } catch (inviteErr) {
+              console.warn('[AuthCallback] ensureInviteAccess:', inviteErr);
+            }
+          } else {
+            await finishPendingInviteOrRegistration(inviteToken);
           }
+
+          clearPendingRegistration();
 
           const { data: memberships } = await supabase
             .from('organization_members')
@@ -205,11 +209,18 @@ const AuthCallback: React.FC = () => {
 
           const hasAccess = (memberships?.length || 0) > 0 || (ownedTenants?.length || 0) > 0;
 
-          addToast('success', 'Acesso confirmado', 'Sua conta foi ativada com sucesso.');
+          if (hasAccess) {
+            await refreshContext(session.user);
+            addToast('success', 'Acesso confirmado', 'Sua conta foi ativada com sucesso.');
+            window.location.replace('/');
+            return;
+          }
+
+          addToast('success', 'Conta confirmada', 'Vinculando seu convite...');
           const pendingPath = inviteToken
             ? `/pending-access?invite=${encodeURIComponent(inviteToken)}`
             : '/pending-access';
-          window.location.replace(hasAccess ? '/' : pendingPath);
+          window.location.replace(pendingPath);
           return;
         }
 

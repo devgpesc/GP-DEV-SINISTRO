@@ -58,6 +58,46 @@ export const acceptInviteSafe = async (token: string) => {
   }
 };
 
+export const syncInviteMembership = async () => {
+  const { data, error } = await supabase.rpc('sync_invite_membership');
+  if (error) throw error;
+  return data as { status: string; tenant_id?: string; role?: string } | null;
+};
+
+const withTimeoutReject = async <T,>(promise: Promise<T>, ms: number, message: string): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+};
+
+export const ensureInviteAccess = async (token?: string | null) => {
+  if (token) {
+    try {
+      const result = await withTimeoutReject(acceptInvite(token), 12000, 'Tempo esgotado ao aceitar convite.');
+      if (result) return result;
+    } catch (error: any) {
+      const message = (error?.message || '').toLowerCase();
+      if (!message.includes('invalido') && !message.includes('utilizado') && !message.includes('tempo esgotado')) {
+        throw error;
+      }
+    }
+  }
+
+  return withTimeoutReject(
+    syncInviteMembership(),
+    12000,
+    'Tempo esgotado ao vincular convite. Tente novamente.',
+  );
+};
+
 export const createInvitation = async (params: {
   email: string;
   name: string;
