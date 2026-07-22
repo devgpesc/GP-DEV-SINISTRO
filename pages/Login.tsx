@@ -390,13 +390,6 @@ const Login: React.FC = () => {
               </p>
             </div>
 
-            {!inviteInfo && (
-              <p className="mb-6 text-[11px] font-semibold text-slate-500 bg-slate-50 border border-slate-100 rounded-xl p-3 leading-relaxed">
-                Novos membros sao criados pelo admin da empresa (como no Esc Finan): e-mail + senha, acesso liberado na hora.
-                Nao e necessario confirmar e-mail.
-              </p>
-            )}
-
             {inviteInfo && (
               <div className="mb-6 space-y-3">
                 <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl flex items-start gap-3 text-blue-700">
