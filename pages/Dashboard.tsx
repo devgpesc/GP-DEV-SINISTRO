@@ -104,7 +104,7 @@ const Dashboard: React.FC = () => {
         ordersPromise,
       ]);
 
-      setEvents((eventsRes.data as Event[]) || []);
+      setEvents(((eventsRes.data as unknown) as Event[]) || []);
       const [qRes, dRes, poRes] = countsRes;
       setQuotationsCount(qRes.count || 0);
       setDeliveriesCount(dRes.count || 0);
