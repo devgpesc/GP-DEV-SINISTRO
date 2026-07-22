@@ -126,6 +126,12 @@ export default async function handler(req, res) {
       await admin.auth.admin.updateUserById(extra.id, { email_confirm: true }).catch(() => null);
     }
 
+    // Garante que a sessao atual esta na lista (Google pode nao aparecer no filtro por e-mail).
+    const relatedUsers = [...usersByEmail];
+    if (!relatedUsers.some((u) => u.id === user.id)) {
+      relatedUsers.push(user);
+    }
+
     let invite = null;
     if (inviteToken) {
       const { data, error } = await admin
@@ -149,52 +155,44 @@ export default async function handler(req, res) {
       invite = invites?.[0] || null;
     }
 
-    let membershipLinked = false;
-    let inviteSkippedReason = null;
-
-    if (!invite) {
-      inviteSkippedReason = 'invite_not_found';
-    } else if (!invite.tenant_id) {
-      inviteSkippedReason = 'invite_without_tenant';
-    } else if (String(invite.email || '').toLowerCase() !== email) {
-      inviteSkippedReason = 'invite_email_mismatch';
-    } else if (invite.status === 'cancelled') {
-      inviteSkippedReason = 'invite_cancelled';
-    } else {
-      const { error: upsertError } = await admin.from('organization_members').upsert(
-        {
-          tenant_id: invite.tenant_id,
-          user_id: user.id,
-          role: invite.role || 'member',
-        },
-        { onConflict: 'tenant_id,user_id' },
-      );
-      if (upsertError) throw upsertError;
-
-      const { error: inviteUpdateError } = await admin
-        .from('invitations')
-        .update({ status: 'accepted' })
-        .eq('id', invite.id);
-      if (inviteUpdateError) throw inviteUpdateError;
-
-      membershipLinked = true;
-
-      // Se houver contas duplicadas do mesmo e-mail, vincula todas (evita Google vs senha).
-      for (const extra of usersByEmail) {
-        if (extra.id === user.id) continue;
-        await admin
-          .from('organization_members')
-          .upsert(
-            {
-              tenant_id: invite.tenant_id,
-              user_id: extra.id,
-              role: invite.role || 'member',
-            },
-            { onConflict: 'tenant_id,user_id' },
-          )
-          .catch(() => null);
+    // Coleta memberships de TODAS as contas do mesmo e-mail (senha vs Google).
+    const membershipMap = new Map();
+    for (const related of relatedUsers) {
+      const { data: rows, error } = await admin
+        .from('organization_members')
+        .select('tenant_id, role')
+        .eq('user_id', related.id);
+      if (error) throw error;
+      for (const row of rows || []) {
+        if (!row.tenant_id) continue;
+        membershipMap.set(row.tenant_id, row.role || 'member');
       }
     }
+
+    let inviteSkippedReason = null;
+    if (invite?.tenant_id && String(invite.email || '').toLowerCase() === email && invite.status !== 'cancelled') {
+      membershipMap.set(invite.tenant_id, invite.role || 'member');
+      await admin.from('invitations').update({ status: 'accepted' }).eq('id', invite.id);
+    } else if (!invite) {
+      inviteSkippedReason = 'invite_not_found';
+    } else if (invite.status === 'cancelled') {
+      inviteSkippedReason = 'invite_cancelled';
+    } else if (String(invite.email || '').toLowerCase() !== email) {
+      inviteSkippedReason = 'invite_email_mismatch';
+    }
+
+    // Propaga memberships para TODAS as contas do e-mail (inclui sessao Google).
+    for (const [tenant_id, role] of membershipMap.entries()) {
+      for (const related of relatedUsers) {
+        const { error: upsertError } = await admin.from('organization_members').upsert(
+          { tenant_id, user_id: related.id, role },
+          { onConflict: 'tenant_id,user_id' },
+        );
+        if (upsertError) throw upsertError;
+      }
+    }
+
+    const membershipLinked = membershipMap.size > 0;
 
     const { error: profileError } = await admin.from('profiles').upsert(
       {
@@ -217,10 +215,8 @@ export default async function handler(req, res) {
       return sendJson(res, 422, {
         error:
           inviteSkippedReason === 'invite_cancelled'
-            ? 'Este convite foi cancelado. Gere um novo convite.'
-            : inviteSkippedReason === 'invite_email_mismatch'
-              ? 'O convite pertence a outro e-mail.'
-              : 'Nao foi possivel vincular o convite a esta conta. Gere um novo convite.',
+            ? 'Este convite foi cancelado. Peca ao administrador para recriar o acesso com senha.'
+            : 'Nao foi possivel vincular esta conta a uma empresa. Peca ao administrador para adicionar o membro novamente.',
         inviteSkippedReason,
         userId: user.id,
         inviteStatus: invite?.status || null,
@@ -229,14 +225,12 @@ export default async function handler(req, res) {
 
     return sendJson(res, 200, {
       ok: true,
-      message: membershipLinked
-        ? 'Conta ativada e vinculada a empresa.'
-        : 'Conta ativada. Membership ja existia.',
+      message: 'Conta ativada e vinculada a empresa.',
       userId: user.id,
-      membershipLinked,
+      membershipLinked: true,
       membershipCount: memberships?.length || 0,
       inviteStatus: invite?.status || null,
-      duplicateUsers: usersByEmail.length,
+      duplicateUsers: relatedUsers.length,
     });
   } catch (error) {
     console.error('[activate-invite]', error);

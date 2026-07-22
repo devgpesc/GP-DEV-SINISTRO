@@ -305,11 +305,13 @@ const PendingAccess: React.FC = () => {
                 Sua conta foi autenticada, mas nao esta vinculada a nenhuma empresa.
               </p>
               <p className="mt-3 text-sm font-semibold text-slate-600 bg-amber-50 border border-amber-100 rounded-2xl p-3 leading-relaxed">
-                Se voce ja teve acesso e foi removido, e necessario um <strong>novo convite</strong> do
-                administrador. Sem o link de convite, nao e possivel entrar na empresa.
+                Se voce ja teve acesso e foi removido, peca ao administrador para{' '}
+                <strong>recriar o acesso</strong> em Equipe (e-mail + senha) ou{' '}
+                <strong>redefinir a senha</strong> em Editar usuario.
+                Nao e necessario link de convite.
               </p>
               <p className="mt-2 text-xs text-slate-400">
-                Peça um novo convite ou cole o link abaixo para validar.
+                Se ja tem senha definida pelo admin, saia e entre com e-mail/senha. Google so funciona se o admin liberou o mesmo e-mail.
               </p>
             </>
           )}

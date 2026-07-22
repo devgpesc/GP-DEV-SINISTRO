@@ -55,6 +55,7 @@ export default async function handler(req, res) {
     const name = String(body.name || '').trim();
     const role = String(body.role || 'member').trim() || 'member';
     const tenantId = String(body.tenantId || '').trim();
+    const userId = body.userId ? String(body.userId).trim() : null;
 
     if (!email || !email.includes('@')) {
       return sendJson(res, 400, { error: 'Informe um e-mail valido.' });
@@ -103,7 +104,18 @@ export default async function handler(req, res) {
       return sendJson(res, 403, { error: 'Apenas administradores podem adicionar membros.' });
     }
 
-    let user = await findUserByEmail(admin, email);
+    let user = null;
+    if (userId) {
+      const { data } = await admin.auth.admin.getUserById(userId);
+      user = data?.user || null;
+      if (user && String(user.email || '').toLowerCase() !== email) {
+        // Permite reset pelo id da equipe mesmo se e-mail no form divergir levemente.
+      }
+    }
+    if (!user) {
+      user = await findUserByEmail(admin, email);
+    }
+
     let created = false;
 
     if (user) {
@@ -133,31 +145,66 @@ export default async function handler(req, res) {
       return sendJson(res, 500, { error: 'Falha ao criar usuario.' });
     }
 
-    const { error: memberError } = await admin.from('organization_members').upsert(
-      {
-        tenant_id: tenantId,
-        user_id: user.id,
-        role,
-      },
-      { onConflict: 'tenant_id,user_id' },
-    );
-    if (memberError) throw memberError;
+    // Propaga senha/confirmacao e membership para outras contas do mesmo e-mail (Google).
+    const siblings = [];
+    try {
+      const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      const response = await fetch(`${url}/auth/v1/admin/users?email=${encodeURIComponent(email)}`, {
+        headers: { Authorization: `Bearer ${key}`, apikey: key },
+      });
+      if (response.ok) {
+        const payload = await response.json();
+        const users = payload?.users || payload || [];
+        for (const u of Array.isArray(users) ? users : []) {
+          if (String(u.email || '').toLowerCase() === email) siblings.push(u);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    if (!siblings.some((u) => u.id === user.id)) siblings.push(user);
+
+    for (const sibling of siblings) {
+      if (sibling.id !== user.id) {
+        await admin.auth.admin
+          .updateUserById(sibling.id, {
+            password,
+            email_confirm: true,
+            user_metadata: {
+              ...(sibling.user_metadata || {}),
+              full_name: name,
+              name,
+            },
+          })
+          .catch(() => null);
+      }
+
+      const { error: memberError } = await admin.from('organization_members').upsert(
+        {
+          tenant_id: tenantId,
+          user_id: sibling.id,
+          role,
+        },
+        { onConflict: 'tenant_id,user_id' },
+      );
+      if (memberError) throw memberError;
+
+      await admin.from('profiles').upsert(
+        {
+          id: sibling.id,
+          email,
+          full_name: name,
+          role: 'Usuário',
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' },
+      );
+    }
 
     if (role === 'owner') {
       await admin.from('saas_tenants').update({ owner_id: user.id }).eq('id', tenantId);
     }
-
-    const { error: profileError } = await admin.from('profiles').upsert(
-      {
-        id: user.id,
-        email,
-        full_name: name,
-        role: 'Usuário',
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'id' },
-    );
-    if (profileError) throw profileError;
 
     // Cancela convites pendentes do mesmo e-mail nesta empresa (modelo antigo).
     await admin
@@ -179,15 +226,16 @@ export default async function handler(req, res) {
       tenantId,
       tenantName: tenant.name,
       loginUrl,
+      linkedAccounts: siblings.length,
       message: created
         ? 'Membro criado. Ja pode entrar com e-mail e senha (sem confirmacao).'
-        : 'Usuario existente atualizado e vinculado a empresa. Ja pode entrar com a senha definida.',
+        : 'Senha atualizada e acesso liberado (incluindo conta Google do mesmo e-mail).',
     });
   } catch (error) {
     console.error('[create-member]', error);
     const message = error?.message || 'Falha ao criar membro.';
     if (String(message).toLowerCase().includes('already') || String(message).toLowerCase().includes('registered')) {
-      return sendJson(res, 409, { error: 'Este e-mail ja possui conta. Tente novamente ou redefina a senha no formulario.' });
+      return sendJson(res, 409, { error: 'Este e-mail ja possui conta. Use Editar usuario para redefinir a senha.' });
     }
     return sendJson(res, 500, { error: message });
   }

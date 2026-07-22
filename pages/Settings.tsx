@@ -59,7 +59,11 @@ const Settings: React.FC = () => {
     membership_role: 'member',
     permissions: {} as Record<string, boolean>,
     module_permissions: {} as Record<string, boolean>,
+    newPassword: '',
+    confirmPassword: '',
   });
+  const [showEditPassword, setShowEditPassword] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
   const [inviteData, setInviteData] = useState({ name: '', email: '', role: 'member', password: '' });
   const [generatedLink, setGeneratedLink] = useState('');
   const [generatedLoginLink, setGeneratedLoginLink] = useState('');
@@ -262,7 +266,10 @@ const Settings: React.FC = () => {
           membership_role: user.membership_role || 'member',
           permissions: normalizePermissions(user.permissions),
           module_permissions: normalizeModulePermissions(user.module_permissions),
+          newPassword: '',
+          confirmPassword: '',
       });
+      setShowEditPassword(false);
       setUserModalOpen(true);
   };
   const handleDeleteUser = async () => { 
@@ -298,6 +305,23 @@ const Settings: React.FC = () => {
   };
   const handleSaveUser = async () => {
       if (!editingUser || !currentTenant?.id) return;
+
+      const newPassword = userForm.newPassword.trim();
+      if (newPassword) {
+        if (newPassword.length < 8) {
+          addToast('error', 'Senha', 'A nova senha deve ter pelo menos 8 caracteres.');
+          return;
+        }
+        if (newPassword !== userForm.confirmPassword) {
+          addToast('error', 'Senha', 'A confirmacao de senha nao confere.');
+          return;
+        }
+        if (!editingUser.email) {
+          addToast('error', 'Senha', 'E-mail do usuario nao encontrado para redefinir senha.');
+          return;
+        }
+      }
+
       const payload = {
           target_tenant_id: currentTenant.id,
           target_user_id: userForm.id,
@@ -308,14 +332,36 @@ const Settings: React.FC = () => {
           target_module_permissions: sanitizeModulePermissionsForSave(userForm.module_permissions),
       };
       const { error } = await supabase.rpc('update_tenant_member_profile', payload);
-      if (!error) {
-          await auditService.log('Update User', 'User', userForm.id, payload);
-          loadUsers();
-          setUserModalOpen(false);
-          addToast('success', 'Salvo', 'Usuário atualizado.');
-      } else {
+      if (error) {
           addToast('error', 'Erro', error.message);
+          return;
       }
+
+      if (newPassword) {
+        setSavingPassword(true);
+        try {
+          await createMemberViaApi({
+            email: String(editingUser.email).toLowerCase(),
+            password: newPassword,
+            name: userForm.full_name || editingUser.full_name || 'Usuario',
+            role: userForm.membership_role || 'member',
+            tenantId: currentTenant.id,
+            userId: userForm.id,
+          });
+          addToast('success', 'Senha redefinida', 'O usuario ja pode entrar com a nova senha (e Google do mesmo e-mail).');
+        } catch (err: any) {
+          addToast('error', 'Senha', err.message || 'Permissoes salvas, mas falhou ao redefinir a senha.');
+          setSavingPassword(false);
+          return;
+        } finally {
+          setSavingPassword(false);
+        }
+      }
+
+      await auditService.log('Update User', 'User', userForm.id, payload);
+      loadUsers();
+      setUserModalOpen(false);
+      addToast('success', 'Salvo', 'Usuário atualizado.');
   };
   const createTeamMember = async () => {
       if (!profile || !currentTenant?.id) return;
@@ -830,6 +876,38 @@ const Settings: React.FC = () => {
                           </select>
                       </div>
 
+                      <div className="p-4 rounded-2xl border border-slate-100 bg-slate-50 space-y-3">
+                          <div>
+                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Redefinir senha</label>
+                            <p className="text-[11px] font-semibold text-slate-500 mb-2">
+                              Opcional. Define nova senha e libera login imediato (sem e-mail de confirmacao).
+                              {editingUser?.email ? <> E-mail: <strong>{editingUser.email}</strong></> : null}
+                            </p>
+                          </div>
+                          <div className="relative">
+                              <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
+                              <input
+                                type={showEditPassword ? 'text' : 'password'}
+                                className="w-full pl-10 pr-10 py-3 bg-white border border-slate-100 rounded-xl font-bold text-slate-700 outline-none"
+                                value={userForm.newPassword}
+                                onChange={e => setUserForm({...userForm, newPassword: e.target.value})}
+                                placeholder="Nova senha (min. 8)"
+                                autoComplete="new-password"
+                              />
+                              <button type="button" onClick={() => setShowEditPassword(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-blue-600">
+                                {showEditPassword ? <EyeOff size={16}/> : <Eye size={16}/>}
+                              </button>
+                          </div>
+                          <input
+                            type={showEditPassword ? 'text' : 'password'}
+                            className="w-full px-3 py-3 bg-white border border-slate-100 rounded-xl font-bold text-slate-700 outline-none"
+                            value={userForm.confirmPassword}
+                            onChange={e => setUserForm({...userForm, confirmPassword: e.target.value})}
+                            placeholder="Confirmar nova senha"
+                            autoComplete="new-password"
+                          />
+                      </div>
+
                       <div>
                           <label className="block text-[10px] font-black uppercase text-slate-400 mb-3 border-b border-slate-100 pb-2">Módulos desta empresa</label>
                           <p className="text-[11px] font-semibold text-slate-400 mb-3">
@@ -880,7 +958,9 @@ const Settings: React.FC = () => {
 
                       <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
                           <button onClick={() => setUserModalOpen(false)} className="px-6 py-3 text-slate-400 font-bold text-xs uppercase hover:text-slate-600">Cancelar</button>
-                          <button onClick={handleSaveUser} className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold text-xs uppercase shadow-lg shadow-blue-600/20 hover:bg-blue-700">Salvar</button>
+                          <button onClick={handleSaveUser} disabled={savingPassword} className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold text-xs uppercase shadow-lg shadow-blue-600/20 hover:bg-blue-700 disabled:opacity-50">
+                            {savingPassword ? 'Salvando...' : 'Salvar'}
+                          </button>
                       </div>
                   </div>
               </div>

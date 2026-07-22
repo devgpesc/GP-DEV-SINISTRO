@@ -233,6 +233,7 @@ export const createMemberViaApi = async (params: {
   name: string;
   role: string;
   tenantId: string;
+  userId?: string;
 }) => {
   assertSupabaseReady();
   const { data: sessionData } = await (supabase.auth as any).getSession();
@@ -252,6 +253,7 @@ export const createMemberViaApi = async (params: {
         name: params.name.trim(),
         role: params.role || 'member',
         tenantId: params.tenantId,
+        userId: params.userId || undefined,
       }),
     }),
     20000,
