@@ -136,11 +136,27 @@ const Login: React.FC = () => {
 
     try {
       const normalizedEmail = email.trim().toLowerCase();
-      let authResult: any = await withTimeout(
-        (supabase.auth as any).signInWithPassword({ email: normalizedEmail, password }),
-        25000,
-        'Tempo esgotado ao autenticar. Verifique sua conexao e tente novamente.',
-      );
+
+      // 1 tentativa + 1 retry em falha de rede (Failed to fetch).
+      const tryPasswordLogin = async () =>
+        withTimeout(
+          (supabase.auth as any).signInWithPassword({ email: normalizedEmail, password }),
+          25000,
+          'Tempo esgotado ao autenticar. Verifique sua conexao e tente novamente.',
+        );
+
+      let authResult: any;
+      try {
+        authResult = await tryPasswordLogin();
+      } catch (firstErr: any) {
+        const m = String(firstErr?.message || '').toLowerCase();
+        if (m.includes('failed to fetch') || m.includes('network') || firstErr?.name === 'TypeError') {
+          await new Promise((r) => setTimeout(r, 800));
+          authResult = await tryPasswordLogin();
+        } else {
+          throw firstErr;
+        }
+      }
 
       let authError = authResult?.error;
       let data = authResult?.data;
@@ -264,16 +280,28 @@ const Login: React.FC = () => {
       setError('Seu acesso ainda nao foi liberado. Peca ao administrador da empresa para adicionar seu e-mail na Equipe.');
     } catch (err: any) {
       console.error(err);
-      if (err.message === 'Invalid login credentials') {
+      const msg = String(err?.message || err?.error_description || '');
+      const lower = msg.toLowerCase();
+      if (lower.includes('invalid login credentials')) {
           setError(
             inviteToken
               ? 'E-mail ou senha incorretos. Se voce entrou antes com Google, use o botao Google abaixo (conta Google nao usa esta senha).'
               : 'E-mail ou senha incorretos. Verifique suas credenciais.',
           );
-      } else if (String(err.message || '').toLowerCase().includes('email not confirmed')) {
+      } else if (lower.includes('email not confirmed')) {
           setError('E-mail ainda nao confirmado. Use "Continuar com Google" ou peca ao admin para redefinir sua senha.');
+      } else if (
+        lower.includes('failed to fetch') ||
+        lower.includes('networkerror') ||
+        lower.includes('network request failed') ||
+        lower.includes('load failed') ||
+        err?.name === 'TypeError'
+      ) {
+          setError(
+            'Falha de conexao com o servidor. Verifique a internet, desative bloqueador/VPN e tente novamente. Se persistir, use outra rede ou o login Google.',
+          );
       } else {
-          setError(err.message || 'Nao foi possivel conectar. Tente novamente mais tarde.');
+          setError(msg || 'Nao foi possivel conectar. Tente novamente mais tarde.');
       }
       setLocalLoading(false);
     }
