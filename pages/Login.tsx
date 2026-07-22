@@ -1,5 +1,5 @@
 ﻿
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 const { useNavigate, Link, useLocation } = ReactRouterDOM as any;
 import { supabase } from '../services/supabaseClient';
@@ -26,6 +26,7 @@ const Login: React.FC = () => {
   const [localLoading, setLocalLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [inviteInfo, setInviteInfo] = useState<InviteDetails | null>(null);
+  const sessionInviteAttempted = useRef(false);
   
   const [company] = useState({ name: 'Grupo Esc Sistemas', product: 'EventsCar' });
 
@@ -37,9 +38,11 @@ const Login: React.FC = () => {
         if (details) {
           setInviteInfo(details);
           setEmail(details.email || '');
+        } else {
+          setError('Convite invalido ou expirado.');
         }
       })
-      .catch(() => setError('Convite invalido ou expirado.'));
+      .catch((err: any) => setError(err?.message || 'Convite invalido ou expirado.'));
   }, [inviteToken]);
 
   useEffect(() => {
@@ -47,8 +50,34 @@ const Login: React.FC = () => {
 
     if (isSuperAdmin || memberships.length > 0) {
       navigate('/', { replace: true });
+      return;
     }
-  }, [user, localLoading, authLoading, navigate, memberships.length, isSuperAdmin]);
+
+    // Usuario autenticado sem empresa + convite na URL: vincular automaticamente.
+    const token = inviteToken || readInviteToken();
+    if (!token || sessionInviteAttempted.current) return;
+
+    sessionInviteAttempted.current = true;
+    let cancelled = false;
+    setLocalLoading(true);
+    (async () => {
+      try {
+        saveInviteToken(token);
+        await ensureInviteAccess(token);
+        if (cancelled) return;
+        await refreshContext(user);
+        window.location.assign('/');
+      } catch (err: any) {
+        if (cancelled) return;
+        setError(err?.message || 'Nao foi possivel aceitar o convite com a sessao atual.');
+        setLocalLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, localLoading, authLoading, navigate, memberships.length, isSuperAdmin, inviteToken, refreshContext]);
 
   const processInviteAfterAuth = async (): Promise<boolean> => {
     const token = inviteToken || readInviteToken();
@@ -313,10 +342,16 @@ const Login: React.FC = () => {
             </div>
 
             {inviteInfo && (
-              <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-2xl flex items-start gap-3 text-blue-700">
-                <LinkIcon className="shrink-0 mt-0.5" size={18} />
-                <p className="text-xs font-bold leading-relaxed">
-                  Use o e-mail <strong>{inviteInfo.email}</strong> para entrar e vincular sua conta a empresa.
+              <div className="mb-6 space-y-3">
+                <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl flex items-start gap-3 text-blue-700">
+                  <LinkIcon className="shrink-0 mt-0.5" size={18} />
+                  <p className="text-xs font-bold leading-relaxed">
+                    Use o e-mail <strong>{inviteInfo.email}</strong> para entrar e vincular sua conta a empresa.
+                  </p>
+                </div>
+                <p className="text-[11px] font-semibold text-slate-500 bg-slate-50 border border-slate-100 rounded-xl p-3 leading-relaxed">
+                  Com <strong>Google</strong> nao ha e-mail de confirmacao. Preferivel se voce ja usou Google antes.
+                  Cadastro com senha pode exigir confirmacao por e-mail.
                 </p>
               </div>
             )}

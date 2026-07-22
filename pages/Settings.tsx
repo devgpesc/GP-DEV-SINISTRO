@@ -891,6 +891,30 @@ const Settings: React.FC = () => {
                           </button>
                           {generatedLink && (
                               <div className="animate-in fade-in slide-in-from-top-2 space-y-3">
+                                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-100 text-[11px] font-semibold text-amber-800 leading-relaxed">
+                                    Se a pessoa <strong>ja usou Google</strong> ou ja tem conta, envie o link azul de <strong>login</strong>.
+                                    O link verde de cadastro e so para quem ainda nao tem conta.
+                                  </div>
+                                  {generatedLoginLink && (
+                                      <div>
+                                          <p className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-2">Recomendado se ja tem conta (login)</p>
+                                          <div className="flex items-center gap-2">
+                                              <input readOnly className="flex-1 p-3 bg-blue-50 border border-blue-200 text-blue-800 rounded-xl text-xs font-mono outline-none" value={generatedLoginLink} />
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  navigator.clipboard.writeText(generatedLoginLink);
+                                                  setCopied(true);
+                                                  addToast('success', 'Copiado', 'Link de login na area de transferencia');
+                                                  setTimeout(() => setCopied(false), 2000);
+                                                }}
+                                                className="p-3 bg-blue-100 text-blue-700 rounded-xl hover:bg-blue-200 transition-colors"
+                                              >
+                                                {copied ? <Check size={18}/> : <Copy size={18}/>}
+                                              </button>
+                                          </div>
+                                      </div>
+                                  )}
                                   <div>
                                       <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Link para novo usuario (cadastro)</p>
                                       <div className="flex items-center gap-2">
@@ -898,17 +922,11 @@ const Settings: React.FC = () => {
                                           <button onClick={copyInviteLink} className="p-3 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-colors">{copied ? <Check size={18}/> : <Copy size={18}/>}</button>
                                       </div>
                                   </div>
-                                  {generatedLoginLink && (
-                                      <div>
-                                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Link para quem ja tem conta (login)</p>
-                                          <input readOnly className="w-full p-3 bg-blue-50 border border-blue-200 text-blue-800 rounded-xl text-xs font-mono outline-none" value={generatedLoginLink} />
-                                      </div>
-                                  )}
                                   <button onClick={openInviteEmail} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-xs uppercase hover:bg-blue-700 transition-all flex items-center justify-center gap-2">
                                       <Send size={16}/> Enviar convite por e-mail
                                   </button>
                                   <p className="text-[10px] text-slate-400 font-semibold">
-                                      O usuario deve usar o e-mail <strong>{inviteData.email}</strong> para aceitar o convite (via senha, Google ou confirmacao de e-mail).
+                                      O usuario deve usar o e-mail <strong>{inviteData.email}</strong>. Com Google nao ha e-mail de confirmacao; com senha pode ser necessario confirmar o e-mail.
                                   </p>
                               </div>
                           )}

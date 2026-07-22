@@ -1,4 +1,4 @@
-import { supabase } from './supabaseClient';
+import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { getAppOrigin } from './authRedirect';
 
 export type InviteDetails = {
@@ -12,25 +12,66 @@ export type InviteDetails = {
   token?: string;
 };
 
+const INVITE_LOOKUP_TIMEOUT_MS = 8000;
+
 export const buildInviteRegisterUrl = (token: string) =>
   `${getAppOrigin()}/register?invite=${encodeURIComponent(token)}`;
 
 export const buildInviteLoginUrl = (token: string) =>
   `${getAppOrigin()}/login?invite=${encodeURIComponent(token)}`;
 
+const withTimeoutReject = async <T,>(promise: Promise<T>, ms: number, message: string): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+};
+
+const assertSupabaseReady = () => {
+  if (!isSupabaseConfigured) {
+    throw new Error('Configuracao do sistema indisponivel. Contate o administrador.');
+  }
+};
+
 export const getInviteDetails = async (token: string): Promise<InviteDetails | null> => {
-  const { data, error } = await supabase.rpc('get_invite_details', { invite_token: token });
-  if (error) throw error;
-  return data as InviteDetails | null;
+  assertSupabaseReady();
+  const trimmed = String(token || '').trim();
+  if (!trimmed) return null;
+
+  return withTimeoutReject(
+    (async () => {
+      const { data, error } = await supabase.rpc('get_invite_details', { invite_token: trimmed });
+      if (error) throw error;
+      return data as InviteDetails | null;
+    })(),
+    INVITE_LOOKUP_TIMEOUT_MS,
+    'Tempo esgotado ao validar o convite. Verifique sua conexao e tente novamente.',
+  );
 };
 
 export const getMyPendingInvite = async (): Promise<InviteDetails | null> => {
-  const { data, error } = await supabase.rpc('get_my_pending_invite');
-  if (error) throw error;
-  return data as InviteDetails | null;
+  assertSupabaseReady();
+
+  return withTimeoutReject(
+    (async () => {
+      const { data, error } = await supabase.rpc('get_my_pending_invite');
+      if (error) throw error;
+      return data as InviteDetails | null;
+    })(),
+    INVITE_LOOKUP_TIMEOUT_MS,
+    'Tempo esgotado ao buscar convite. Tente novamente.',
+  );
 };
 
 export const acceptInvite = async (token: string) => {
+  assertSupabaseReady();
   const { data, error } = await supabase.rpc('accept_invite', { invite_token: token });
   if (error) {
     const message = (error.message || '').toLowerCase();
@@ -59,23 +100,10 @@ export const acceptInviteSafe = async (token: string) => {
 };
 
 export const syncInviteMembership = async () => {
+  assertSupabaseReady();
   const { data, error } = await supabase.rpc('sync_invite_membership');
   if (error) throw error;
   return data as { status: string; tenant_id?: string; role?: string } | null;
-};
-
-const withTimeoutReject = async <T,>(promise: Promise<T>, ms: number, message: string): Promise<T> => {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(message)), ms);
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
 };
 
 export const ensureInviteAccess = async (token?: string | null) => {
@@ -138,6 +166,7 @@ export const createInvitation = async (params: {
   role: string;
   tenantId: string;
 }) => {
+  assertSupabaseReady();
   const { data, error } = await supabase.rpc('create_invitation', {
     p_email: params.email.trim().toLowerCase(),
     p_name: params.name.trim(),
@@ -160,7 +189,7 @@ export const buildInviteMailto = (params: {
     `Ola ${params.name},\n\n` +
       `Voce foi convidado(a) para acessar a plataforma EventsCar da empresa ${params.companyName}.\n\n` +
       `Se ainda nao tem conta, cadastre-se pelo link:\n${params.registerUrl}\n\n` +
-      `Se ja tem conta, entre pelo link:\n${params.loginUrl}\n\n` +
+      `Se ja tem conta (ou ja usou Google), entre pelo link:\n${params.loginUrl}\n\n` +
       `Use o e-mail ${params.email} para aceitar o convite.\n\n` +
       `Atenciosamente,\nEquipe EventsCar`,
   );
