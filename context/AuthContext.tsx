@@ -29,6 +29,14 @@ interface EnrichedMembership extends OrganizationMember {
   saas_tenants: SaasTenant;
 }
 
+const MEMBERSHIP_CACHE_KEY = 'sb-autoclaims-membership-cache';
+
+type SessionAccessPayload = {
+  memberships?: any[];
+  tenants?: any[];
+  membershipCount?: number;
+};
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
@@ -44,6 +52,11 @@ interface AuthContextType {
   checkPermission: (feature: string) => boolean;
   switchTenant: (tenantId: string) => void;
   refreshContext: (overrideUser?: User) => Promise<boolean>;
+  /** Aplica resultado de /api/auth/session-access direto no estado (sem novo SELECT). */
+  applySessionAccess: (
+    payload: SessionAccessPayload,
+    overrideUser?: User,
+  ) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -124,11 +137,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     userId: string,
     userEmail: string | undefined,
     userMeta: any,
-    repaired: {
-      memberships?: any[];
-      tenants?: any[];
-      membershipCount?: number;
-    },
+    repaired: SessionAccessPayload,
     profileData?: any,
   ) => {
     const repairedRows = repaired.memberships || [];
@@ -150,6 +159,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const selected = combinedFromRepair[0]?.saas_tenants || null;
     setCurrentTenant(selected);
     if (selected?.id) localStorage.setItem(TENANT_STORAGE_KEY, selected.id);
+    try {
+      sessionStorage.setItem(
+        MEMBERSHIP_CACHE_KEY,
+        JSON.stringify({
+          userId,
+          memberships: combinedFromRepair,
+          tenantId: selected?.id || null,
+          at: Date.now(),
+        }),
+      );
+    } catch {
+      /* ignore */
+    }
     setProfile({
       id: userId,
       email: userEmail,
@@ -167,25 +189,74 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return true;
   }, []);
 
+  const applySessionAccess = useCallback((
+    payload: SessionAccessPayload,
+    overrideUser?: User,
+  ) => {
+    const target = overrideUser || userRef.current;
+    if (!target?.id) return false;
+    return applyRepairedAccess(
+      target.id,
+      target.email,
+      target.user_metadata,
+      payload,
+    );
+  }, [applyRepairedAccess]);
+
   const loadContextData = useCallback(async (userId: string, userEmail?: string, userMeta?: any) => {
     if (!mounted.current) return;
 
     try {
-      await completePendingRegistration(userId, userEmail, userMeta);
+      // Cache local: evita pending-access em reload enquanto a API responde.
+      try {
+        const raw = sessionStorage.getItem(MEMBERSHIP_CACHE_KEY);
+        if (raw) {
+          const cached = JSON.parse(raw);
+          if (
+            cached?.userId === userId &&
+            Array.isArray(cached.memberships) &&
+            cached.memberships.length > 0 &&
+            Date.now() - (cached.at || 0) < 30 * 60 * 1000
+          ) {
+            setMemberships(cached.memberships);
+            const selected =
+              cached.memberships.find((m: any) => m.tenant_id === cached.tenantId)?.saas_tenants ||
+              cached.memberships[0]?.saas_tenants ||
+              null;
+            setCurrentTenant(selected);
+            if (selected?.id) localStorage.setItem(TENANT_STORAGE_KEY, selected.id);
+            setProfile({
+              id: userId,
+              email: userEmail,
+              full_name: userMeta?.full_name || userMeta?.name || userEmail?.split('@')[0],
+              avatar_url: userMeta?.avatar_url,
+              permissions: {},
+              created_at: new Date().toISOString(),
+              role: resolvePlatformRole(userEmail, undefined),
+            });
+          }
+        }
+      } catch {
+        /* ignore */
+      }
 
-      // 1) Caminho rapido: API session-access (service role) — evita pending-access por RLS/timeout.
+      // 1) session-access ANTES de pending registration (que pode travar em RLS).
       try {
         const repaired = await Promise.race([
           repairSessionAccess(),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 12000)),
         ]);
         if (repaired && (repaired.membershipCount || 0) > 0) {
           applyRepairedAccess(userId, userEmail, userMeta, repaired);
+          // Completa registro em background se houver pending — nao bloqueia acesso.
+          void completePendingRegistration(userId, userEmail, userMeta);
           return;
         }
       } catch (repairFirstErr: any) {
         console.warn('[Auth] repair inicial:', repairFirstErr?.message || repairFirstErr);
       }
+
+      await completePendingRegistration(userId, userEmail, userMeta);
 
       const dbTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('DB_TIMEOUT')), 6000));
 
@@ -366,13 +437,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let authListener: any = null;
 
     const initialize = async () => {
-      // TIMEOUT GERAL DE INICIALIZAÇÃO (5s)
+      // TIMEOUT GERAL DE INICIALIZAÇÃO
       const safetyTimer = setTimeout(() => {
           if (mounted.current && loading) {
               console.warn("Safety timeout triggered: Forcing loading false.");
               setLoading(false);
           }
-      }, 5000);
+      }, 15000);
 
       try {
         // 1. Recupera sessão inicial
@@ -433,6 +504,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setMemberships([]);
           setCurrentTenant(null);
           localStorage.removeItem(TENANT_STORAGE_KEY);
+          try { sessionStorage.removeItem(MEMBERSHIP_CACHE_KEY); } catch { /* ignore */ }
           setLoading(false);
       }
     });
@@ -486,6 +558,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setMemberships([]);
             setCurrentTenant(null);
             localStorage.removeItem(TENANT_STORAGE_KEY);
+            try { sessionStorage.removeItem(MEMBERSHIP_CACHE_KEY); } catch { /* ignore */ }
             setTimeout(() => {
                 if (mounted.current) setLoading(false);
             }, 100);
@@ -567,7 +640,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     access,
     checkPermission,
     switchTenant,
-    refreshContext
+    refreshContext,
+    applySessionAccess,
   };
 
   return (

@@ -26,7 +26,7 @@ import {
 import EscLogo from '../components/EscLogo';
 
 const PendingAccess: React.FC = () => {
-  const { user, loading: authLoading, memberships, refreshContext, signOut } = useAuth();
+  const { user, loading: authLoading, memberships, refreshContext, signOut, applySessionAccess } = useAuth();
   const { addToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
@@ -61,6 +61,7 @@ const PendingAccess: React.FC = () => {
         const repaired = await repairSessionAccess();
         if ((repaired.membershipCount || 0) > 0) {
           members = repaired.memberships;
+          applySessionAccess(repaired, user);
         }
       } catch (err) {
         console.warn('[PendingAccess] repairSessionAccess:', err);

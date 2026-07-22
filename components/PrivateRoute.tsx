@@ -48,7 +48,7 @@ export const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children
 };
 
 const MembershipGate: React.FC = () => {
-  const { user, refreshContext, signOut } = useAuth();
+  const { user, refreshContext, signOut, applySessionAccess } = useAuth();
   const [checking, setChecking] = React.useState(true);
 
   React.useEffect(() => {
@@ -61,17 +61,17 @@ const MembershipGate: React.FC = () => {
       }
 
       try {
-        // 1) Reparo server-side (mais confiavel que RLS do cliente)
+        // 1) Reparo server-side + aplica no estado imediatamente
         try {
           const repaired = await Promise.race([
             repairSessionAccess(),
             new Promise<null>((resolve) => setTimeout(() => resolve(null), 12000)),
           ]);
           if (repaired && (repaired.membershipCount || 0) > 0) {
-            // refreshContext agora aplica session-access primeiro (nao depende so de RLS).
+            applySessionAccess(repaired, user);
             await Promise.race([
               refreshContext(user),
-              new Promise((resolve) => setTimeout(resolve, 12000)),
+              new Promise((resolve) => setTimeout(resolve, 8000)),
             ]);
             if (!cancelled) window.location.replace('/');
             return;
@@ -106,7 +106,7 @@ const MembershipGate: React.FC = () => {
         if ((membersRes?.data?.length || 0) > 0 || (ownedRes?.data?.length || 0) > 0) {
           await Promise.race([
             refreshContext(),
-            new Promise((resolve) => setTimeout(resolve, 5000)),
+            new Promise((resolve) => setTimeout(resolve, 8000)),
           ]);
           if (!cancelled) window.location.replace('/');
           return;
@@ -120,7 +120,7 @@ const MembershipGate: React.FC = () => {
 
     verify();
     return () => { cancelled = true; };
-  }, [user?.id, refreshContext, user]);
+  }, [user?.id, refreshContext, user, applySessionAccess]);
 
   if (checking) {
     return (

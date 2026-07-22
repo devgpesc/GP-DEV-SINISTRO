@@ -18,7 +18,7 @@ const Login: React.FC = () => {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const inviteToken = searchParams.get('invite') || readInviteToken();
-  const { user, loading: authLoading, memberships, isSuperAdmin, refreshContext } = useAuth();
+  const { user, loading: authLoading, memberships, isSuperAdmin, refreshContext, applySessionAccess } = useAuth();
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -195,6 +195,7 @@ const Login: React.FC = () => {
           'Tempo esgotado ao liberar acesso da empresa.',
         );
         if ((repaired.membershipCount || 0) > 0) {
+          applySessionAccess(repaired, data.user);
           await withTimeout(refreshContext(data.user), 12000, 'Tempo esgotado ao carregar contexto.');
           setLocalLoading(false);
           window.location.replace('/');
