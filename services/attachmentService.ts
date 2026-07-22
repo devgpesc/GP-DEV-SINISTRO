@@ -26,9 +26,9 @@ export function normalizeAttachmentRow(row: any): EventAttachment {
   return {
     id: row.id,
     event_id: row.event_id,
-    url: row.url,
+    url: row.url || row.file_path || '',
     name: row.name || row.file_name || row.filename || 'Anexo',
-    type: row.type || row.mime_type || 'file',
+    type: row.type || row.mime_type || row.file_type || 'file',
     size: row.size,
   };
 }
@@ -61,9 +61,12 @@ export async function uploadEventAttachments(eventId: string, attachments: Event
       .from('event_attachments')
       .insert([{
         event_id: eventId,
+        // Schema legado exige file_path NOT NULL (caminho no Storage).
+        file_path: path,
+        file_name: displayName,
+        file_type: mimeType,
         url,
         name: displayName,
-        file_name: displayName,
         type: mimeType,
         mime_type: mimeType,
       }])
@@ -78,9 +81,25 @@ export async function uploadEventAttachments(eventId: string, attachments: Event
 }
 
 export async function deleteEventAttachment(id: string, url?: string) {
-  await supabase.from('event_attachments').delete().eq('id', id);
+  // Recupera file_path se so tivermos a URL publica.
+  let storagePath: string | undefined;
   if (url?.includes(`/storage/v1/object/public/${BUCKET}/`)) {
-    const path = url.split(`/storage/v1/object/public/${BUCKET}/`)[1];
-    if (path) await supabase.storage.from(BUCKET).remove([decodeURIComponent(path)]);
+    storagePath = decodeURIComponent(url.split(`/storage/v1/object/public/${BUCKET}/`)[1] || '');
+  }
+
+  const { data: row } = await supabase
+    .from('event_attachments')
+    .select('file_path, url')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (row?.file_path) storagePath = row.file_path;
+  else if (!storagePath && row?.url?.includes(`/storage/v1/object/public/${BUCKET}/`)) {
+    storagePath = decodeURIComponent(row.url.split(`/storage/v1/object/public/${BUCKET}/`)[1] || '');
+  }
+
+  await supabase.from('event_attachments').delete().eq('id', id);
+  if (storagePath) {
+    await supabase.storage.from(BUCKET).remove([storagePath]);
   }
 }
