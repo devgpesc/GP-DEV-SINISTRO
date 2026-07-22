@@ -62,7 +62,7 @@ const PendingAccess: React.FC = () => {
       .limit(1);
     members = membersData;
 
-    if (!(members?.length > 0)) {
+    if (!(members && members.length > 0)) {
       try {
         const repaired = await repairSessionAccess();
         if ((repaired.membershipCount || 0) > 0) {
@@ -79,7 +79,7 @@ const PendingAccess: React.FC = () => {
       .eq('owner_id', user.id)
       .limit(1);
 
-    if ((members?.length || 0) > 0 || (owned?.length || 0) > 0) {
+    if ((members && members.length > 0) || (owned?.length || 0) > 0) {
       clearPendingRegistration();
       clearInviteToken();
       try {
