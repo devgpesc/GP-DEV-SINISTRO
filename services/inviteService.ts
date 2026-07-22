@@ -113,16 +113,22 @@ export const activateInviteViaApi = async (params: {
   const email = String(params.email || '').trim().toLowerCase();
   if (!email) throw new Error('E-mail obrigatorio para ativar o convite.');
 
+  const { data: sessionData } = await (supabase.auth as any).getSession();
+  const accessToken = sessionData?.session?.access_token;
+
   const response = await withTimeoutReject(
     fetch('/api/auth/activate-invite', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
       body: JSON.stringify({
         email,
         inviteToken: params.inviteToken || undefined,
       }),
     }),
-    15000,
+    20000,
     'Tempo esgotado ao ativar convite no servidor.',
   );
 
@@ -130,7 +136,13 @@ export const activateInviteViaApi = async (params: {
   if (!response.ok) {
     throw new Error(payload.error || 'Falha ao ativar convite no servidor.');
   }
-  return payload as { ok: boolean; userId?: string; message?: string };
+  return payload as {
+    ok: boolean;
+    userId?: string;
+    message?: string;
+    membershipLinked?: boolean;
+    membershipCount?: number;
+  };
 };
 
 export const ensureInviteAccess = async (token?: string | null, emailHint?: string | null) => {
@@ -148,16 +160,6 @@ export const ensureInviteAccess = async (token?: string | null, emailHint?: stri
       if (result) return result;
     } catch (error: any) {
       lastError = error instanceof Error ? error : new Error(String(error?.message || error));
-      const message = (error?.message || '').toLowerCase();
-      if (
-        !message.includes('invalido') &&
-        !message.includes('utilizado') &&
-        !message.includes('tempo esgotado') &&
-        !message.includes('outro e-mail') &&
-        !message.includes('autenticado')
-      ) {
-        // continua para sync/API
-      }
     }
   }
 
@@ -177,14 +179,33 @@ export const ensureInviteAccess = async (token?: string | null, emailHint?: stri
     lastError = error instanceof Error ? error : new Error(String(error?.message || error));
   }
 
-  // Fallback server-side (service role): confirma e-mail + cria membership.
+  // Fallback server-side: usa o access_token da sessao atual (Google).
+  const { data: userData } = await (supabase.auth as any).getUser();
   const email =
     String(emailHint || '').trim().toLowerCase() ||
-    String((await (supabase.auth as any).getUser())?.data?.user?.email || '').trim().toLowerCase();
+    String(userData?.user?.email || '').trim().toLowerCase();
 
   if (email) {
     try {
-      await activateInviteViaApi({ email, inviteToken: trimmed || null });
+      const apiResult = await activateInviteViaApi({ email, inviteToken: trimmed || null });
+
+      // Confirma no banco da sessao atual (nao confiar so no status da API).
+      const { data: members } = await supabase
+        .from('organization_members')
+        .select('id, tenant_id, role')
+        .eq('user_id', userData?.user?.id || apiResult.userId)
+        .limit(1);
+
+      if ((members?.length || 0) > 0) {
+        return {
+          status: 'linked',
+          via: 'api',
+          tenant_id: members![0].tenant_id,
+          role: members![0].role,
+        };
+      }
+
+      // Se a API vinculou outro userId, forcar sync e tentar de novo.
       const syncedAfter = await withTimeoutReject(
         syncInviteMembership(),
         8000,
@@ -193,7 +214,10 @@ export const ensureInviteAccess = async (token?: string | null, emailHint?: stri
       if (syncedAfter?.status === 'linked' || syncedAfter?.status === 'already_member') {
         return syncedAfter;
       }
-      return { status: 'linked', via: 'api' };
+
+      throw new Error(
+        'O servidor nao conseguiu vincular esta sessao Google a empresa. Clique em "Tentar vincular" ou gere um novo convite.',
+      );
     } catch (error: any) {
       lastError = error instanceof Error ? error : new Error(String(error?.message || error));
     }

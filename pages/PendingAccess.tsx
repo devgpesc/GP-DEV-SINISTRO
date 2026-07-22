@@ -323,9 +323,11 @@ const PendingAccess: React.FC = () => {
           <button
             type="button"
             onClick={() => {
+              attemptedRef.current = false;
               setLoading(true);
               setError(null);
-              linkInviteAccess(resolveInviteToken())
+              const token = resolveInviteToken();
+              linkInviteAccess(token)
                 .catch((err: any) => setError(err.message || 'Falha ao vincular convite.'))
                 .finally(() => setLoading(false));
             }}

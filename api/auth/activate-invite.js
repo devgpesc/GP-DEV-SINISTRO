@@ -1,48 +1,84 @@
 import { getSupabaseAdmin } from '../_lib/supabase.js';
 import { applyCors, sendJson } from '../_lib/http.js';
 
-async function findUserByEmail(admin, email) {
+async function findUsersByEmail(admin, email) {
   const normalized = email.toLowerCase();
+  const matches = [];
 
-  // Prefer Auth Admin API filter when disponivel
   try {
     const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const response = await fetch(`${url}/auth/v1/admin/users?email=${encodeURIComponent(normalized)}`, {
-      headers: {
-        Authorization: `Bearer ${key}`,
-        apikey: key,
+    const filtered = await fetch(
+      `${url}/auth/v1/admin/users?email=${encodeURIComponent(normalized)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${key}`,
+          apikey: key,
+        },
       },
-    });
-    if (response.ok) {
-      const payload = await response.json();
+    );
+    if (filtered.ok) {
+      const payload = await filtered.json();
       const users = payload?.users || payload || [];
-      const match = (Array.isArray(users) ? users : []).find(
-        (u) => String(u.email || '').toLowerCase() === normalized,
-      );
-      if (match) return match;
+      for (const u of Array.isArray(users) ? users : []) {
+        if (String(u.email || '').toLowerCase() === normalized) matches.push(u);
+      }
+    }
+
+    // Fallback: varre poucas paginas se o filtro nao achar (casos Google/senha duplicados).
+    if (matches.length === 0) {
+      for (let page = 1; page <= 3; page++) {
+        const response = await fetch(`${url}/auth/v1/admin/users?page=${page}&per_page=200`, {
+          headers: {
+            Authorization: `Bearer ${key}`,
+            apikey: key,
+          },
+        });
+        if (!response.ok) break;
+        const payload = await response.json();
+        const users = payload?.users || [];
+        for (const u of users) {
+          if (String(u.email || '').toLowerCase() === normalized) matches.push(u);
+        }
+        if (users.length < 200) break;
+      }
     }
   } catch (err) {
-    console.warn('[activate-invite] admin users filter falhou:', err.message);
+    console.warn('[activate-invite] list users falhou:', err.message);
   }
 
-  const { data: profile } = await admin
-    .from('profiles')
-    .select('id')
-    .eq('email', normalized)
-    .maybeSingle();
-
-  if (profile?.id) {
-    const { data } = await admin.auth.admin.getUserById(profile.id);
-    return data?.user || null;
+  if (matches.length === 0) {
+    const { data: profiles } = await admin
+      .from('profiles')
+      .select('id, email')
+      .ilike('email', normalized);
+    for (const profile of profiles || []) {
+      const { data } = await admin.auth.admin.getUserById(profile.id);
+      if (data?.user) matches.push(data.user);
+    }
   }
 
-  return null;
+  return matches;
+}
+
+async function resolveSessionUser(admin, req) {
+  const authHeader = String(req.headers.authorization || req.headers.Authorization || '');
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (!token) return null;
+
+  try {
+    const { data, error } = await admin.auth.getUser(token);
+    if (error || !data?.user) return null;
+    return data.user;
+  } catch {
+    return null;
+  }
 }
 
 /**
- * Ativa usuario convidado sem depender do e-mail de confirmacao do Supabase.
+ * Ativa usuario convidado e vincula membership ao user da sessao atual.
  * Body: { email, inviteToken? }
+ * Header opcional: Authorization: Bearer <access_token>
  */
 export default async function handler(req, res) {
   applyCors(res);
@@ -52,14 +88,26 @@ export default async function handler(req, res) {
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
     const email = String(body.email || '').trim().toLowerCase();
-    const inviteToken = body.inviteToken ? String(body.inviteToken) : null;
+    const inviteToken = body.inviteToken ? String(body.inviteToken).trim() : null;
 
     if (!email || !email.includes('@')) {
       return sendJson(res, 400, { error: 'Informe um e-mail valido.' });
     }
 
     const admin = getSupabaseAdmin();
-    const user = await findUserByEmail(admin, email);
+    const sessionUser = await resolveSessionUser(admin, req);
+    const usersByEmail = await findUsersByEmail(admin, email);
+
+    // Preferir sempre o usuario da sessao logada (Google), se o e-mail bater.
+    let user = null;
+    if (sessionUser && String(sessionUser.email || '').toLowerCase() === email) {
+      user = sessionUser;
+    } else if (sessionUser && !usersByEmail.some((u) => u.id === sessionUser.id)) {
+      // Sessao existe mas e-mail divergente — ainda usa a sessao se for o unico caminho.
+      user = sessionUser;
+    } else {
+      user = usersByEmail[0] || null;
+    }
 
     if (!user) {
       return sendJson(res, 404, {
@@ -72,29 +120,48 @@ export default async function handler(req, res) {
     });
     if (updateError) throw updateError;
 
+    // Confirma tambem eventuais contas duplicadas do mesmo e-mail.
+    for (const extra of usersByEmail) {
+      if (extra.id === user.id) continue;
+      await admin.auth.admin.updateUserById(extra.id, { email_confirm: true }).catch(() => null);
+    }
+
     let invite = null;
     if (inviteToken) {
-      const { data } = await admin
+      const { data, error } = await admin
         .from('invitations')
-        .select('id, tenant_id, role, email, status')
+        .select('id, tenant_id, role, email, status, token')
         .eq('token', inviteToken)
         .maybeSingle();
+      if (error) throw error;
       invite = data;
     }
 
     if (!invite) {
-      const { data: invites } = await admin
+      const { data: invites, error } = await admin
         .from('invitations')
-        .select('id, tenant_id, role, email, status')
+        .select('id, tenant_id, role, email, status, token')
         .eq('email', email)
-        .eq('status', 'pending')
+        .in('status', ['pending', 'accepted'])
         .order('created_at', { ascending: false })
         .limit(1);
+      if (error) throw error;
       invite = invites?.[0] || null;
     }
 
-    if (invite?.tenant_id && String(invite.email || '').toLowerCase() === email && invite.status !== 'cancelled') {
-      await admin.from('organization_members').upsert(
+    let membershipLinked = false;
+    let inviteSkippedReason = null;
+
+    if (!invite) {
+      inviteSkippedReason = 'invite_not_found';
+    } else if (!invite.tenant_id) {
+      inviteSkippedReason = 'invite_without_tenant';
+    } else if (String(invite.email || '').toLowerCase() !== email) {
+      inviteSkippedReason = 'invite_email_mismatch';
+    } else if (invite.status === 'cancelled') {
+      inviteSkippedReason = 'invite_cancelled';
+    } else {
+      const { error: upsertError } = await admin.from('organization_members').upsert(
         {
           tenant_id: invite.tenant_id,
           user_id: user.id,
@@ -102,23 +169,74 @@ export default async function handler(req, res) {
         },
         { onConflict: 'tenant_id,user_id' },
       );
-      await admin.from('invitations').update({ status: 'accepted' }).eq('id', invite.id);
+      if (upsertError) throw upsertError;
+
+      const { error: inviteUpdateError } = await admin
+        .from('invitations')
+        .update({ status: 'accepted' })
+        .eq('id', invite.id);
+      if (inviteUpdateError) throw inviteUpdateError;
+
+      membershipLinked = true;
+
+      // Se houver contas duplicadas do mesmo e-mail, vincula todas (evita Google vs senha).
+      for (const extra of usersByEmail) {
+        if (extra.id === user.id) continue;
+        await admin
+          .from('organization_members')
+          .upsert(
+            {
+              tenant_id: invite.tenant_id,
+              user_id: extra.id,
+              role: invite.role || 'member',
+            },
+            { onConflict: 'tenant_id,user_id' },
+          )
+          .catch(() => null);
+      }
     }
 
-    await admin.from('profiles').upsert(
+    const { error: profileError } = await admin.from('profiles').upsert(
       {
         id: user.id,
-        email,
+        email: String(user.email || email).toLowerCase(),
         full_name: user.user_metadata?.full_name || user.user_metadata?.name || email.split('@')[0],
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'id' },
     );
+    if (profileError) throw profileError;
+
+    const { data: memberships, error: membershipError } = await admin
+      .from('organization_members')
+      .select('id, tenant_id, role')
+      .eq('user_id', user.id);
+    if (membershipError) throw membershipError;
+
+    if (!membershipLinked && (memberships?.length || 0) === 0) {
+      return sendJson(res, 422, {
+        error:
+          inviteSkippedReason === 'invite_cancelled'
+            ? 'Este convite foi cancelado. Gere um novo convite.'
+            : inviteSkippedReason === 'invite_email_mismatch'
+              ? 'O convite pertence a outro e-mail.'
+              : 'Nao foi possivel vincular o convite a esta conta. Gere um novo convite.',
+        inviteSkippedReason,
+        userId: user.id,
+        inviteStatus: invite?.status || null,
+      });
+    }
 
     return sendJson(res, 200, {
       ok: true,
-      message: 'Conta ativada. Faca login novamente com e-mail e senha.',
+      message: membershipLinked
+        ? 'Conta ativada e vinculada a empresa.'
+        : 'Conta ativada. Membership ja existia.',
       userId: user.id,
+      membershipLinked,
+      membershipCount: memberships?.length || 0,
+      inviteStatus: invite?.status || null,
+      duplicateUsers: usersByEmail.length,
     });
   } catch (error) {
     console.error('[activate-invite]', error);
