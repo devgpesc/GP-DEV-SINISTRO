@@ -346,14 +346,57 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      // Em timeout/RLS: tenta API service-role antes de desistir / deslogar.
+      try {
+        const repaired = await repairSessionAccess();
+        if ((repaired.membershipCount || 0) > 0 && mounted.current) {
+          const repairedRows = repaired.memberships || [];
+          const repairedTenants = repaired.tenants || [];
+          const tenantByIdRepair = new Map(repairedTenants.map((t: any) => [t.id, t]));
+          const combinedFromRepair: EnrichedMembership[] = repairedRows.map((m: any) => ({
+            ...m,
+            permissions: m.permissions || {},
+            module_permissions: m.module_permissions || {},
+            saas_tenants: tenantByIdRepair.get(m.tenant_id) || {
+              id: m.tenant_id,
+              name: 'Empresa do Sistema',
+              status: 'active',
+            },
+          }));
+          setMemberships(combinedFromRepair);
+          const selected = combinedFromRepair[0]?.saas_tenants || null;
+          setCurrentTenant(selected);
+          if (selected?.id) localStorage.setItem(TENANT_STORAGE_KEY, selected.id);
+          setProfile({
+            id: userId,
+            email: userEmail,
+            full_name: userMeta?.full_name || userMeta?.name || userEmail?.split('@')[0],
+            avatar_url: userMeta?.avatar_url,
+            permissions: {},
+            created_at: new Date().toISOString(),
+            role: resolvePlatformRole(userEmail, undefined),
+          });
+          return;
+        }
+      } catch (repairErr: any) {
+        console.warn('[Auth] repair no catch:', repairErr?.message || repairErr);
+      }
+
       if (onAuthCallback) {
         throw err;
       }
+
+      // Nao desloga automaticamente: deixa MembershipGate / pending-access tratar.
       if (mounted.current) {
-        await (supabase.auth as any).signOut();
-        setSession(null);
-        setUser(null);
-        setProfile(null);
+        setProfile({
+          id: userId,
+          email: userEmail,
+          full_name: userMeta?.full_name || userMeta?.name || userEmail?.split('@')[0],
+          avatar_url: userMeta?.avatar_url,
+          permissions: {},
+          created_at: new Date().toISOString(),
+          role: resolvePlatformRole(userEmail, undefined),
+        });
         setMemberships([]);
         setCurrentTenant(null);
       }

@@ -168,12 +168,18 @@ const Login: React.FC = () => {
       if (authError) throw authError;
       if (!data?.user) throw new Error("Usuario nao encontrado.");
 
-      const profileRes: any = await withTimeout(
-        Promise.resolve(supabase.from('profiles').select('role').eq('id', data.user.id).maybeSingle()),
-        8000,
-        'Tempo esgotado ao carregar perfil.',
-      );
-      const profile = profileRes?.data;
+      // Perfil nao deve bloquear o login (RLS lento / ausente).
+      let profile: any = null;
+      try {
+        const profileRes: any = await withTimeout(
+          supabase.from('profiles').select('role').eq('id', data.user.id).maybeSingle(),
+          4000,
+          'profile-timeout',
+        );
+        profile = profileRes?.data;
+      } catch {
+        console.warn('[Login] perfil demorou; seguindo sem bloquear.');
+      }
 
       if (profile?.role === 'super_admin') {
           setLocalLoading(false);
@@ -185,35 +191,36 @@ const Login: React.FC = () => {
       try {
         const repaired = await withTimeout(
           repairSessionAccess(),
-          20000,
+          15000,
           'Tempo esgotado ao liberar acesso da empresa.',
         );
         if ((repaired.membershipCount || 0) > 0) {
-          await withTimeout(refreshContext(data.user), 10000, 'Tempo esgotado ao carregar contexto.');
+          await withTimeout(refreshContext(data.user), 12000, 'Tempo esgotado ao carregar contexto.');
           setLocalLoading(false);
           window.location.replace('/');
           return;
         }
-      } catch (repairErr) {
+      } catch (repairErr: any) {
         console.warn('[Login] repairSessionAccess:', repairErr);
+        // Nao aborta ainda — tenta SELECT local.
       }
 
       const membersRes: any = await withTimeout(
-        Promise.resolve(supabase.from('organization_members').select('id').eq('user_id', data.user.id).limit(1)),
-        8000,
+        supabase.from('organization_members').select('id').eq('user_id', data.user.id).limit(1),
+        6000,
         'Tempo esgotado ao verificar acesso.',
       );
       const members = membersRes?.data;
 
       const ownedRes: any = await withTimeout(
-        Promise.resolve(supabase.from('saas_tenants').select('id').eq('owner_id', data.user.id).limit(1)),
-        8000,
+        supabase.from('saas_tenants').select('id').eq('owner_id', data.user.id).limit(1),
+        6000,
         'Tempo esgotado ao verificar empresa.',
       );
       const owned = ownedRes?.data;
 
       if ((members?.length || 0) > 0 || (owned?.length || 0) > 0) {
-        await withTimeout(refreshContext(), 10000, 'Tempo esgotado ao carregar contexto.');
+        await withTimeout(refreshContext(data.user), 12000, 'Tempo esgotado ao carregar contexto.');
         setLocalLoading(false);
         window.location.replace('/');
         return;

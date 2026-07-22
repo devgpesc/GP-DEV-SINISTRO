@@ -676,21 +676,21 @@ const SaasAdmin: React.FC = () => {
                               <p className="text-[9px] text-amber-600 mt-1 pl-1 flex items-center gap-1"><AlertCircle size={10}/> Informe e-mail + senha para gravar o administrador.</p>
                             ) : null}
                         </div>
-                        <div className="mt-4">
-                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">
-                              {editingTenant && editingTenant.owner_id ? 'Senha (opcional para redefinir)' : 'Senha do Administrador'}
+                        <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+                            <label className="block text-[10px] font-black uppercase text-blue-700 mb-2 tracking-widest">
+                              {editingTenant ? 'Redefinir senha do administrador' : 'Senha do Administrador'}
                             </label>
                             <div className="relative">
                                 <input 
                                     required={!editingTenant || !editingTenant.owner_id}
                                     type={showPassword ? "text" : "password"} 
-                                    className="w-full p-4 pr-12 bg-white border border-slate-200 rounded-2xl font-bold outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-100/40 transition-all" 
+                                    className="w-full p-4 pr-12 bg-white border border-blue-200 rounded-2xl font-bold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-100/40 transition-all" 
                                     value={tenantForm.adminPassword} 
                                     onChange={e => setTenantForm({...tenantForm, adminPassword: e.target.value})} 
-                                    placeholder={editingTenant && editingTenant.owner_id ? 'Deixe em branco para manter' : 'Min. 8 caracteres'} 
+                                    placeholder={editingTenant ? 'Digite a nova senha (min. 8)' : 'Min. 8 caracteres'} 
                                     autoComplete="new-password"
                                     data-lpignore="true"
-                                    minLength={editingTenant && editingTenant.owner_id && !tenantForm.adminPassword ? undefined : 8}
+                                    minLength={editingTenant && !tenantForm.adminPassword ? undefined : 8}
                                 />
                                 <button 
                                     type="button"
@@ -700,7 +700,11 @@ const SaasAdmin: React.FC = () => {
                                     {showPassword ? <EyeOff size={18}/> : <Eye size={18}/>}
                                 </button>
                             </div>
-                            <p className="text-[10px] text-slate-500 mt-2 pl-1">Com senha, o admin entra em /login sem link de convite.</p>
+                            <p className="text-[10px] text-blue-800/80 mt-2 pl-1 font-semibold">
+                              {editingTenant
+                                ? 'Preencha a nova senha e clique em Salvar Alterações para atualizar o acesso do admin imediatamente.'
+                                : 'Com senha, o admin entra em /login sem link de convite.'}
+                            </p>
                         </div>
                     </div>
                 </div>
