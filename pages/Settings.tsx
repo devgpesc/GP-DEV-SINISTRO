@@ -16,7 +16,6 @@ import {
   createInvitation,
   createMemberViaApi,
   deleteMemberViaApi,
-  purgeUserByEmailViaApi,
 } from '../services/inviteService';
 
 const Settings: React.FC = () => {
@@ -51,8 +50,6 @@ const Settings: React.FC = () => {
   const [usersList, setUsersList] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [userToDelete, setUserToDelete] = useState<any>(null);
-  const [purgeEmail, setPurgeEmail] = useState('');
-  const [purgingAuth, setPurgingAuth] = useState(false);
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
@@ -304,8 +301,8 @@ const Settings: React.FC = () => {
           if (!result.authDeleted && userToDelete.email) {
             addToast(
               'info',
-              'Auth ainda existe',
-              'Use "Limpar conta Auth" abaixo com o e-mail, ou apague em Supabase > Authentication > Users.',
+              'Conta de acesso',
+              'O acesso a esta empresa foi removido. Se precisar recriar o membro, use Adicionar com e-mail e senha novos.',
             );
           }
       } catch (err: any) {
@@ -314,34 +311,6 @@ const Settings: React.FC = () => {
       }
   };
 
-  const handlePurgeAuthByEmail = async () => {
-      const email = purgeEmail.trim().toLowerCase();
-      if (!email || !email.includes('@')) {
-        addToast('error', 'E-mail', 'Informe o e-mail da conta fantasma no Auth.');
-        return;
-      }
-      if (!currentTenant?.id) {
-        addToast('error', 'Empresa', 'Empresa atual nao encontrada.');
-        return;
-      }
-      setPurgingAuth(true);
-      try {
-        const result = await purgeUserByEmailViaApi({ email, tenantId: currentTenant.id });
-        await auditService.log('Purge Auth User', 'User', email, {
-          deletedCount: result.deletedCount,
-        });
-        setPurgeEmail('');
-        addToast(
-          'success',
-          'Auth limpo',
-          result.message || `${result.deletedCount || 0} conta(s) removida(s).`,
-        );
-      } catch (err: any) {
-        addToast('error', 'Erro', err.message || 'Falha ao limpar conta Auth.');
-      } finally {
-        setPurgingAuth(false);
-      }
-  };
   const togglePermission = (featureId: string) => { setUserForm(prev => ({ ...prev, permissions: { ...prev.permissions, [featureId]: !prev.permissions[featureId] } })); };
   const toggleModulePermission = (moduleId: string) => {
     setUserForm(prev => ({
@@ -685,32 +654,6 @@ const Settings: React.FC = () => {
                                 </div>
                             </div>
                         ))}
-                      </div>
-
-                      <div className="mt-8 p-5 rounded-3xl border border-amber-200 bg-amber-50/70 space-y-3">
-                        <div>
-                          <p className="text-sm font-black text-amber-900">Limpar conta Auth (fantasma)</p>
-                          <p className="text-xs text-amber-800/80 mt-1">
-                            Use quando o membro sumiu da equipe, mas ainda aparece em Supabase → Authentication → Users.
-                          </p>
-                        </div>
-                        <div className="flex flex-col sm:flex-row gap-2">
-                          <input
-                            className="flex-1 p-3 bg-white border border-amber-200 rounded-xl text-sm font-bold text-slate-700 outline-none"
-                            placeholder="ex: eltonsc77@gmail.com"
-                            value={purgeEmail}
-                            onChange={(e) => setPurgeEmail(e.target.value)}
-                          />
-                          <button
-                            type="button"
-                            disabled={purgingAuth}
-                            onClick={handlePurgeAuthByEmail}
-                            className="px-4 py-3 bg-amber-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest disabled:opacity-60 flex items-center justify-center gap-2"
-                          >
-                            {purgingAuth ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                            Apagar no Auth
-                          </button>
-                        </div>
                       </div>
                   </div>
               )}
