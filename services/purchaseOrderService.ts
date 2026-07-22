@@ -42,10 +42,17 @@ export const purchaseOrderService = {
 
     const profileMap = new Map((profiles || []).map((p) => [p.id, p.full_name || p.email]));
 
-    return data.map((row) => ({
-      ...row,
-      user_name: row.user_id ? profileMap.get(row.user_id) || 'Sistema' : 'Sistema',
-    }));
+    return data.map((row) => {
+      const fromDetails =
+        row.details && typeof row.details === 'object'
+          ? String((row.details as any).actor_name || '').trim()
+          : '';
+      const fromProfile = row.user_id ? profileMap.get(row.user_id) : '';
+      return {
+        ...row,
+        user_name: fromDetails || fromProfile || (row.user_id ? 'Usuario' : 'Sistema'),
+      };
+    });
   },
 
   async getHistoryByCodes(codes: string[]): Promise<Record<string, PurchaseOrderHistoryEntry[]>> {

@@ -149,50 +149,50 @@ export function buildMatrixPrintHtml(input: MatrixPrintInput) {
       <head>
         <title>Análise Comparativa ${input.headerMeta.quotationCode || ''}</title>
         <style>
-          @page { size: A4 ${isLandscape ? 'landscape' : 'portrait'}; margin: 12mm; }
+          @page { size: A4 ${isLandscape ? 'landscape' : 'portrait'}; margin: 8mm; }
           * { box-sizing: border-box; }
-          body { font-family: Inter, "Segoe UI", Arial, sans-serif; margin: 0; color: #0f172a; background: #f8fafc; }
-          .toolbar { position: fixed; top: 0; left: 0; right: 0; z-index: 10; background: #0f172a; color: white; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-          .toolbar-actions { display: flex; gap: 8px; }
-          .toolbar button { background: #2563eb; color: white; border: 0; border-radius: 12px; padding: 10px 16px; font-weight: 800; font-size: 11px; text-transform: uppercase; cursor: pointer; }
+          body { font-family: Inter, "Segoe UI", Arial, sans-serif; margin: 0; color: #0f172a; background: #fff; font-size: 11px; }
+          .toolbar { position: fixed; top: 0; left: 0; right: 0; z-index: 10; background: #0f172a; color: white; padding: 8px 14px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+          .toolbar-actions { display: flex; gap: 6px; }
+          .toolbar button { background: #2563eb; color: white; border: 0; border-radius: 8px; padding: 7px 12px; font-weight: 800; font-size: 10px; text-transform: uppercase; cursor: pointer; }
           .toolbar button.secondary { background: #334155; }
-          .content { padding: 80px 20px 20px; max-width: ${isLandscape ? '100%' : '900px'}; margin: 0 auto; }
-          .hero { background: white; border: 1px solid #e2e8f0; border-radius: 18px; padding: 18px; margin-bottom: 16px; }
-          .title { font-size: 28px; font-weight: 900; color: #1d4ed8; margin: 0 0 6px; }
-          .subtitle { color: #64748b; font-size: 13px; margin-bottom: 14px; }
-          .meta-grid { display: grid; grid-template-columns: repeat(${isLandscape ? 4 : 2}, 1fr); gap: 10px; }
-          .meta-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px; }
-          .meta-label { font-size: 10px; font-weight: 800; color: #64748b; text-transform: uppercase; }
-          .meta-value { font-size: 14px; font-weight: 800; margin-top: 4px; }
-          .champion-banner { margin-top: 12px; background: linear-gradient(90deg,#ecfdf5,#d1fae5); border: 1px solid #6ee7b7; color: #065f46; border-radius: 12px; padding: 10px 12px; font-size: 12px; font-weight: 800; }
-          .matrix-table { width: 100%; border-collapse: collapse; background: white; border-radius: 18px; overflow: hidden; border: 1px solid #e2e8f0; }
-          .matrix-table th, .matrix-table td { border-bottom: 1px solid #e2e8f0; padding: 10px; vertical-align: top; }
-          .item-head, .item-cell { width: 220px; background: #f8fafc; }
-          .supplier-head { background: #eff6ff; min-width: 140px; }
-          .supplier-head.champion-head { background: #ecfdf5; border-bottom: 3px solid #10b981; }
-          .supplier-name { font-size: 11px; font-weight: 800; color: #1e3a8a; }
+          .content { padding: 56px 10px 10px; max-width: ${isLandscape ? '100%' : '860px'}; margin: 0 auto; }
+          .hero { background: white; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+          .title { font-size: 16px; font-weight: 900; color: #1d4ed8; margin: 0 0 2px; }
+          .subtitle { display: none; }
+          .meta-grid { display: grid; grid-template-columns: repeat(${isLandscape ? 4 : 3}, 1fr); gap: 6px; }
+          .meta-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 8px; }
+          .meta-label { font-size: 8px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
+          .meta-value { font-size: 11px; font-weight: 800; margin-top: 2px; line-height: 1.25; }
+          .champion-banner { margin-top: 6px; background: #ecfdf5; border: 1px solid #6ee7b7; color: #065f46; border-radius: 8px; padding: 5px 8px; font-size: 10px; font-weight: 800; }
+          .matrix-table { width: 100%; border-collapse: collapse; background: white; border: 1px solid #e2e8f0; }
+          .matrix-table th, .matrix-table td { border-bottom: 1px solid #e2e8f0; border-right: 1px solid #f1f5f9; padding: 5px 6px; vertical-align: top; }
+          .item-head, .item-cell { width: 160px; background: #f8fafc; }
+          .supplier-head { background: #eff6ff; min-width: 110px; }
+          .supplier-head.champion-head { background: #ecfdf5; border-bottom: 2px solid #10b981; }
+          .supplier-name { font-size: 9px; font-weight: 800; color: #1e3a8a; line-height: 1.2; }
           .champion-head .supplier-name { color: #065f46; }
-          .supplier-city { font-size: 10px; color: #64748b; margin-top: 2px; }
-          .champion-pill { display:inline-block; margin-top:6px; font-size:9px; font-weight:900; text-transform:uppercase; color:#065f46; background:#a7f3d0; padding:3px 8px; border-radius:999px; }
-          .item-name { font-size: 13px; font-weight: 800; }
-          .item-qty { font-size: 11px; color: #64748b; margin-top: 4px; }
-          .price-cell.best { background: #ecfdf5; box-shadow: inset 0 0 0 2px #34d399; }
-          .price-value { font-size: 14px; font-weight: 900; color: #0f172a; }
-          .price-value.best-value { color: #047857; font-size: 16px; }
-          .best-badge { display: inline-block; margin-top: 4px; font-size: 9px; font-weight: 900; text-transform: uppercase; color: #047857; background: #d1fae5; padding: 2px 6px; border-radius: 999px; }
-          .price-meta { font-size: 10px; color: #64748b; margin-top: 4px; }
+          .supplier-city { font-size: 8px; color: #64748b; margin-top: 1px; }
+          .champion-pill { display:inline-block; margin-top:3px; font-size:7px; font-weight:900; text-transform:uppercase; color:#065f46; background:#a7f3d0; padding:1px 5px; border-radius:999px; }
+          .item-name { font-size: 11px; font-weight: 800; line-height: 1.2; }
+          .item-qty { font-size: 9px; color: #64748b; margin-top: 2px; }
+          .price-cell.best { background: #ecfdf5; box-shadow: inset 0 0 0 1px #34d399; }
+          .price-value { font-size: 11px; font-weight: 900; color: #0f172a; }
+          .price-value.best-value { color: #047857; font-size: 12px; }
+          .best-badge { display: inline-block; margin-top: 2px; font-size: 7px; font-weight: 900; text-transform: uppercase; color: #047857; background: #d1fae5; padding: 1px 4px; border-radius: 999px; }
+          .price-meta { font-size: 8px; color: #64748b; margin-top: 1px; }
           .empty { color: #94a3b8; }
-          .list-item { background: white; border: 1px solid #e2e8f0; border-radius: 16px; padding: 14px; margin-bottom: 12px; }
-          .list-item-head { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9; }
-          .list-offers { display: grid; gap: 8px; }
-          .list-offer { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; }
-          .list-offer.best { background: #ecfdf5; border-color: #34d399; box-shadow: 0 0 0 1px #6ee7b7; }
-          .list-offer.champion { border-left: 4px solid #10b981; }
-          .offer-supplier { font-size: 12px; font-weight: 800; }
-          .offer-city { font-size: 10px; color: #64748b; }
-          .offer-price { font-size: 14px; font-weight: 900; color: #1d4ed8; white-space: nowrap; }
-          .offer-price.best-value { color: #047857; font-size: 16px; }
-          @media print { .toolbar { display: none !important; } .content { padding-top: 0; } body { background: white; } }
+          .list-item { background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px; margin-bottom: 6px; }
+          .list-item-head { margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid #f1f5f9; }
+          .list-offers { display: grid; gap: 4px; }
+          .list-offer { display: flex; justify-content: space-between; gap: 8px; padding: 6px 8px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0; }
+          .list-offer.best { background: #ecfdf5; border-color: #34d399; }
+          .list-offer.champion { border-left: 3px solid #10b981; }
+          .offer-supplier { font-size: 10px; font-weight: 800; }
+          .offer-city { font-size: 8px; color: #64748b; }
+          .offer-price { font-size: 11px; font-weight: 900; color: #1d4ed8; white-space: nowrap; }
+          .offer-price.best-value { color: #047857; font-size: 12px; }
+          @media print { .toolbar { display: none !important; } .content { padding: 0; } body { background: white; } }
         </style>
       </head>
       <body>
@@ -206,18 +206,17 @@ export function buildMatrixPrintHtml(input: MatrixPrintInput) {
         <div class="content">
           <div class="hero">
             <h1 class="title">Análise Comparativa</h1>
-            <p class="subtitle">Compare preços e aprove as melhores ofertas.</p>
             <div class="meta-grid">
               <div class="meta-card"><div class="meta-label">Pré-Orçamento</div><div class="meta-value">${input.headerMeta.quotationCode || '—'}</div></div>
               <div class="meta-card"><div class="meta-label">Protocolo</div><div class="meta-value">${input.headerMeta.eventProtocol || '—'}</div></div>
               <div class="meta-card"><div class="meta-label">Associado</div><div class="meta-value">${input.headerMeta.associateName || '—'}</div></div>
               <div class="meta-card"><div class="meta-label">Veículo / Placa</div><div class="meta-value">${input.headerMeta.vehicleLabel || '—'}</div></div>
-              <div class="meta-card"><div class="meta-label">Status sinistro</div><div class="meta-value">${input.headerMeta.eventStatus || '—'}</div></div>
-              <div class="meta-card"><div class="meta-label">Abertura do sinistro</div><div class="meta-value">${input.headerMeta.eventOpenedAt || '—'}</div></div>
-              <div class="meta-card"><div class="meta-label">Data da cotação</div><div class="meta-value">${input.headerMeta.quotationCreatedAt || '—'}</div></div>
-              ${quota ? `<div class="meta-card"><div class="meta-label">Cota Participação</div><div class="meta-value">R$ ${money(Number(quota))}</div></div>` : ''}
+              <div class="meta-card"><div class="meta-label">Status</div><div class="meta-value">${input.headerMeta.eventStatus || '—'}</div></div>
+              <div class="meta-card"><div class="meta-label">Abertura</div><div class="meta-value">${input.headerMeta.eventOpenedAt || '—'}</div></div>
+              <div class="meta-card"><div class="meta-label">Cotação</div><div class="meta-value">${input.headerMeta.quotationCreatedAt || '—'}</div></div>
+              ${quota ? `<div class="meta-card"><div class="meta-label">Cota</div><div class="meta-value">R$ ${money(Number(quota))}</div></div>` : ''}
             </div>
-            ${championNames.length ? `<div class="champion-banner">Fornecedor campeão (mais itens com menor preço): ${championNames.join(' · ')}</div>` : ''}
+            ${championNames.length ? `<div class="champion-banner">Campeão: ${championNames.join(' · ')}</div>` : ''}
           </div>
           ${isLandscape ? buildLandscapeTable(input, champions) : buildListTable(input, champions)}
         </div>
