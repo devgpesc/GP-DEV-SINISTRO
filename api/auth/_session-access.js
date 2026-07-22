@@ -68,7 +68,8 @@ export default async function handler(req, res) {
 
     await admin.auth.admin.updateUserById(user.id, { email_confirm: true }).catch(() => null);
 
-    await admin.from('profiles').upsert(
+    // Profile upsert em paralelo com memberships (nao bloqueia leitura).
+    const profileUpsert = admin.from('profiles').upsert(
       {
         id: user.id,
         email: email || null,
@@ -81,12 +82,13 @@ export default async function handler(req, res) {
       { onConflict: 'id' },
     );
 
-    // Caminho rapido: memberships do usuario da sessao (sem listar Auth por e-mail).
     let { data: memberships, error: membersError } = await admin
       .from('organization_members')
       .select('id, tenant_id, user_id, role, permissions, module_permissions, created_at')
       .eq('user_id', user.id);
     if (membersError) throw membersError;
+
+    void profileUpsert;
 
     // Se vazio, tenta propagar de contas irmas / convites (com timeout curto).
     if ((!memberships || memberships.length === 0) && email) {

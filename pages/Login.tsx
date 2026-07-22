@@ -196,9 +196,8 @@ const Login: React.FC = () => {
         );
         if ((repaired.membershipCount || 0) > 0) {
           applySessionAccess(repaired, data.user);
-          await withTimeout(refreshContext(data.user), 12000, 'Tempo esgotado ao carregar contexto.');
           setLocalLoading(false);
-          window.location.replace('/');
+          navigate('/', { replace: true });
           return;
         }
       } catch (repairErr: any) {

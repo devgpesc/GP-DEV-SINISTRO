@@ -100,11 +100,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const hasRegistryModules =
     canAccessAssociates || canAccessSuppliers || canAccessVehicles || canAccessCatalog;
 
-  // AUTOMATIC AUDIT LOGGING FOR NAVIGATION
+  // AUTOMATIC AUDIT LOGGING FOR NAVIGATION (adiado — nao compete com dashboard)
   useEffect(() => {
-      if (user) {
-          auditService.log('Navigate', 'Page', location.pathname, { path: location.pathname });
-      }
+      if (!user) return;
+      const timer = window.setTimeout(() => {
+        auditService.log('Navigate', 'Page', location.pathname, { path: location.pathname });
+      }, 1500);
+      return () => clearTimeout(timer);
   }, [location.pathname, user]);
 
   useEffect(() => {
@@ -114,12 +116,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     }
   }, [showProfileModal]);
 
-  // ... (Notification loading logic remains the same)
+  // Notificacoes em idle — libera primeira pintura
   useEffect(() => {
       if (!user) return;
-      loadNotifications();
-      const interval = setInterval(loadNotifications, 60000);
-      return () => clearInterval(interval);
+      let interval: ReturnType<typeof setInterval> | undefined;
+      const start = window.setTimeout(() => {
+        loadNotifications();
+        interval = setInterval(loadNotifications, 90000);
+      }, 2000);
+      return () => {
+        clearTimeout(start);
+        if (interval) clearInterval(interval);
+      };
   }, [user, profile]);
 
   const loadNotifications = async () => {

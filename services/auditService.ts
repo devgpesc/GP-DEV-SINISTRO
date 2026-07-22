@@ -69,14 +69,21 @@ export const auditService = {
 
   async log(action: string, entity: string, entityId: string, details: any = {}) {
     try {
-        // Casting supabase.auth to any to avoid missing getUser error
         const { data: { user } } = await (supabase.auth as any).getUser();
         if (!user) return;
 
-        const meta = await this.getClientMetadata();
-        const finalDetails = { ...details, ...meta };
+        // Navegacao: nao espera IP externo (ipapi) — so userAgent local.
+        let finalDetails = details;
+        if (action === 'Navigate') {
+          finalDetails = {
+            ...details,
+            userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+          };
+        } else {
+          const meta = await this.getClientMetadata();
+          finalDetails = { ...details, ...meta };
+        }
 
-        // Tenta inserir sem travar se falhar (Fire & Forget)
         supabase.from('audit_logs').insert([{
             action,
             entity,

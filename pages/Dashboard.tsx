@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { 
   TrendingUp, TrendingDown, Clock, ShieldAlert, DollarSign, ShoppingBag,
-  ArrowUpRight, ArrowDownRight, Database, Loader2, Package,
+  ArrowUpRight, ArrowDownRight, Database, Package,
   FileText, Car, User, Search, Truck, Send, Plus, Users, ChevronRight
 } from 'lucide-react';
 import { 
@@ -55,7 +55,7 @@ const WorkflowCard = ({ to, icon: Icon, title, desc, accent, stat }: any) => (
 );
 
 const Dashboard: React.FC = () => {
-  const { profile, access } = useAuth();
+  const { profile, access, user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
@@ -66,64 +66,79 @@ const Dashboard: React.FC = () => {
 
   const isExecutive = access.isTenantManager;
 
-  const safeFetch = async (table: string) => {
-    try {
-        const { data, error } = await supabase.from(table).select('*');
-        if (error) return [];
-        return data || [];
-    } catch (err) {
-        return [];
-    }
-  };
-
   const loadDashboardData = async () => {
     setLoading(true);
-    
-    // SAFETY TIMEOUT: Garante que o loading suma após 8 segundos mesmo se o banco travar
+
     if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
     loadingTimeoutRef.current = setTimeout(() => {
-        setLoading((prev) => {
-            if (prev) console.warn("Dashboard loading timeout forced.");
-            return false;
-        });
-    }, 8000);
+      setLoading((prev) => {
+        if (prev) console.warn('Dashboard loading timeout forced.');
+        return false;
+      });
+    }, 5000);
 
     try {
-        const eventsData = await safeFetch('events');
-        setEvents(eventsData);
+      const eventsPromise = supabase
+        .from('events')
+        .select('id, status, created_at, title, protocol')
+        .order('created_at', { ascending: false })
+        .limit(200);
 
-        const [{ count: qCount }, { count: dCount }, { count: poCount }] = await Promise.all([
-          supabase.from('quotations').select('*', { count: 'exact', head: true }),
-          supabase.from('deliveries').select('*', { count: 'exact', head: true }),
-          supabase.from('purchase_orders').select('*', { count: 'exact', head: true }),
-        ]);
-        setQuotationsCount(qCount || 0);
-        setDeliveriesCount(dCount || 0);
-        setPurchasesCount(poCount || 0);
+      const countsPromise = Promise.all([
+        supabase.from('quotations').select('id', { count: 'exact', head: true }),
+        supabase.from('deliveries').select('id', { count: 'exact', head: true }),
+        supabase.from('purchase_orders').select('id', { count: 'exact', head: true }),
+      ]);
 
-        if (isExecutive) {
-            setOrders(await safeFetch('purchase_orders'));
-        }
+      const ordersPromise = isExecutive
+        ? supabase
+            .from('purchase_orders')
+            .select('id, status, total, created_at, createdAt')
+            .order('created_at', { ascending: false })
+            .limit(200)
+        : Promise.resolve({ data: [] as any[], error: null });
+
+      const [eventsRes, countsRes, ordersRes] = await Promise.all([
+        eventsPromise,
+        countsPromise,
+        ordersPromise,
+      ]);
+
+      setEvents((eventsRes.data as Event[]) || []);
+      const [qRes, dRes, poRes] = countsRes;
+      setQuotationsCount(qRes.count || 0);
+      setDeliveriesCount(dRes.count || 0);
+      setPurchasesCount(poRes.count || 0);
+
+      if (isExecutive) {
+        const rows = (ordersRes as any)?.data || [];
+        setOrders(
+          rows.map((o: any) => ({
+            ...o,
+            createdAt: o.createdAt || o.created_at,
+            total: Number(o.total) || 0,
+          })),
+        );
+      }
     } catch (err: any) {
-        console.error("Erro dashboard:", err);
+      console.error('Erro dashboard:', err);
     } finally {
-        if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
-        setLoading(false);
+      if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (profile) {
-        loadDashboardData();
+    if (profile || user) {
+      loadDashboardData();
     } else {
-        // Fallback: Se o perfil não estiver disponível imediatamente, 
-        // aguarda um pouco e remove o loading para não travar a tela.
-        // O PrivateRoute já garante que há um usuário logado.
-        const timer = setTimeout(() => setLoading(false), 2000);
-        return () => clearTimeout(timer);
+      const timer = setTimeout(() => setLoading(false), 1500);
+      return () => clearTimeout(timer);
     }
-    return () => { if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current); };
-  }, [profile?.id, profile?.role]); // Dependências primitivas para evitar loop
+    return () => {
+      if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+    };
+  }, [profile?.id, profile?.role, user?.id, isExecutive]);
 
   // --- KPI CALCULATIONS (Executive Only) ---
   const kpis = useMemo(() => {
@@ -167,9 +182,17 @@ const Dashboard: React.FC = () => {
 
   if (loading) {
       return (
-          <div className="h-[70vh] flex flex-col items-center justify-center text-slate-400 animate-in fade-in duration-300">
-              <Loader2 className="animate-spin mb-4 text-blue-600" size={48}/>
-              <p className="font-bold text-xs uppercase tracking-[0.2em] animate-pulse">Carregando...</p>
+          <div className="space-y-6 animate-pulse max-w-7xl mx-auto">
+            <div className="h-10 w-64 bg-slate-200 rounded-xl" />
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-28 bg-slate-100 rounded-2xl border border-slate-200" />
+              ))}
+            </div>
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+              <div className="xl:col-span-2 h-64 bg-slate-100 rounded-2xl border border-slate-200" />
+              <div className="h-64 bg-slate-100 rounded-2xl border border-slate-200" />
+            </div>
           </div>
       );
   }

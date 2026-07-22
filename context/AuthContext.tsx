@@ -207,7 +207,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!mounted.current) return;
 
     try {
-      // Cache local: evita pending-access em reload enquanto a API responde.
+      // Cache local: hidrata perfil/empresa imediatamente.
+      let hadValidCache = false;
       try {
         const raw = sessionStorage.getItem(MEMBERSHIP_CACHE_KEY);
         if (raw) {
@@ -218,6 +219,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             cached.memberships.length > 0 &&
             Date.now() - (cached.at || 0) < 30 * 60 * 1000
           ) {
+            hadValidCache = true;
             setMemberships(cached.memberships);
             const selected =
               cached.memberships.find((m: any) => m.tenant_id === cached.tenantId)?.saas_tenants ||
@@ -240,15 +242,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         /* ignore */
       }
 
-      // 1) session-access ANTES de pending registration (que pode travar em RLS).
+      // Com cache valido: atualiza session-access em background e libera a UI.
+      if (hadValidCache) {
+        void (async () => {
+          try {
+            const repaired = await repairSessionAccess();
+            if ((repaired.membershipCount || 0) > 0) {
+              applyRepairedAccess(userId, userEmail, userMeta, repaired);
+            }
+          } catch (err: any) {
+            console.warn('[Auth] refresh background:', err?.message || err);
+          }
+          void completePendingRegistration(userId, userEmail, userMeta);
+        })();
+        return;
+      }
+
+      // Sem cache: session-access rapido (timeout menor).
       try {
         const repaired = await Promise.race([
           repairSessionAccess(),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 12000)),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000)),
         ]);
         if (repaired && (repaired.membershipCount || 0) > 0) {
           applyRepairedAccess(userId, userEmail, userMeta, repaired);
-          // Completa registro em background se houver pending — nao bloqueia acesso.
           void completePendingRegistration(userId, userEmail, userMeta);
           return;
         }
@@ -258,14 +275,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       await completePendingRegistration(userId, userEmail, userMeta);
 
-      const dbTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('DB_TIMEOUT')), 6000));
+      const dbTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('DB_TIMEOUT')), 4000));
 
-      const fetchProfile = supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+      const fetchProfile = supabase
+        .from('profiles')
+        .select('id, email, full_name, avatar_url, role, permissions, created_at')
+        .eq('id', userId)
+        .maybeSingle();
       const fetchMembers = supabase
         .from('organization_members')
         .select('id, tenant_id, user_id, role, permissions, module_permissions, created_at')
         .eq('user_id', userId);
-      const fetchOwnedTenants = supabase.from('saas_tenants').select('*').eq('owner_id', userId);
+      const fetchOwnedTenants = supabase
+        .from('saas_tenants')
+        .select('id, name, status, owner_id, plan, created_at')
+        .eq('owner_id', userId);
 
       const results = await Promise.race([
           Promise.all([fetchProfile, fetchMembers, fetchOwnedTenants]),
@@ -437,32 +461,75 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let authListener: any = null;
 
     const initialize = async () => {
-      // TIMEOUT GERAL DE INICIALIZAÇÃO
       const safetyTimer = setTimeout(() => {
-          if (mounted.current && loading) {
+          if (mounted.current) {
               console.warn("Safety timeout triggered: Forcing loading false.");
               setLoading(false);
           }
-      }, 15000);
+      }, 8000);
 
       try {
-        // 1. Recupera sessão inicial
-        const { data: { session: initialSession }, error } = await (supabase.auth as any).getSession();
+        const { data: { session: initialSession } } = await (supabase.auth as any).getSession();
         
         const onAuthCallback =
           typeof window !== 'undefined' && window.location.pathname === '/auth/callback';
 
-        if (mounted.current) {
-            if (initialSession?.user) {
-                setSession(initialSession);
-                setUser(initialSession.user);
-                if (!onAuthCallback) {
-                  await loadContextData(
-                    initialSession.user.id,
-                    initialSession.user.email,
-                    initialSession.user.user_metadata
-                  );
+        if (mounted.current && initialSession?.user) {
+            setSession(initialSession);
+            setUser(initialSession.user);
+
+            let hydratedFromCache = false;
+            try {
+              const raw = sessionStorage.getItem(MEMBERSHIP_CACHE_KEY);
+              if (raw) {
+                const cached = JSON.parse(raw);
+                if (
+                  cached?.userId === initialSession.user.id &&
+                  Array.isArray(cached.memberships) &&
+                  cached.memberships.length > 0 &&
+                  Date.now() - (cached.at || 0) < 30 * 60 * 1000
+                ) {
+                  hydratedFromCache = true;
+                  setMemberships(cached.memberships);
+                  const selected =
+                    cached.memberships.find((m: any) => m.tenant_id === cached.tenantId)?.saas_tenants ||
+                    cached.memberships[0]?.saas_tenants ||
+                    null;
+                  setCurrentTenant(selected);
+                  setProfile({
+                    id: initialSession.user.id,
+                    email: initialSession.user.email,
+                    full_name:
+                      initialSession.user.user_metadata?.full_name ||
+                      initialSession.user.user_metadata?.name ||
+                      initialSession.user.email?.split('@')[0],
+                    avatar_url: initialSession.user.user_metadata?.avatar_url,
+                    permissions: {},
+                    created_at: new Date().toISOString(),
+                    role: resolvePlatformRole(initialSession.user.email, undefined),
+                  });
                 }
+              }
+            } catch {
+              /* ignore */
+            }
+
+            if (!onAuthCallback) {
+              if (hydratedFromCache) {
+                // UI imediata; refresh do perfil/empresa em background.
+                setLoading(false);
+                void loadContextData(
+                  initialSession.user.id,
+                  initialSession.user.email,
+                  initialSession.user.user_metadata,
+                );
+              } else {
+                await loadContextData(
+                  initialSession.user.id,
+                  initialSession.user.email,
+                  initialSession.user.user_metadata,
+                );
+              }
             }
         }
       } catch (error) {

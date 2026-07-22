@@ -145,45 +145,72 @@ export const activateInviteViaApi = async (params: {
   };
 };
 
+type SessionAccessResult = {
+  ok: boolean;
+  userId: string;
+  email?: string;
+  membershipCount: number;
+  memberships: Array<{
+    id: string;
+    tenant_id: string;
+    user_id: string;
+    role: string;
+    permissions?: Record<string, boolean>;
+    module_permissions?: Record<string, boolean>;
+    created_at?: string;
+  }>;
+  tenants: any[];
+  repaired?: boolean;
+};
+
+let repairInFlight: Promise<SessionAccessResult> | null = null;
+let repairCache: { tokenHash: string; at: number; payload: SessionAccessResult } | null = null;
+const REPAIR_CACHE_TTL_MS = 20_000;
+
 export const repairSessionAccess = async () => {
   const { data: sessionData } = await (supabase.auth as any).getSession();
   const accessToken = sessionData?.session?.access_token;
   if (!accessToken) throw new Error('Sessao obrigatoria para reparar acesso.');
 
-  const response = await withTimeoutReject(
-    fetch('/api/auth/session-access', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: '{}',
-    }),
-    12000,
-    'Tempo esgotado ao reparar acesso da sessao.',
-  );
-
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error || 'Falha ao reparar acesso da sessao.');
+  const tokenHash = accessToken.slice(-24);
+  if (
+    repairCache &&
+    repairCache.tokenHash === tokenHash &&
+    Date.now() - repairCache.at < REPAIR_CACHE_TTL_MS
+  ) {
+    return repairCache.payload;
   }
-  return payload as {
-    ok: boolean;
-    userId: string;
-    email?: string;
-    membershipCount: number;
-    memberships: Array<{
-      id: string;
-      tenant_id: string;
-      user_id: string;
-      role: string;
-      permissions?: Record<string, boolean>;
-      module_permissions?: Record<string, boolean>;
-      created_at?: string;
-    }>;
-    tenants: any[];
-    repaired?: boolean;
-  };
+
+  if (repairInFlight) return repairInFlight;
+
+  repairInFlight = (async () => {
+    const response = await withTimeoutReject(
+      fetch('/api/auth/session-access', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: '{}',
+      }),
+      10000,
+      'Tempo esgotado ao reparar acesso da sessao.',
+    );
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.error || 'Falha ao reparar acesso da sessao.');
+    }
+    const result = payload as SessionAccessResult;
+    repairCache = { tokenHash, at: Date.now(), payload: result };
+    return result;
+  })();
+
+  try {
+    return await repairInFlight;
+  } finally {
+    repairInFlight = null;
+  }
 };
 
 export const ensureInviteAccess = async (token?: string | null, emailHint?: string | null) => {
