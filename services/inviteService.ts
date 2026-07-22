@@ -257,6 +257,39 @@ export const ensureInviteAccess = async (token?: string | null, emailHint?: stri
   return { status: 'no_invite' };
 };
 
+export const purgeUserByEmailViaApi = async (params: { email: string; tenantId: string }) => {
+  assertSupabaseReady();
+  const { data: sessionData } = await (supabase.auth as any).getSession();
+  const accessToken = sessionData?.session?.access_token;
+  if (!accessToken) throw new Error('Sessao expirada. Faca login novamente.');
+
+  const response = await withTimeoutReject(
+    fetch('/api/auth/purge-user', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        email: params.email.trim().toLowerCase(),
+        tenantId: params.tenantId,
+      }),
+    }),
+    20000,
+    'Tempo esgotado ao limpar conta Auth.',
+  );
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || 'Falha ao limpar conta Auth.');
+  }
+  return payload as {
+    ok: boolean;
+    deletedCount?: number;
+    message?: string;
+  };
+};
+
 export const deleteMemberViaApi = async (params: {
   userId: string;
   tenantId: string;

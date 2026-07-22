@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '../_lib/supabase.js';
 import { applyCors, sendJson } from '../_lib/http.js';
+import { purgeAuthUserById } from '../_lib/purgeAuthUser.js';
 
 async function getCallerUser(admin, req) {
   const authHeader = String(req.headers.authorization || req.headers.Authorization || '');
@@ -74,35 +75,79 @@ export default async function handler(req, res) {
         .in('status', ['pending', 'accepted']);
     }
 
+    const deletedAuthIds = [];
     let authDeleted = false;
+    let authKeptReason = null;
+
     if (deleteAuthAccount) {
-      // Se o usuario ainda tem membership em outra empresa, nao apaga Auth.
-      const { data: otherMemberships } = await admin
-        .from('organization_members')
-        .select('id')
-        .eq('user_id', userId)
-        .limit(1);
+      // Inclui duplicatas do mesmo e-mail (ex.: Google + senha com UIDs diferentes).
+      const candidateIds = new Set([userId]);
+      if (targetEmail) {
+        try {
+          const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+          const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+          const response = await fetch(
+            `${url}/auth/v1/admin/users?email=${encodeURIComponent(targetEmail)}`,
+            { headers: { Authorization: `Bearer ${key}`, apikey: key } },
+          );
+          if (response.ok) {
+            const payload = await response.json();
+            const users = payload?.users || payload || [];
+            for (const u of Array.isArray(users) ? users : []) {
+              if (String(u.email || '').toLowerCase() === targetEmail) candidateIds.add(u.id);
+            }
+          }
+        } catch (err) {
+          console.warn('[delete-member] list by email:', err.message);
+        }
 
-      const { data: ownedTenants } = await admin
-        .from('saas_tenants')
-        .select('id')
-        .eq('owner_id', userId)
-        .limit(1);
-
-      if ((otherMemberships?.length || 0) === 0 && (ownedTenants?.length || 0) === 0) {
-        const { error: deleteError } = await admin.auth.admin.deleteUser(userId);
-        if (deleteError) throw deleteError;
-        authDeleted = true;
-        await admin.from('profiles').delete().eq('id', userId);
+        const { data: profiles } = await admin.from('profiles').select('id').ilike('email', targetEmail);
+        for (const profile of profiles || []) candidateIds.add(profile.id);
       }
+
+      for (const candidateId of candidateIds) {
+        if (candidateId === caller.id) continue;
+
+        const { data: otherMemberships } = await admin
+          .from('organization_members')
+          .select('id')
+          .eq('user_id', candidateId)
+          .limit(1);
+
+        const { data: ownedTenants } = await admin
+          .from('saas_tenants')
+          .select('id')
+          .eq('owner_id', candidateId)
+          .limit(1);
+
+        if ((otherMemberships?.length || 0) > 0) {
+          authKeptReason = 'other_membership';
+          continue;
+        }
+        if ((ownedTenants?.length || 0) > 0) {
+          authKeptReason = 'owner';
+          continue;
+        }
+
+        await purgeAuthUserById(admin, candidateId);
+        deletedAuthIds.push(candidateId);
+      }
+
+      authDeleted = deletedAuthIds.length > 0;
     }
 
     return sendJson(res, 200, {
       ok: true,
       authDeleted,
+      deletedAuthIds,
+      authKeptReason,
       message: authDeleted
         ? 'Usuario removido da empresa e conta de acesso excluida. Pode adicionar novamente com senha nova.'
-        : 'Usuario removido da empresa. Conta Auth mantida (ainda vinculada a outra empresa ou como dono).',
+        : authKeptReason === 'owner'
+          ? 'Usuario removido da empresa. Conta Auth mantida (dono de outra empresa).'
+          : authKeptReason === 'other_membership'
+            ? 'Usuario removido da empresa. Conta Auth mantida (ainda vinculada a outra empresa).'
+            : 'Usuario removido da empresa.',
     });
   } catch (error) {
     console.error('[delete-member]', error);

@@ -16,6 +16,7 @@ import {
   createInvitation,
   createMemberViaApi,
   deleteMemberViaApi,
+  purgeUserByEmailViaApi,
 } from '../services/inviteService';
 
 const Settings: React.FC = () => {
@@ -50,6 +51,8 @@ const Settings: React.FC = () => {
   const [usersList, setUsersList] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [userToDelete, setUserToDelete] = useState<any>(null);
+  const [purgeEmail, setPurgeEmail] = useState('');
+  const [purgingAuth, setPurgingAuth] = useState(false);
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
@@ -273,54 +276,71 @@ const Settings: React.FC = () => {
       setShowEditPassword(false);
       setUserModalOpen(true);
   };
-  const handleDeleteUser = async () => { 
-      if (!userToDelete) return; 
-      try { 
+  const handleDeleteUser = async () => {
+      if (!userToDelete) return;
+      try {
           if (!currentTenant?.id) throw new Error('Empresa atual nao encontrada.');
 
-          // Exclusao definitiva (Auth + empresa) — limpa fantasma para recriar limpo.
-          try {
-            const result = await deleteMemberViaApi({
-              userId: userToDelete.id,
-              tenantId: currentTenant.id,
-              deleteAuthAccount: true,
-            });
-            await auditService.log('Delete User', 'User', userToDelete.id, {
-              email: userToDelete.email,
-              authDeleted: result.authDeleted,
-            });
-            setUsersList(prev => prev.filter(u => u.id !== userToDelete.id)); 
-            setUserToDelete(null); 
-            addToast(
-              'success',
-              'Removido',
-              result.authDeleted
-                ? 'Acesso e conta excluidos. Pode adicionar o membro novamente com senha nova.'
-                : (result.message || 'Acesso removido desta empresa.'),
-            );
-            return;
-          } catch (apiErr: any) {
-            console.warn('[Settings] delete-member API, fallback RPC:', apiErr);
-          }
-
-          const { error } = await supabase.rpc('detach_tenant_member', {
-              target_tenant_id: currentTenant.id,
-              target_user_id: userToDelete.id
+          // Sempre exclusao definitiva via API (Auth + empresa). Sem fallback soft.
+          const result = await deleteMemberViaApi({
+            userId: userToDelete.id,
+            tenantId: currentTenant.id,
+            deleteAuthAccount: true,
           });
-          if (error) throw error;
-          
-          await auditService.log('Delete User', 'User', userToDelete.id, { email: userToDelete.email }); 
-          setUsersList(prev => prev.filter(u => u.id !== userToDelete.id)); 
-          setUserToDelete(null); 
-          addToast('success', 'Removido', 'Acesso removido desta empresa.'); 
-      } catch (err: any) { 
-          console.error(err);
-          if (err.message?.includes('function') || err.code === 'PGRST202') {
-             addToast('error', 'Ops!', 'A função de Exclusão Física não foi ativada no seu Banco de Dados ainda.');
-          } else {
-             addToast('error', 'Erro', err.message || 'Falha ao remover o usuário.'); 
+          await auditService.log('Delete User', 'User', userToDelete.id, {
+            email: userToDelete.email,
+            authDeleted: result.authDeleted,
+          });
+          setUsersList(prev => prev.filter(u => u.id !== userToDelete.id));
+          setUserToDelete(null);
+          addToast(
+            'success',
+            result.authDeleted ? 'Conta excluida' : 'Removido da equipe',
+            result.message ||
+              (result.authDeleted
+                ? 'Acesso e conta excluidos. Pode adicionar o membro novamente com senha nova.'
+                : 'Acesso removido desta empresa.'),
+          );
+          if (!result.authDeleted && userToDelete.email) {
+            addToast(
+              'info',
+              'Auth ainda existe',
+              'Use "Limpar conta Auth" abaixo com o e-mail, ou apague em Supabase > Authentication > Users.',
+            );
           }
-      } 
+      } catch (err: any) {
+          console.error(err);
+          addToast('error', 'Erro', err.message || 'Falha ao remover o usuário.');
+      }
+  };
+
+  const handlePurgeAuthByEmail = async () => {
+      const email = purgeEmail.trim().toLowerCase();
+      if (!email || !email.includes('@')) {
+        addToast('error', 'E-mail', 'Informe o e-mail da conta fantasma no Auth.');
+        return;
+      }
+      if (!currentTenant?.id) {
+        addToast('error', 'Empresa', 'Empresa atual nao encontrada.');
+        return;
+      }
+      setPurgingAuth(true);
+      try {
+        const result = await purgeUserByEmailViaApi({ email, tenantId: currentTenant.id });
+        await auditService.log('Purge Auth User', 'User', email, {
+          deletedCount: result.deletedCount,
+        });
+        setPurgeEmail('');
+        addToast(
+          'success',
+          'Auth limpo',
+          result.message || `${result.deletedCount || 0} conta(s) removida(s).`,
+        );
+      } catch (err: any) {
+        addToast('error', 'Erro', err.message || 'Falha ao limpar conta Auth.');
+      } finally {
+        setPurgingAuth(false);
+      }
   };
   const togglePermission = (featureId: string) => { setUserForm(prev => ({ ...prev, permissions: { ...prev.permissions, [featureId]: !prev.permissions[featureId] } })); };
   const toggleModulePermission = (moduleId: string) => {
@@ -648,7 +668,6 @@ const Settings: React.FC = () => {
 
               {activeTab === 'users' && (
                   <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                      {/* ... (Mantém lista de usuários) ... */}
                       <div className="flex items-center justify-between pb-6 border-b border-slate-50">
                           <h3 className="text-lg font-black text-slate-800">Gestão de Equipe</h3>
                           <button onClick={() => { setInviteModalOpen(true); }} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2"><Plus size={14}/> Adicionar</button>
@@ -666,6 +685,32 @@ const Settings: React.FC = () => {
                                 </div>
                             </div>
                         ))}
+                      </div>
+
+                      <div className="mt-8 p-5 rounded-3xl border border-amber-200 bg-amber-50/70 space-y-3">
+                        <div>
+                          <p className="text-sm font-black text-amber-900">Limpar conta Auth (fantasma)</p>
+                          <p className="text-xs text-amber-800/80 mt-1">
+                            Use quando o membro sumiu da equipe, mas ainda aparece em Supabase → Authentication → Users.
+                          </p>
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <input
+                            className="flex-1 p-3 bg-white border border-amber-200 rounded-xl text-sm font-bold text-slate-700 outline-none"
+                            placeholder="ex: eltonsc77@gmail.com"
+                            value={purgeEmail}
+                            onChange={(e) => setPurgeEmail(e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            disabled={purgingAuth}
+                            onClick={handlePurgeAuthByEmail}
+                            className="px-4 py-3 bg-amber-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest disabled:opacity-60 flex items-center justify-center gap-2"
+                          >
+                            {purgingAuth ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                            Apagar no Auth
+                          </button>
+                        </div>
                       </div>
                   </div>
               )}
