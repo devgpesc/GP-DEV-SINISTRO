@@ -68,9 +68,10 @@ const MembershipGate: React.FC = () => {
             new Promise<null>((resolve) => setTimeout(() => resolve(null), 12000)),
           ]);
           if (repaired && (repaired.membershipCount || 0) > 0) {
+            // refreshContext agora aplica session-access primeiro (nao depende so de RLS).
             await Promise.race([
               refreshContext(user),
-              new Promise((resolve) => setTimeout(resolve, 5000)),
+              new Promise((resolve) => setTimeout(resolve, 12000)),
             ]);
             if (!cancelled) window.location.replace('/');
             return;

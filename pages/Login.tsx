@@ -138,7 +138,7 @@ const Login: React.FC = () => {
       const normalizedEmail = email.trim().toLowerCase();
       let authResult: any = await withTimeout(
         (supabase.auth as any).signInWithPassword({ email: normalizedEmail, password }),
-        15000,
+        25000,
         'Tempo esgotado ao autenticar. Verifique sua conexao e tente novamente.',
       );
 

@@ -12,7 +12,15 @@ const getEnv = (key: string) => {
 };
 
 const envUrl = getEnv('VITE_SUPABASE_URL');
-const envKey = getEnv('VITE_SUPABASE_PUBLISHABLE_KEY') || getEnv('VITE_SUPABASE_ANON_KEY');
+// Preferir JWT anon (eyJ...) — chave sb_publishable_ pode travar auth no browser.
+const pickAnonKey = (...candidates: Array<string | undefined>) => {
+  const values = candidates.filter((v): v is string => typeof v === 'string' && v.trim().length > 0);
+  return values.find((v) => v.startsWith('eyJ')) || values[0];
+};
+const envKey = pickAnonKey(
+  getEnv('VITE_SUPABASE_ANON_KEY'),
+  getEnv('VITE_SUPABASE_PUBLISHABLE_KEY'),
+);
 
 if (!envUrl || !envKey) {
   console.warn('[EventsCar] Variáveis de ambiente Supabase não detectadas.');

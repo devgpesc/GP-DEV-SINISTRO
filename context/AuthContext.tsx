@@ -120,15 +120,74 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     clearPendingRegistration();
   }, []);
 
+  const applyRepairedAccess = useCallback((
+    userId: string,
+    userEmail: string | undefined,
+    userMeta: any,
+    repaired: {
+      memberships?: any[];
+      tenants?: any[];
+      membershipCount?: number;
+    },
+    profileData?: any,
+  ) => {
+    const repairedRows = repaired.memberships || [];
+    if (!repairedRows.length) return false;
+    const repairedTenants = repaired.tenants || [];
+    const tenantByIdRepair = new Map(repairedTenants.map((t: any) => [t.id, t]));
+    const combinedFromRepair: EnrichedMembership[] = repairedRows.map((m: any) => ({
+      ...m,
+      permissions: m.permissions || {},
+      module_permissions: m.module_permissions || {},
+      saas_tenants: tenantByIdRepair.get(m.tenant_id) || {
+        id: m.tenant_id,
+        name: 'Empresa do Sistema',
+        status: 'active',
+      },
+    }));
+    if (!mounted.current) return true;
+    setMemberships(combinedFromRepair);
+    const selected = combinedFromRepair[0]?.saas_tenants || null;
+    setCurrentTenant(selected);
+    if (selected?.id) localStorage.setItem(TENANT_STORAGE_KEY, selected.id);
+    setProfile({
+      id: userId,
+      email: userEmail,
+      full_name:
+        profileData?.full_name ||
+        userMeta?.full_name ||
+        userMeta?.name ||
+        userEmail?.split('@')[0],
+      avatar_url: profileData?.avatar_url || userMeta?.avatar_url,
+      permissions: profileData?.permissions || {},
+      created_at: profileData?.created_at || new Date().toISOString(),
+      ...(profileData || {}),
+      role: resolvePlatformRole(userEmail, profileData?.role),
+    });
+    return true;
+  }, []);
+
   const loadContextData = useCallback(async (userId: string, userEmail?: string, userMeta?: any) => {
     if (!mounted.current) return;
 
     try {
       await completePendingRegistration(userId, userEmail, userMeta);
 
-      // TIMEOUT DE SEGURANÇA PARA DADOS (3.5 Segundos)
-      // Se o banco demorar, não trava o login.
-      const dbTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('DB_TIMEOUT')), 8000));
+      // 1) Caminho rapido: API session-access (service role) — evita pending-access por RLS/timeout.
+      try {
+        const repaired = await Promise.race([
+          repairSessionAccess(),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
+        ]);
+        if (repaired && (repaired.membershipCount || 0) > 0) {
+          applyRepairedAccess(userId, userEmail, userMeta, repaired);
+          return;
+        }
+      } catch (repairFirstErr: any) {
+        console.warn('[Auth] repair inicial:', repairFirstErr?.message || repairFirstErr);
+      }
+
+      const dbTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('DB_TIMEOUT')), 6000));
 
       const fetchProfile = supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
       const fetchMembers = supabase
@@ -137,13 +196,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('user_id', userId);
       const fetchOwnedTenants = supabase.from('saas_tenants').select('*').eq('owner_id', userId);
 
-      // Race: Dados vs Timeout
       const results = await Promise.race([
           Promise.all([fetchProfile, fetchMembers, fetchOwnedTenants]),
           dbTimeout
       ]) as any;
 
-      // Se for timeout, lança erro para cair no catch e liberar a UI
       if (!Array.isArray(results)) throw new Error("Dados demoraram a carregar");
 
       const [profileRes, membersRes, ownedTenantsRes] = results;
@@ -152,42 +209,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.error("Erro ao buscar memberships DB:", membersRes.error);
           try {
             const repaired = await repairSessionAccess();
-            if ((repaired.membershipCount || 0) > 0) {
-              const repairedRows = repaired.memberships || [];
-              const repairedTenants = repaired.tenants || [];
-              const tenantByIdRepair = new Map(repairedTenants.map((t: any) => [t.id, t]));
-              const combinedFromRepair: EnrichedMembership[] = repairedRows.map((m: any) => ({
-                ...m,
-                permissions: m.permissions || {},
-                module_permissions: m.module_permissions || {},
-                saas_tenants: tenantByIdRepair.get(m.tenant_id) || {
-                  id: m.tenant_id,
-                  name: 'Empresa do Sistema',
-                  status: 'active',
-                },
-              }));
-              if (mounted.current) {
-                setMemberships(combinedFromRepair);
-                const selected = combinedFromRepair[0]?.saas_tenants || null;
-                setCurrentTenant(selected);
-                if (selected?.id) localStorage.setItem(TENANT_STORAGE_KEY, selected.id);
-                setProfile({
-                  id: userId,
-                  email: userEmail,
-                  full_name:
-                    profileRes?.data?.full_name ||
-                    userMeta?.full_name ||
-                    userMeta?.name ||
-                    userEmail?.split('@')[0],
-                  avatar_url: profileRes?.data?.avatar_url || userMeta?.avatar_url,
-                  permissions: profileRes?.data?.permissions || {},
-                  created_at: profileRes?.data?.created_at || new Date().toISOString(),
-                  ...(profileRes?.data || {}),
-                  role: resolvePlatformRole(userEmail, profileRes?.data?.role),
-                });
-              }
-              return;
-            }
+            if (applyRepairedAccess(userId, userEmail, userMeta, repaired, profileRes?.data)) return;
           } catch (repairErr: any) {
             console.warn('[Auth] repair apos erro membership:', repairErr?.message || repairErr);
           }
@@ -209,46 +231,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // Se o cliente nao enxerga membership (RLS/cache), repara via API service-role.
       if (memberRows.length === 0 && !(ownedTenantsRes?.data?.length > 0)) {
         try {
           const repaired = await repairSessionAccess();
-          if ((repaired.membershipCount || 0) > 0) {
-            const repairedRows = repaired.memberships || [];
-            const repairedTenants = repaired.tenants || [];
-            const tenantByIdRepair = new Map(repairedTenants.map((t: any) => [t.id, t]));
-            const combinedFromRepair: EnrichedMembership[] = repairedRows.map((m: any) => ({
-              ...m,
-              permissions: m.permissions || {},
-              module_permissions: m.module_permissions || {},
-              saas_tenants: tenantByIdRepair.get(m.tenant_id) || {
-                id: m.tenant_id,
-                name: 'Empresa do Sistema',
-                status: 'active',
-              },
-            }));
-            if (mounted.current) {
-              setMemberships(combinedFromRepair);
-              const selected = combinedFromRepair[0]?.saas_tenants || null;
-              setCurrentTenant(selected);
-              if (selected?.id) localStorage.setItem(TENANT_STORAGE_KEY, selected.id);
-              setProfile({
-                id: userId,
-                email: userEmail,
-                full_name:
-                  profileRes.data?.full_name ||
-                  userMeta?.full_name ||
-                  userMeta?.name ||
-                  userEmail?.split('@')[0],
-                avatar_url: profileRes.data?.avatar_url || userMeta?.avatar_url,
-                permissions: profileRes.data?.permissions || {},
-                created_at: profileRes.data?.created_at || new Date().toISOString(),
-                ...(profileRes.data || {}),
-                role: resolvePlatformRole(userEmail, profileRes.data?.role),
-              });
-            }
-            return;
-          }
+          if (applyRepairedAccess(userId, userEmail, userMeta, repaired, profileRes?.data)) return;
         } catch (repairErr: any) {
           console.warn('[Auth] repairSessionAccess:', repairErr?.message || repairErr);
         }
@@ -349,35 +335,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Em timeout/RLS: tenta API service-role antes de desistir / deslogar.
       try {
         const repaired = await repairSessionAccess();
-        if ((repaired.membershipCount || 0) > 0 && mounted.current) {
-          const repairedRows = repaired.memberships || [];
-          const repairedTenants = repaired.tenants || [];
-          const tenantByIdRepair = new Map(repairedTenants.map((t: any) => [t.id, t]));
-          const combinedFromRepair: EnrichedMembership[] = repairedRows.map((m: any) => ({
-            ...m,
-            permissions: m.permissions || {},
-            module_permissions: m.module_permissions || {},
-            saas_tenants: tenantByIdRepair.get(m.tenant_id) || {
-              id: m.tenant_id,
-              name: 'Empresa do Sistema',
-              status: 'active',
-            },
-          }));
-          setMemberships(combinedFromRepair);
-          const selected = combinedFromRepair[0]?.saas_tenants || null;
-          setCurrentTenant(selected);
-          if (selected?.id) localStorage.setItem(TENANT_STORAGE_KEY, selected.id);
-          setProfile({
-            id: userId,
-            email: userEmail,
-            full_name: userMeta?.full_name || userMeta?.name || userEmail?.split('@')[0],
-            avatar_url: userMeta?.avatar_url,
-            permissions: {},
-            created_at: new Date().toISOString(),
-            role: resolvePlatformRole(userEmail, undefined),
-          });
-          return;
-        }
+        if (applyRepairedAccess(userId, userEmail, userMeta, repaired)) return;
       } catch (repairErr: any) {
         console.warn('[Auth] repair no catch:', repairErr?.message || repairErr);
       }
@@ -401,7 +359,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCurrentTenant(null);
       }
     }
-  }, [completePendingRegistration]);
+  }, [completePendingRegistration, applyRepairedAccess]);
 
   useEffect(() => {
     mounted.current = true;
