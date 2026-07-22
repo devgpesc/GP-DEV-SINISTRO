@@ -47,6 +47,25 @@ const PriorityBadge = ({ priority }: { priority: Priority }) => {
   );
 };
 
+const priorityDotClass = (priority: Priority) =>
+  priority === Priority.URGENT
+    ? 'bg-red-500'
+    : priority === Priority.HIGH
+      ? 'bg-amber-500'
+      : priority === Priority.LOW
+        ? 'bg-slate-300'
+        : 'bg-slate-400';
+
+const prioritySelectClass = (priority: Priority) => {
+  const map: Record<Priority, string> = {
+    [Priority.LOW]: 'bg-slate-100 text-slate-600 border-slate-200',
+    [Priority.MEDIUM]: 'bg-blue-50 text-blue-700 border-blue-100',
+    [Priority.HIGH]: 'bg-amber-50 text-amber-700 border-amber-200',
+    [Priority.URGENT]: 'bg-red-50 text-red-700 border-red-200',
+  };
+  return map[priority] || map[Priority.MEDIUM];
+};
+
 const Events: React.FC = () => {
   const { addToast } = useToast();
   const { currentTenant } = useAuth();
@@ -61,6 +80,7 @@ const Events: React.FC = () => {
   const [eventToDelete, setEventToDelete] = useState<Event | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [updatingPriorityId, setUpdatingPriorityId] = useState<string | null>(null);
   
   // States para Filtros Avançados
   const [showFilters, setShowFilters] = useState(false);
@@ -251,6 +271,28 @@ const Events: React.FC = () => {
       addToast('error', 'Erro', error.message || 'Falha no cadastro rápido.');
     } finally {
       setIsQuickSaving(false);
+    }
+  };
+
+  const handlePriorityChange = async (eventId: string, nextPriority: Priority) => {
+    const previous = events.find((e) => e.id === eventId)?.priority;
+    if (!previous || previous === nextPriority) return;
+
+    setUpdatingPriorityId(eventId);
+    setEvents((prev) =>
+      prev.map((e) => (e.id === eventId ? { ...e, priority: nextPriority } : e)),
+    );
+
+    try {
+      await eventService.updateEvent(eventId, { priority: nextPriority });
+      addToast('success', 'Prioridade', `Atualizada para ${nextPriority}.`);
+    } catch (err: any) {
+      setEvents((prev) =>
+        prev.map((e) => (e.id === eventId ? { ...e, priority: previous } : e)),
+      );
+      addToast('error', 'Prioridade', err?.message || 'Nao foi possivel alterar a prioridade.');
+    } finally {
+      setUpdatingPriorityId(null);
     }
   };
 
@@ -487,7 +529,29 @@ const Events: React.FC = () => {
                     <p className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-lg inline-block text-[11px] border border-slate-200 mb-1">{vehicle?.plate || '---'}</p>
                     <p className="text-[10px] text-slate-400 font-bold uppercase block">{vehicle?.model}</p>
                   </td>
-                  <td className="px-8 py-5"><div className="flex justify-center"><PriorityBadge priority={evt.priority} /></div></td>
+                  <td className="px-8 py-5">
+                    <div className="flex justify-center">
+                      <label className="relative inline-flex items-center gap-1.5 cursor-pointer">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${priorityDotClass(evt.priority)}`} />
+                        <select
+                          value={evt.priority || Priority.MEDIUM}
+                          disabled={updatingPriorityId === evt.id}
+                          onChange={(e) => handlePriorityChange(evt.id, e.target.value as Priority)}
+                          title="Alterar prioridade"
+                          className={`appearance-none pl-2 pr-6 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider border outline-none cursor-pointer disabled:opacity-60 ${prioritySelectClass(evt.priority || Priority.MEDIUM)}`}
+                        >
+                          {Object.values(Priority).map((p) => (
+                            <option key={p} value={p}>{p}</option>
+                          ))}
+                        </select>
+                        {updatingPriorityId === evt.id ? (
+                          <Loader2 size={12} className="absolute right-1.5 animate-spin text-slate-400" />
+                        ) : (
+                          <span className="pointer-events-none absolute right-1.5 text-[8px] text-slate-400">▼</span>
+                        )}
+                      </label>
+                    </div>
+                  </td>
                   <td className="px-8 py-5 text-center"><StatusBadge status={evt.status} /></td>
                   <td className="px-8 py-5 text-right flex items-center justify-end gap-1">
                      <button onClick={() => handleEdit(evt)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Eye size={18}/></button>
