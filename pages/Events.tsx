@@ -32,21 +32,6 @@ const StatusBadge = ({ status }: { status: EventStatus }) => {
   );
 };
 
-const PriorityBadge = ({ priority }: { priority: Priority }) => {
-  const styles: any = {
-    [Priority.LOW]: 'bg-slate-100 text-slate-500',
-    [Priority.MEDIUM]: 'bg-blue-50 text-blue-500',
-    [Priority.HIGH]: 'bg-amber-100 text-amber-600',
-    [Priority.URGENT]: 'bg-red-100 text-red-600 animate-pulse',
-  };
-  return (
-    <div className="flex items-center gap-1.5">
-      <div className={`w-2 h-2 rounded-full ${priority === Priority.URGENT ? 'bg-red-500' : priority === Priority.HIGH ? 'bg-amber-500' : 'bg-slate-400'}`}></div>
-      <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">{priority}</span>
-    </div>
-  );
-};
-
 const priorityDotClass = (priority: Priority) =>
   priority === Priority.URGENT
     ? 'bg-red-500'
