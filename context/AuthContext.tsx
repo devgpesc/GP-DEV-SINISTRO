@@ -11,7 +11,7 @@ type Session = any;
 
 const TENANT_STORAGE_KEY = 'sb-autoclaims-tenant-id';
 import { readPendingRegistration, clearPendingRegistration } from '../services/pendingRegistration';
-import { acceptInviteSafe } from '../services/inviteService';
+import { acceptInviteSafe, repairSessionAccess } from '../services/inviteService';
 import { AccessProfile, resolveAccessProfile } from '../services/accessControl';
 import { isRootPlatformAdminEmail, resolvePlatformRole } from '../services/platformAdmin';
 
@@ -150,6 +150,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (membersRes.error) {
           console.error("Erro ao buscar memberships DB:", membersRes.error);
+          try {
+            const repaired = await repairSessionAccess();
+            if ((repaired.membershipCount || 0) > 0) {
+              const repairedRows = repaired.memberships || [];
+              const repairedTenants = repaired.tenants || [];
+              const tenantByIdRepair = new Map(repairedTenants.map((t: any) => [t.id, t]));
+              const combinedFromRepair: EnrichedMembership[] = repairedRows.map((m: any) => ({
+                ...m,
+                permissions: m.permissions || {},
+                module_permissions: m.module_permissions || {},
+                saas_tenants: tenantByIdRepair.get(m.tenant_id) || {
+                  id: m.tenant_id,
+                  name: 'Empresa do Sistema',
+                  status: 'active',
+                },
+              }));
+              if (mounted.current) {
+                setMemberships(combinedFromRepair);
+                const selected = combinedFromRepair[0]?.saas_tenants || null;
+                setCurrentTenant(selected);
+                if (selected?.id) localStorage.setItem(TENANT_STORAGE_KEY, selected.id);
+                setProfile({
+                  id: userId,
+                  email: userEmail,
+                  full_name:
+                    profileRes?.data?.full_name ||
+                    userMeta?.full_name ||
+                    userMeta?.name ||
+                    userEmail?.split('@')[0],
+                  avatar_url: profileRes?.data?.avatar_url || userMeta?.avatar_url,
+                  permissions: profileRes?.data?.permissions || {},
+                  created_at: profileRes?.data?.created_at || new Date().toISOString(),
+                  ...(profileRes?.data || {}),
+                  role: resolvePlatformRole(userEmail, profileRes?.data?.role),
+                });
+              }
+              return;
+            }
+          } catch (repairErr: any) {
+            console.warn('[Auth] repair apos erro membership:', repairErr?.message || repairErr);
+          }
           throw new Error('Erro ao buscar memberships: ' + membersRes.error.message);
       }
 
@@ -165,6 +206,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.warn('[Auth] Falha ao buscar tenants vinculados:', tenantError.message);
         } else {
           linkedTenants = tenantRows || [];
+        }
+      }
+
+      // Se o cliente nao enxerga membership (RLS/cache), repara via API service-role.
+      if (memberRows.length === 0 && !(ownedTenantsRes?.data?.length > 0)) {
+        try {
+          const repaired = await repairSessionAccess();
+          if ((repaired.membershipCount || 0) > 0) {
+            const repairedRows = repaired.memberships || [];
+            const repairedTenants = repaired.tenants || [];
+            const tenantByIdRepair = new Map(repairedTenants.map((t: any) => [t.id, t]));
+            const combinedFromRepair: EnrichedMembership[] = repairedRows.map((m: any) => ({
+              ...m,
+              permissions: m.permissions || {},
+              module_permissions: m.module_permissions || {},
+              saas_tenants: tenantByIdRepair.get(m.tenant_id) || {
+                id: m.tenant_id,
+                name: 'Empresa do Sistema',
+                status: 'active',
+              },
+            }));
+            if (mounted.current) {
+              setMemberships(combinedFromRepair);
+              const selected = combinedFromRepair[0]?.saas_tenants || null;
+              setCurrentTenant(selected);
+              if (selected?.id) localStorage.setItem(TENANT_STORAGE_KEY, selected.id);
+              setProfile({
+                id: userId,
+                email: userEmail,
+                full_name:
+                  profileRes.data?.full_name ||
+                  userMeta?.full_name ||
+                  userMeta?.name ||
+                  userEmail?.split('@')[0],
+                avatar_url: profileRes.data?.avatar_url || userMeta?.avatar_url,
+                permissions: profileRes.data?.permissions || {},
+                created_at: profileRes.data?.created_at || new Date().toISOString(),
+                ...(profileRes.data || {}),
+                role: resolvePlatformRole(userEmail, profileRes.data?.role),
+              });
+            }
+            return;
+          }
+        } catch (repairErr: any) {
+          console.warn('[Auth] repairSessionAccess:', repairErr?.message || repairErr);
         }
       }
 

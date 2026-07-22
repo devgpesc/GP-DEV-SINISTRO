@@ -7,6 +7,7 @@ import { supabase } from '../services/supabaseClient';
 import {
   ensureInviteAccess,
   getInviteDetails,
+  repairSessionAccess,
   type InviteDetails,
 } from '../services/inviteService';
 import {
@@ -53,11 +54,24 @@ const PendingAccess: React.FC = () => {
   const verifyMembershipAndRedirect = async (): Promise<boolean> => {
     if (!user?.id) return false;
 
-    const { data: members } = await supabase
+    let members: any[] | null = null;
+    const { data: membersData } = await supabase
       .from('organization_members')
       .select('id')
       .eq('user_id', user.id)
       .limit(1);
+    members = membersData;
+
+    if (!(members?.length > 0)) {
+      try {
+        const repaired = await repairSessionAccess();
+        if ((repaired.membershipCount || 0) > 0) {
+          members = repaired.memberships;
+        }
+      } catch (err) {
+        console.warn('[PendingAccess] repairSessionAccess:', err);
+      }
+    }
 
     const { data: owned } = await supabase
       .from('saas_tenants')
@@ -336,7 +350,7 @@ const PendingAccess: React.FC = () => {
             disabled={accepting}
             className="mt-6 w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest disabled:opacity-50"
           >
-            {accepting ? 'Vinculando...' : 'Tentar vincular convite novamente'}
+            {accepting ? 'Vinculando...' : 'Reparar acesso e entrar'}
           </button>
 
           <div className="mt-6 space-y-3 text-left">
