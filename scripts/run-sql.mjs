@@ -35,32 +35,30 @@ function loadEnvFile(filePath) {
 }
 
 function resolveConnectionString(env) {
-  if (env.DATABASE_URL || env.POSTGRES_URL_NON_POOLING || env.POSTGRES_URL) {
-    return env.DATABASE_URL || env.POSTGRES_URL_NON_POOLING || env.POSTGRES_URL;
+  const raw = env.DATABASE_URL || env.POSTGRES_URL_NON_POOLING || env.POSTGRES_URL || '';
+  // Senha com @ # $ etc. quebra o parse se nao for encodeada.
+  const m = String(raw).match(/^postgresql:\/\/([^:]+):(.+)@(db\.[^:/]+|[^:/]+):(\d+)\/(.+)$/);
+  if (m) {
+    const [, user, password, host, port, database] = m;
+    return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${database}`;
   }
 
-  const password = env.SUPABASE_DB_PASSWORD || env.POSTGRES_PASSWORD;
-  const host =
-    env.POSTGRES_HOST ||
-    (env.SUPABASE_URL || env.VITE_SUPABASE_URL || '')
-      .replace(/^https?:\/\//, '')
-      .replace('.supabase.co', '.supabase.co');
-
-  // Project ref from URL: https://ref.supabase.co
-  const refMatch = String(env.SUPABASE_URL || env.VITE_SUPABASE_URL || '').match(
-    /https?:\/\/([a-z0-9]+)\.supabase\.co/i,
-  );
-  const ref = refMatch?.[1];
-  const dbHost = env.POSTGRES_HOST || (ref ? `db.${ref}.supabase.co` : null);
-  const user = env.POSTGRES_USER || 'postgres';
-  const database = env.POSTGRES_DATABASE || 'postgres';
-  const port = env.POSTGRES_PORT || '5432';
-
-  if (password && dbHost) {
-    return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${dbHost}:${port}/${database}`;
+  if (env.SUPABASE_DB_PASSWORD || env.POSTGRES_PASSWORD) {
+    const password = env.SUPABASE_DB_PASSWORD || env.POSTGRES_PASSWORD;
+    const refMatch = String(env.SUPABASE_URL || env.VITE_SUPABASE_URL || '').match(
+      /https?:\/\/([a-z0-9]+)\.supabase\.co/i,
+    );
+    const ref = refMatch?.[1];
+    const dbHost = env.POSTGRES_HOST || (ref ? `db.${ref}.supabase.co` : null);
+    const user = env.POSTGRES_USER || 'postgres';
+    const database = env.POSTGRES_DATABASE || 'postgres';
+    const port = env.POSTGRES_PORT || '5432';
+    if (password && dbHost) {
+      return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${dbHost}:${port}/${database}`;
+    }
   }
 
-  return null;
+  return raw || null;
 }
 
 const root = process.cwd();
