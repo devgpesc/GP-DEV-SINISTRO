@@ -23,6 +23,7 @@ import { QuotationItem, Supplier, SupplierPrice } from '../types';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../services/supabaseClient';
 import { openMatrixPrintPreview } from '../utils/matrixPrint';
+import { formatDateTimeBr, formatVehicleLabel } from '../utils/vehicleLabel';
 import * as XLSX from 'xlsx';
 
 interface MatrixProps {
@@ -72,6 +73,8 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
     vehicleLabel?: string;
     participationQuota?: number | null;
     createdAt?: string;
+    eventOpenedAt?: string;
+    eventStatus?: string;
   } | null>(null);
   const [printMenuOpen, setPrintMenuOpen] = useState(false);
 
@@ -117,17 +120,21 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
       let vehicleLabel = '';
       let eventProtocol = quotationRow?.eventRef || '';
       let eventParticipationQuota: number | null = null;
+      let eventOpenedAt = '';
+      let eventStatus = '';
 
       if (eventRefId) {
         const { data: eventRow } = await supabase
           .from('events')
-          .select('id, protocol, associateId, vehicleId, participation_quota')
+          .select('id, protocol, associateId, vehicleId, participation_quota, created_at, status')
           .eq('id', eventRefId)
           .maybeSingle();
 
         if (eventRow) {
           eventProtocol = eventRow.protocol || eventProtocol;
           eventParticipationQuota = eventRow.participation_quota ?? null;
+          eventOpenedAt = formatDateTimeBr(eventRow.created_at);
+          eventStatus = eventRow.status || '';
 
           const [{ data: associateRow }, { data: vehicleRow }] = await Promise.all([
             eventRow.associateId ? supabase.from('associates').select('name').eq('id', eventRow.associateId).maybeSingle() : Promise.resolve({ data: null as any }),
@@ -136,8 +143,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
 
           associateName = associateRow?.name || '';
           if (vehicleRow) {
-            const yearLabel = vehicleRow.year_model || vehicleRow.year_fab;
-            vehicleLabel = `${vehicleRow.brand || ''} ${vehicleRow.model || ''}${yearLabel ? ` (${yearLabel})` : ''}${vehicleRow.plate ? ` - ${vehicleRow.plate}` : ''}`.trim();
+            vehicleLabel = formatVehicleLabel(vehicleRow);
           }
         }
       }
@@ -149,6 +155,8 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
         vehicleLabel: vehicleLabel || undefined,
         participationQuota: quotationRow?.participation_quota ?? eventParticipationQuota,
         createdAt: quotationRow?.created_at || undefined,
+        eventOpenedAt: eventOpenedAt || undefined,
+        eventStatus: eventStatus || undefined,
       });
     } catch (error) {
       console.error('Erro Matrix:', error);
@@ -403,6 +411,9 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
         associateName: headerMeta.associateName,
         vehicleLabel: headerMeta.vehicleLabel,
         participationQuota: headerMeta.participationQuota,
+        eventOpenedAt: headerMeta.eventOpenedAt,
+        quotationCreatedAt: formatDateTimeBr(headerMeta.createdAt),
+        eventStatus: headerMeta.eventStatus,
       },
       items: filteredItems.map(item => ({ id: item.id, name: item.name, quantity: item.quantity, unit: item.unit })),
       suppliers: filteredSuppliers.map(s => ({ id: s.id, name: s.name, city: s.city })),
@@ -493,22 +504,30 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
       </div>
 
       <div className="bg-white border border-slate-200 rounded-[24px] p-5 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+        <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4 text-sm">
           <div>
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Pré-Orçamento</p>
             <p className="font-black text-slate-800">{headerMeta?.quotationCode || quotationId}</p>
           </div>
           <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Sinistro</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Protocolo</p>
             <p className="font-black text-slate-800">{headerMeta?.eventProtocol || 'Não vinculado'}</p>
           </div>
           <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Cliente</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Associado</p>
             <p className="font-black text-slate-800">{headerMeta?.associateName || 'Não identificado'}</p>
           </div>
           <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Veículo</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Veículo / Placa</p>
             <p className="font-black text-slate-800">{headerMeta?.vehicleLabel || 'Não identificado'}</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Abertura sinistro</p>
+            <p className="font-black text-slate-800">{headerMeta?.eventOpenedAt || '—'}</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Data da cotação</p>
+            <p className="font-black text-slate-800">{formatDateTimeBr(headerMeta?.createdAt)}</p>
           </div>
         </div>
       </div>

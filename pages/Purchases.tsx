@@ -10,6 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import { openPurchaseOrderPreview, PrintOrientation } from '../utils/purchaseOrderPrint';
 import { purchaseOrderService, getActionLabel, PurchaseOrderHistoryEntry } from '../services/purchaseOrderService';
 import { auditService } from '../services/auditService';
+import { formatVehicleLabel } from '../utils/vehicleLabel';
 
 const Purchases: React.FC = () => {
   const { access } = useAuth();
@@ -177,7 +178,7 @@ const Purchases: React.FC = () => {
             eventProtocol: event?.protocol || quote?.eventRef || null,
             customerName: associate?.name || 'Cliente nao vinculado',
             customerDocument: associate?.document || null,
-            vehicleLabel: vehicle ? `${vehicle.brand || ''} ${vehicle.model || ''}${vehicle.plate ? ` - ${vehicle.plate}` : ''}`.trim() : null,
+            vehicleLabel: vehicle ? formatVehicleLabel(vehicle) : null,
             createdByName: creator?.full_name || creator?.email || 'Colaborador nao identificado',
             supplierId: o.supplier_id,
             supplierName: o.suppliers?.name || 'Fornecedor Desconhecido',

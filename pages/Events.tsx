@@ -17,6 +17,7 @@ import { getAttachmentKind } from '../services/attachmentService';
 import { quickCreateAssociate, quickCreateVehicle } from '../services/quickRegisterService';
 import { lookupService } from '../services/lookupService';
 import FileViewerModal from '../components/FileViewerModal';
+import { formatDateTimeBr, formatVehicleModelShort } from '../utils/vehicleLabel';
 
 const StatusBadge = ({ status }: { status: EventStatus }) => {
   const styles: any = {
@@ -32,21 +33,12 @@ const StatusBadge = ({ status }: { status: EventStatus }) => {
   );
 };
 
-const priorityDotClass = (priority: Priority) =>
-  priority === Priority.URGENT
-    ? 'bg-red-500'
-    : priority === Priority.HIGH
-      ? 'bg-amber-500'
-      : priority === Priority.LOW
-        ? 'bg-slate-300'
-        : 'bg-slate-400';
-
 const prioritySelectClass = (priority: Priority) => {
   const map: Record<Priority, string> = {
-    [Priority.LOW]: 'bg-slate-100 text-slate-600 border-slate-200',
-    [Priority.MEDIUM]: 'bg-blue-50 text-blue-700 border-blue-100',
-    [Priority.HIGH]: 'bg-amber-50 text-amber-700 border-amber-200',
-    [Priority.URGENT]: 'bg-red-50 text-red-700 border-red-200',
+    [Priority.LOW]: 'border-slate-200 bg-white text-slate-700 focus:ring-slate-200',
+    [Priority.MEDIUM]: 'border-blue-200 bg-white text-blue-700 focus:ring-blue-100',
+    [Priority.HIGH]: 'border-amber-200 bg-white text-amber-700 focus:ring-amber-100',
+    [Priority.URGENT]: 'border-red-200 bg-white text-red-700 focus:ring-red-100',
   };
   return map[priority] || map[Priority.MEDIUM];
 };
@@ -487,17 +479,18 @@ const Events: React.FC = () => {
         <table className="w-full text-left">
           <thead className="bg-slate-50 border-b border-slate-100">
             <tr>
-              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Protocolo / Cliente</th>
-              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Placa / Veículo</th>
-              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Prioridade</th>
-              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
-              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
+              <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Protocolo / Cliente</th>
+              <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Placa / Veículo</th>
+              <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Prioridade</th>
+              <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
+              <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Abertura</th>
+              <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
             {filteredEvents.length === 0 ? (
                <tr>
-                 <td colSpan={5} className="px-8 py-12 text-center text-slate-400">
+                 <td colSpan={6} className="px-8 py-12 text-center text-slate-400">
                     <p className="text-sm font-bold">Nenhum sinistro encontrado com os filtros atuais.</p>
                  </td>
                </tr>
@@ -506,39 +499,41 @@ const Events: React.FC = () => {
                const vehicle = vehicles.find(v => v.id === evt.vehicleId);
                return (
                 <tr key={evt.id} className="hover:bg-slate-50/50 transition-colors group">
-                  <td className="px-8 py-5">
+                  <td className="px-6 py-5">
                     <p className="font-black text-slate-800 leading-none mb-1">{evt.protocol}</p>
                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">{associate?.name || '---'}</p>
                   </td>
-                  <td className="px-8 py-5">
+                  <td className="px-6 py-5">
                     <p className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-lg inline-block text-[11px] border border-slate-200 mb-1">{vehicle?.plate || '---'}</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase block">{vehicle?.model}</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase block">{formatVehicleModelShort(vehicle)}</p>
                   </td>
-                  <td className="px-8 py-5">
+                  <td className="px-6 py-5">
                     <div className="flex justify-center">
-                      <label className="relative inline-flex items-center gap-1.5 cursor-pointer">
-                        <span className={`w-2 h-2 rounded-full shrink-0 ${priorityDotClass(evt.priority)}`} />
-                        <select
-                          value={evt.priority || Priority.MEDIUM}
-                          disabled={updatingPriorityId === evt.id}
-                          onChange={(e) => handlePriorityChange(evt.id, e.target.value as Priority)}
-                          title="Alterar prioridade"
-                          className={`appearance-none pl-2 pr-6 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider border outline-none cursor-pointer disabled:opacity-60 ${prioritySelectClass(evt.priority || Priority.MEDIUM)}`}
-                        >
-                          {Object.values(Priority).map((p) => (
-                            <option key={p} value={p}>{p}</option>
-                          ))}
-                        </select>
-                        {updatingPriorityId === evt.id ? (
-                          <Loader2 size={12} className="absolute right-1.5 animate-spin text-slate-400" />
-                        ) : (
-                          <span className="pointer-events-none absolute right-1.5 text-[8px] text-slate-400">▼</span>
-                        )}
-                      </label>
+                      <select
+                        value={evt.priority || Priority.MEDIUM}
+                        disabled={updatingPriorityId === evt.id}
+                        onChange={(e) => handlePriorityChange(evt.id, e.target.value as Priority)}
+                        title="Alterar prioridade"
+                        aria-label="Alterar prioridade"
+                        className={`min-w-[118px] appearance-none rounded-xl border px-3 py-2 pr-8 text-[11px] font-bold outline-none shadow-sm transition focus:ring-2 disabled:opacity-60 cursor-pointer ${prioritySelectClass(evt.priority || Priority.MEDIUM)}`}
+                        style={{
+                          backgroundImage:
+                            "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%9464748b' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")",
+                          backgroundRepeat: 'no-repeat',
+                          backgroundPosition: 'right 10px center',
+                        }}
+                      >
+                        {Object.values(Priority).map((p) => (
+                          <option key={p} value={p}>{p}</option>
+                        ))}
+                      </select>
                     </div>
                   </td>
-                  <td className="px-8 py-5 text-center"><StatusBadge status={evt.status} /></td>
-                  <td className="px-8 py-5 text-right flex items-center justify-end gap-1">
+                  <td className="px-6 py-5 text-center"><StatusBadge status={evt.status} /></td>
+                  <td className="px-6 py-5">
+                    <p className="text-xs font-bold text-slate-700">{formatDateTimeBr((evt as any).createdAt || (evt as any).created_at)}</p>
+                  </td>
+                  <td className="px-6 py-5 text-right flex items-center justify-end gap-1">
                      <button onClick={() => handleEdit(evt)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Eye size={18}/></button>
                      <button onClick={() => setEventToDelete(evt)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18}/></button>
                   </td>

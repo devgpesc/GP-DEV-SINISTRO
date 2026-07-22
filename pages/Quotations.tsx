@@ -10,6 +10,7 @@ import ActionModal from '../components/ActionModal';
 import { useEventTypes } from '../hooks/useEventTypes';
 import { ATTACHMENT_ACCEPT } from '../utils/defaults';
 import { lookupService } from '../services/lookupService';
+import { formatDateTimeBr, formatVehicleLabel, formatVehicleModelShort } from '../utils/vehicleLabel';
 
 const Quotations: React.FC = () => {
   const { addToast } = useToast();
@@ -19,6 +20,8 @@ const Quotations: React.FC = () => {
   const [wizardStep, setWizardStep] = useState(1);
   const [realEvents, setRealEvents] = useState<Event[]>([]);
   const [realSuppliers, setRealSuppliers] = useState<Supplier[]>([]);
+  const [associatesById, setAssociatesById] = useState<Record<string, { id: string; name: string }>>({});
+  const [vehiclesById, setVehiclesById] = useState<Record<string, any>>({});
   const [searchTerm, setSearchTerm] = useState('');
   
   // State da Nova/Edit Cotação
@@ -105,14 +108,34 @@ const Quotations: React.FC = () => {
   }, [itemSearch, itemTypeTab]);
 
   const loadData = async () => {
-    const { data: eventsData } = await supabase.from('events').select('*').order('created_at', { ascending: false });
+    const [{ data: eventsData }, { data: suppliersData }, { data: quotesData }, { data: associatesData }, { data: vehiclesData }] =
+      await Promise.all([
+        supabase.from('events').select('*').order('created_at', { ascending: false }),
+        supabase.from('suppliers').select('*').eq('status', 'Ativo'),
+        supabase.from('quotations').select('*').order('created_at', { ascending: false }),
+        supabase.from('associates').select('id, name'),
+        supabase.from('vehicles').select('id, plate, brand, model, year_fab, year_model'),
+      ]);
+
     setRealEvents(eventsData || []);
-
-    const { data: suppliersData } = await supabase.from('suppliers').select('*').eq('status', 'Ativo');
     setRealSuppliers(suppliersData || []);
-
-    const { data: quotesData } = await supabase.from('quotations').select('*').order('created_at', { ascending: false });
     setQuotes(quotesData || []);
+
+    const aMap: Record<string, { id: string; name: string }> = {};
+    (associatesData || []).forEach((a: any) => { aMap[a.id] = a; });
+    setAssociatesById(aMap);
+
+    const vMap: Record<string, any> = {};
+    (vehiclesData || []).forEach((v: any) => { vMap[v.id] = v; });
+    setVehiclesById(vMap);
+  };
+
+  const describeEventOption = (e: Event) => {
+    const associate = associatesById[(e as any).associateId] || associatesById[(e as any).associate_id];
+    const vehicle = vehiclesById[(e as any).vehicleId] || vehiclesById[(e as any).vehicle_id];
+    const plate = vehicle?.plate || '—';
+    const client = associate?.name || 'Sem associado';
+    return `${e.protocol} · ${client} · ${plate} · ${e.status}`;
   };
 
   const filteredQuotes = quotes.filter(q => 
@@ -426,6 +449,15 @@ const Quotations: React.FC = () => {
         vehicleId = existingVehicle.id;
         await supabase.from('vehicles').update({ associate_id: associateId }).eq('id', vehicleId);
       } else {
+        let brand = '';
+        let model = '';
+        try {
+          const looked = await lookupService.fetchPlate(cleanPlate);
+          brand = looked?.brand || '';
+          model = looked?.model || '';
+        } catch {
+          /* opcional */
+        }
         const currentYear = new Date().getFullYear().toString();
         const { data: newVehicle, error: vehicleError } = await supabase
           .from('vehicles')
@@ -433,8 +465,8 @@ const Quotations: React.FC = () => {
             plate: cleanPlate,
             associate_id: associateId,
             status: 'Ativo',
-            brand: 'A DEFINIR',
-            model: 'CADASTRO RAPIDO',
+            brand: (brand || '—').toUpperCase(),
+            model: (model || cleanPlate).toUpperCase(),
             color: 'BRANCA',
             fuel: 'FLEX',
             type: 'Automovel',
@@ -526,7 +558,8 @@ const Quotations: React.FC = () => {
                     </div>
                   </div>
                   <h3 className="font-black text-slate-800 text-xl tracking-tight leading-none mb-1">{quote.code}</h3>
-                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-6">Ref: {quote.eventRef}</p>
+                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-2">Ref: {quote.eventRef}</p>
+                  <p className="text-[11px] text-slate-500 font-bold mb-6">Cotação: {formatDateTimeBr(quote.created_at || quote.createdAt)}</p>
                   
                   <div className="flex justify-between items-center pt-6 border-t border-slate-50">
                     <div className="flex -space-x-3">
@@ -550,10 +583,11 @@ const Quotations: React.FC = () => {
             <table className="w-full text-left">
               <thead className="bg-slate-50 border-b border-slate-100">
                 <tr>
-                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Código / Ref</th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Código / Protocolo</th>
                   <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Itens</th>
                   <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Fornecedores</th>
                   <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Data / Hora cotação</th>
                   <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
                 </tr>
               </thead>
@@ -579,6 +613,9 @@ const Quotations: React.FC = () => {
                         <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${getQuoteStatusClass(quote.status)}`}>
                         {quote.status}
                         </span>
+                    </td>
+                    <td className="px-8 py-5">
+                      <p className="text-xs font-bold text-slate-700">{formatDateTimeBr(quote.created_at || quote.createdAt)}</p>
                     </td>
                     <td className="px-8 py-5 text-right">
                        <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -622,7 +659,9 @@ const Quotations: React.FC = () => {
                       });
                   }} disabled={!!editingQuoteId}>
                     <option value="">Selecione...</option>
-                    {realEvents.map(e => <option key={e.id} value={e.id}>{e.protocol} - {e.category} ({e.status})</option>)}
+                    {realEvents.map(e => (
+                      <option key={e.id} value={e.id}>{describeEventOption(e)}</option>
+                    ))}
                   </select>
 
                   {!editingQuoteId && (
@@ -759,12 +798,27 @@ const Quotations: React.FC = () => {
                           <p className="text-slate-700 font-black">{selectedEvent.status || 'N/A'}</p>
                         </div>
                         <div>
-                          <p className="text-slate-400 font-bold uppercase tracking-wider">Tipo</p>
-                          <p className="text-slate-700 font-black">{selectedEvent.category || 'N/A'}</p>
+                          <p className="text-slate-400 font-bold uppercase tracking-wider">Associado</p>
+                          <p className="text-slate-700 font-black">
+                            {associatesById[(selectedEvent as any).associateId]?.name ||
+                              associatesById[(selectedEvent as any).associate_id]?.name ||
+                              '—'}
+                          </p>
                         </div>
                         <div>
-                          <p className="text-slate-400 font-bold uppercase tracking-wider">Data</p>
-                          <p className="text-slate-700 font-black">{selectedEvent.createdAt ? new Date(selectedEvent.createdAt).toLocaleDateString('pt-BR') : 'N/A'}</p>
+                          <p className="text-slate-400 font-bold uppercase tracking-wider">Placa / Veículo</p>
+                          <p className="text-slate-700 font-black">
+                            {formatVehicleLabel(
+                              vehiclesById[(selectedEvent as any).vehicleId] ||
+                                vehiclesById[(selectedEvent as any).vehicle_id],
+                            )}
+                          </p>
+                        </div>
+                        <div className="sm:col-span-2">
+                          <p className="text-slate-400 font-bold uppercase tracking-wider">Abertura do sinistro (solicitação)</p>
+                          <p className="text-slate-700 font-black">
+                            {formatDateTimeBr((selectedEvent as any).createdAt || (selectedEvent as any).created_at)}
+                          </p>
                         </div>
                       </div>
                     </div>

@@ -41,18 +41,43 @@ export async function quickCreateAssociate(input: {
   return data.id as string;
 }
 
-export async function quickCreateVehicle(input: { plate: string; associateId: string }) {
+export async function quickCreateVehicle(input: {
+  plate: string;
+  associateId: string;
+  brand?: string;
+  model?: string;
+}) {
   const cleanPlate = input.plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (cleanPlate.length < 7) throw new Error('Informe uma placa válida.');
 
   const { data: existing } = await supabase
     .from('vehicles')
-    .select('id')
+    .select('id, brand, model')
     .eq('plate', cleanPlate)
     .maybeSingle();
 
+  let brand = (input.brand || '').trim();
+  let model = (input.model || '').trim();
+
+  // Tenta enriquecer pela consulta de placa quando ainda estiver generico.
+  if (!brand || !model || /cadastro|definir/i.test(`${brand} ${model}`)) {
+    try {
+      const looked = await lookupService.fetchPlate(cleanPlate);
+      if (looked?.brand) brand = looked.brand;
+      if (looked?.model) model = looked.model;
+    } catch {
+      /* lookup opcional */
+    }
+  }
+
+  brand = brand || '';
+  model = model || '';
+
   if (existing?.id) {
-    await supabase.from('vehicles').update({ associate_id: input.associateId }).eq('id', existing.id);
+    const patch: Record<string, any> = { associate_id: input.associateId };
+    if (brand) patch.brand = brand.toUpperCase();
+    if (model) patch.model = model.toUpperCase();
+    await supabase.from('vehicles').update(patch).eq('id', existing.id);
     return existing.id;
   }
 
@@ -63,8 +88,8 @@ export async function quickCreateVehicle(input: { plate: string; associateId: st
       plate: cleanPlate,
       associate_id: input.associateId,
       status: 'Ativo',
-      brand: 'A DEFINIR',
-      model: 'CADASTRO RAPIDO',
+      brand: (brand || '—').toUpperCase(),
+      model: (model || cleanPlate).toUpperCase(),
       color: 'BRANCA',
       fuel: 'FLEX',
       type: 'Automovel',
