@@ -341,9 +341,16 @@ const Login: React.FC = () => {
               <p className="text-slate-500 text-base mt-2 font-medium">
                 {inviteInfo
                   ? `Convite para ${inviteInfo.tenant_name}`
-                  : 'Bem-vindo de volta! Insira suas credenciais.'}
+                  : 'Entre com e-mail e senha fornecidos pelo administrador.'}
               </p>
             </div>
+
+            {!inviteInfo && (
+              <p className="mb-6 text-[11px] font-semibold text-slate-500 bg-slate-50 border border-slate-100 rounded-xl p-3 leading-relaxed">
+                Novos membros sao criados pelo admin da empresa (como no Esc Finan): e-mail + senha, acesso liberado na hora.
+                Nao e necessario confirmar e-mail.
+              </p>
+            )}
 
             {inviteInfo && (
               <div className="mb-6 space-y-3">
@@ -353,10 +360,6 @@ const Login: React.FC = () => {
                     Use o e-mail <strong>{inviteInfo.email}</strong> para entrar e vincular sua conta a empresa.
                   </p>
                 </div>
-                <p className="text-[11px] font-semibold text-slate-500 bg-slate-50 border border-slate-100 rounded-xl p-3 leading-relaxed">
-                  Com <strong>Google</strong> nao ha e-mail de confirmacao. Preferivel se voce ja usou Google antes.
-                  Cadastro com senha pode exigir confirmacao por e-mail.
-                </p>
               </div>
             )}
 

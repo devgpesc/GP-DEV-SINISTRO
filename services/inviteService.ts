@@ -227,6 +227,52 @@ export const ensureInviteAccess = async (token?: string | null, emailHint?: stri
   return { status: 'no_invite' };
 };
 
+export const createMemberViaApi = async (params: {
+  email: string;
+  password: string;
+  name: string;
+  role: string;
+  tenantId: string;
+}) => {
+  assertSupabaseReady();
+  const { data: sessionData } = await (supabase.auth as any).getSession();
+  const accessToken = sessionData?.session?.access_token;
+  if (!accessToken) throw new Error('Sessao expirada. Faca login novamente.');
+
+  const response = await withTimeoutReject(
+    fetch('/api/auth/create-member', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        email: params.email.trim().toLowerCase(),
+        password: params.password,
+        name: params.name.trim(),
+        role: params.role || 'member',
+        tenantId: params.tenantId,
+      }),
+    }),
+    20000,
+    'Tempo esgotado ao criar membro.',
+  );
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || 'Falha ao criar membro.');
+  }
+  return payload as {
+    ok: boolean;
+    created?: boolean;
+    userId?: string;
+    email?: string;
+    loginUrl?: string;
+    tenantName?: string;
+    message?: string;
+  };
+};
+
 export const createInvitation = async (params: {
   email: string;
   name: string;

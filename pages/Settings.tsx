@@ -14,6 +14,7 @@ import {
   buildInviteMailto,
   buildInviteRegisterUrl,
   createInvitation,
+  createMemberViaApi,
 } from '../services/inviteService';
 
 const Settings: React.FC = () => {
@@ -59,12 +60,14 @@ const Settings: React.FC = () => {
     permissions: {} as Record<string, boolean>,
     module_permissions: {} as Record<string, boolean>,
   });
-  const [inviteData, setInviteData] = useState({ name: '', email: '', role: 'member' });
+  const [inviteData, setInviteData] = useState({ name: '', email: '', role: 'member', password: '' });
   const [generatedLink, setGeneratedLink] = useState('');
   const [generatedLoginLink, setGeneratedLoginLink] = useState('');
+  const [createdMemberInfo, setCreatedMemberInfo] = useState<{ email: string; password: string; loginUrl: string; message: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [isGeneratingInvite, setIsGeneratingInvite] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [showInvitePassword, setShowInvitePassword] = useState(false);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
@@ -94,8 +97,11 @@ const Settings: React.FC = () => {
     if (inviteModalOpen) {
         setGeneratedLink('');
         setGeneratedLoginLink('');
+        setCreatedMemberInfo(null);
         setCopied(false);
         setInviteError(null);
+        setInviteData({ name: '', email: '', role: 'member', password: '' });
+        setShowInvitePassword(false);
         loadInvitations();
     }
   }, [inviteModalOpen, currentTenant?.id]);
@@ -311,6 +317,55 @@ const Settings: React.FC = () => {
           addToast('error', 'Erro', error.message);
       }
   };
+  const createTeamMember = async () => {
+      if (!profile || !currentTenant?.id) return;
+
+      const trimmedName = inviteData.name.trim();
+      const trimmedEmail = inviteData.email.trim().toLowerCase();
+      const password = inviteData.password;
+      const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail);
+      if (!trimmedName || !trimmedEmail || !isValidEmail) {
+          setInviteError('Preencha nome e e-mail válido.');
+          return;
+      }
+      if (!password || password.length < 8) {
+          setInviteError('Defina uma senha com pelo menos 8 caracteres.');
+          return;
+      }
+
+      setIsGeneratingInvite(true);
+      setInviteError(null);
+      setCreatedMemberInfo(null);
+
+      try {
+          const result = await createMemberViaApi({
+              email: trimmedEmail,
+              password,
+              name: trimmedName,
+              role: inviteData.role || 'member',
+              tenantId: currentTenant.id,
+          });
+
+          await auditService.log('Create Member', 'User', trimmedEmail, {
+              role: inviteData.role || 'member',
+              created: result.created,
+          });
+          await loadUsers();
+          await loadInvitations();
+          setCreatedMemberInfo({
+              email: trimmedEmail,
+              password,
+              loginUrl: result.loginUrl || `${window.location.origin}/login`,
+              message: result.message || 'Membro pronto para acessar.',
+          });
+          addToast('success', 'Membro adicionado', 'Acesso liberado com e-mail e senha — sem link de convite.');
+      } catch (err: any) {
+          setInviteError(err.message || 'Não foi possível criar o membro.');
+      } finally {
+          setIsGeneratingInvite(false);
+      }
+  };
+
   const generateInviteLink = async () => { 
       if (!profile || !currentTenant?.id) return;
 
@@ -524,7 +579,7 @@ const Settings: React.FC = () => {
                       {/* ... (Mantém lista de usuários) ... */}
                       <div className="flex items-center justify-between pb-6 border-b border-slate-50">
                           <h3 className="text-lg font-black text-slate-800">Gestão de Equipe</h3>
-                          <button onClick={() => { setInviteModalOpen(true); setGeneratedLink(`${window.location.origin}/register`); }} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2"><Plus size={14}/> Adicionar</button>
+                          <button onClick={() => { setInviteModalOpen(true); }} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2"><Plus size={14}/> Adicionar</button>
                       </div>
                       <div className="space-y-3">
                         {usersList.map(user => (
@@ -832,17 +887,16 @@ const Settings: React.FC = () => {
           </div>
       )}
 
-      {/* Modal Convidar e Excluir mantidos */}
+      {/* Modal Adicionar Membro (modelo Esc Finan) */}
       {inviteModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-              {/* Conteúdo mantido igual ao original */}
               <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setInviteModalOpen(false)}></div>
               <div className="relative bg-white w-full max-w-md rounded-[32px] shadow-2xl p-6 animate-in zoom-in duration-200 flex flex-col max-h-[90vh]">
                   <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4 shrink-0">
                       <div className="flex items-center gap-3">
                           <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><UserPlus size={20}/></div>
                           <div>
-                            <h3 className="text-xl font-black text-slate-800">Convidar Membro</h3>
+                            <h3 className="text-xl font-black text-slate-800">Adicionar Membro</h3>
                             <p className="text-[11px] font-bold text-blue-600 mt-0.5">
                               Empresa: {currentTenant?.name || 'Empresa atual'}
                             </p>
@@ -852,9 +906,9 @@ const Settings: React.FC = () => {
                   </div>
                   <div className="flex-1 overflow-y-auto pr-1">
                       <div className="space-y-5">
-                          <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-[11px] font-semibold text-slate-500 leading-relaxed">
-                            O convite vincula o usuario automaticamente a <strong className="text-slate-800">{currentTenant?.name}</strong>.
-                            Em outra empresa, troque a empresa no seletor antes de convidar.
+                          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-[11px] font-semibold text-emerald-800 leading-relaxed">
+                            Como no Esc Finan: voce define e-mail e senha. O acesso e liberado na hora —
+                            <strong> sem link de convite e sem confirmacao de e-mail</strong>.
                           </div>
                           <div>
                               <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Nome</label>
@@ -868,6 +922,22 @@ const Settings: React.FC = () => {
                               <div className="relative">
                                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
                                   <input type="email" className="w-full pl-10 pr-3 py-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-slate-700 outline-none focus:border-blue-200 focus:bg-white transition-all" value={inviteData.email} onChange={e => setInviteData({...inviteData, email: e.target.value})} placeholder="usuario@empresa.com" />
+                              </div>
+                          </div>
+                          <div>
+                              <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Senha de acesso</label>
+                              <div className="relative">
+                                  <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
+                                  <input
+                                    type={showInvitePassword ? 'text' : 'password'}
+                                    className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-slate-700 outline-none focus:border-blue-200 focus:bg-white transition-all"
+                                    value={inviteData.password}
+                                    onChange={e => setInviteData({...inviteData, password: e.target.value})}
+                                    placeholder="Minimo 8 caracteres"
+                                  />
+                                  <button type="button" onClick={() => setShowInvitePassword(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-blue-600">
+                                    {showInvitePassword ? <EyeOff size={16}/> : <Eye size={16}/>}
+                                  </button>
                               </div>
                           </div>
                           <div>
@@ -885,51 +955,75 @@ const Settings: React.FC = () => {
                               </div>
                           )}
 
-                          <button onClick={generateInviteLink} disabled={isGeneratingInvite} className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold text-xs uppercase hover:bg-slate-900 transition-all flex items-center justify-center gap-2 disabled:opacity-60">
-                              {isGeneratingInvite ? <Loader2 size={16} className="animate-spin"/> : <LinkIcon size={16}/>} 
-                              {isGeneratingInvite ? 'Gerando...' : 'Gerar Convite'}
+                          <button onClick={createTeamMember} disabled={isGeneratingInvite} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-xs uppercase hover:bg-blue-700 transition-all flex items-center justify-center gap-2 disabled:opacity-60">
+                              {isGeneratingInvite ? <Loader2 size={16} className="animate-spin"/> : <UserPlus size={16}/>} 
+                              {isGeneratingInvite ? 'Criando...' : 'Criar e liberar acesso'}
                           </button>
-                          {generatedLink && (
-                              <div className="animate-in fade-in slide-in-from-top-2 space-y-3">
-                                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-100 text-[11px] font-semibold text-amber-800 leading-relaxed">
-                                    Se a pessoa <strong>ja usou Google</strong> ou ja tem conta, envie o link azul de <strong>login</strong>.
-                                    O link verde de cadastro e so para quem ainda nao tem conta.
-                                  </div>
-                                  {generatedLoginLink && (
-                                      <div>
-                                          <p className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-2">Recomendado se ja tem conta (login)</p>
-                                          <div className="flex items-center gap-2">
-                                              <input readOnly className="flex-1 p-3 bg-blue-50 border border-blue-200 text-blue-800 rounded-xl text-xs font-mono outline-none" value={generatedLoginLink} />
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  navigator.clipboard.writeText(generatedLoginLink);
-                                                  setCopied(true);
-                                                  addToast('success', 'Copiado', 'Link de login na area de transferencia');
-                                                  setTimeout(() => setCopied(false), 2000);
-                                                }}
-                                                className="p-3 bg-blue-100 text-blue-700 rounded-xl hover:bg-blue-200 transition-colors"
-                                              >
-                                                {copied ? <Check size={18}/> : <Copy size={18}/>}
-                                              </button>
-                                          </div>
-                                      </div>
-                                  )}
-                                  <div>
-                                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Link para novo usuario (cadastro)</p>
-                                      <div className="flex items-center gap-2">
-                                          <input readOnly className="flex-1 p-3 bg-green-50 border border-green-200 text-green-800 rounded-xl text-xs font-mono outline-none" value={generatedLink} />
-                                          <button onClick={copyInviteLink} className="p-3 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-colors">{copied ? <Check size={18}/> : <Copy size={18}/>}</button>
-                                      </div>
-                                  </div>
-                                  <button onClick={openInviteEmail} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-xs uppercase hover:bg-blue-700 transition-all flex items-center justify-center gap-2">
-                                      <Send size={16}/> Enviar convite por e-mail
-                                  </button>
-                                  <p className="text-[10px] text-slate-400 font-semibold">
-                                      O usuario deve usar o e-mail <strong>{inviteData.email}</strong>. Com Google nao ha e-mail de confirmacao; com senha pode ser necessario confirmar o e-mail.
+
+                          {createdMemberInfo && (
+                              <div className="animate-in fade-in slide-in-from-top-2 space-y-3 p-4 rounded-2xl bg-green-50 border border-green-100">
+                                  <p className="text-xs font-bold text-green-800 flex items-center gap-2">
+                                    <CheckCircle size={16}/> {createdMemberInfo.message}
                                   </p>
+                                  <p className="text-[11px] font-semibold text-slate-600">
+                                    Passe ao usuario: <strong>{createdMemberInfo.email}</strong> / senha definida.
+                                    Login: <a className="text-blue-600 underline" href={createdMemberInfo.loginUrl} target="_blank" rel="noreferrer">{createdMemberInfo.loginUrl}</a>
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const text = `Acesso EventsCar\nE-mail: ${createdMemberInfo.email}\nSenha: ${createdMemberInfo.password}\nLogin: ${createdMemberInfo.loginUrl}`;
+                                      navigator.clipboard.writeText(text);
+                                      setCopied(true);
+                                      addToast('success', 'Copiado', 'Credenciais na area de transferencia.');
+                                      setTimeout(() => setCopied(false), 2000);
+                                    }}
+                                    className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold text-xs uppercase flex items-center justify-center gap-2"
+                                  >
+                                    {copied ? <Check size={16}/> : <Copy size={16}/>} Copiar credenciais
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const subject = encodeURIComponent(`Acesso EventsCar - ${currentTenant?.name || 'Empresa'}`);
+                                      const body = encodeURIComponent(
+                                        `Ola ${inviteData.name},\n\nSeu acesso ao EventsCar foi liberado.\n\nE-mail: ${createdMemberInfo.email}\nSenha: ${createdMemberInfo.password}\nEntrar: ${createdMemberInfo.loginUrl}\n\nAtenciosamente,\nEquipe EventsCar`
+                                      );
+                                      window.open(`mailto:${createdMemberInfo.email}?subject=${subject}&body=${body}`, '_blank');
+                                    }}
+                                    className="w-full py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold text-xs uppercase flex items-center justify-center gap-2"
+                                  >
+                                    <Send size={16}/> Enviar por e-mail (mailto)
+                                  </button>
                               </div>
                           )}
+
+                          <details className="pt-2 border-t border-slate-100">
+                            <summary className="text-[10px] font-black uppercase tracking-widest text-slate-400 cursor-pointer py-2">
+                              Avancado: gerar link de convite (legado)
+                            </summary>
+                            <div className="space-y-3 pt-2">
+                              <p className="text-[11px] text-slate-500 font-semibold">
+                                So use se precisar do fluxo antigo com link. O modo recomendado e criar com senha acima.
+                              </p>
+                              <button onClick={generateInviteLink} disabled={isGeneratingInvite} className="w-full py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-xs uppercase hover:bg-slate-200 transition-all flex items-center justify-center gap-2 disabled:opacity-60">
+                                  {isGeneratingInvite ? <Loader2 size={16} className="animate-spin"/> : <LinkIcon size={16}/>} 
+                                  Gerar link de convite
+                              </button>
+                              {generatedLink && (
+                                  <div className="space-y-2">
+                                      {generatedLoginLink && (
+                                        <input readOnly className="w-full p-3 bg-blue-50 border border-blue-200 text-blue-800 rounded-xl text-xs font-mono outline-none" value={generatedLoginLink} />
+                                      )}
+                                      <div className="flex items-center gap-2">
+                                          <input readOnly className="flex-1 p-3 bg-green-50 border border-green-200 text-green-800 rounded-xl text-xs font-mono outline-none" value={generatedLink} />
+                                          <button onClick={copyInviteLink} className="p-3 bg-green-100 text-green-700 rounded-xl">{copied ? <Check size={18}/> : <Copy size={18}/>}</button>
+                                      </div>
+                                      <button onClick={openInviteEmail} className="w-full py-2 text-blue-600 font-bold text-xs uppercase">Enviar link por e-mail</button>
+                                  </div>
+                              )}
+                            </div>
+                          </details>
                       </div>
                   </div>
               </div>
