@@ -3,6 +3,7 @@ import * as ReactRouterDOM from 'react-router-dom';
 const { Navigate } = ReactRouterDOM as any;
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../services/supabaseClient';
+import { repairSessionAccess } from '../services/inviteService';
 import { Car, LogOut } from 'lucide-react';
 
 export const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -60,6 +61,24 @@ const MembershipGate: React.FC = () => {
       }
 
       try {
+        // 1) Reparo server-side (mais confiavel que RLS do cliente)
+        try {
+          const repaired = await Promise.race([
+            repairSessionAccess(),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 12000)),
+          ]);
+          if (repaired && (repaired.membershipCount || 0) > 0) {
+            await Promise.race([
+              refreshContext(user),
+              new Promise((resolve) => setTimeout(resolve, 5000)),
+            ]);
+            if (!cancelled) window.location.replace('/');
+            return;
+          }
+        } catch (repairErr) {
+          console.warn('[MembershipGate] repair:', repairErr);
+        }
+
         const membersPromise = supabase
           .from('organization_members')
           .select('id')
@@ -88,7 +107,7 @@ const MembershipGate: React.FC = () => {
             refreshContext(),
             new Promise((resolve) => setTimeout(resolve, 5000)),
           ]);
-          window.location.replace('/');
+          if (!cancelled) window.location.replace('/');
           return;
         }
       } catch (err) {
@@ -100,13 +119,13 @@ const MembershipGate: React.FC = () => {
 
     verify();
     return () => { cancelled = true; };
-  }, [user?.id, refreshContext]);
+  }, [user?.id, refreshContext, user]);
 
   if (checking) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4 p-6">
         <div className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
-        <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Verificando empresa...</p>
+        <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Liberando acesso...</p>
         <button
           type="button"
           onClick={() => signOut().then(() => window.location.replace('/login'))}
@@ -118,19 +137,5 @@ const MembershipGate: React.FC = () => {
     );
   }
 
-  const invite =
-    typeof window !== 'undefined'
-      ? (() => {
-          try {
-            return localStorage.getItem('sb-autoclaims-invite-token')
-              || sessionStorage.getItem('sb-autoclaims-invite-token');
-          } catch {
-            return null;
-          }
-        })()
-      : null;
-  const pendingPath = invite
-    ? `/pending-access?invite=${encodeURIComponent(invite)}`
-    : '/pending-access';
-  return <Navigate to={pendingPath} replace />;
+  return <Navigate to="/pending-access" replace />;
 };

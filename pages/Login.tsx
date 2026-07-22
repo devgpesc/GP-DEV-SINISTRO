@@ -6,7 +6,7 @@ import { supabase } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { getAuthRedirectUrl } from '../services/authRedirect';
 import { saveInviteToken, readInviteToken } from '../services/pendingRegistration';
-import { ensureInviteAccess, getInviteDetails, type InviteDetails } from '../services/inviteService';
+import { ensureInviteAccess, getInviteDetails, repairSessionAccess, type InviteDetails } from '../services/inviteService';
 import { 
   Loader2, ArrowRight, ShieldCheck, Mail, Lock, 
   LayoutDashboard, Zap, Globe, AlertCircle, Eye, EyeOff, Link as LinkIcon
@@ -181,6 +181,23 @@ const Login: React.FC = () => {
           return; 
       }
 
+      // Repara vinculo (service role) antes de decidir pending-access.
+      try {
+        const repaired = await withTimeout(
+          repairSessionAccess(),
+          20000,
+          'Tempo esgotado ao liberar acesso da empresa.',
+        );
+        if ((repaired.membershipCount || 0) > 0) {
+          await withTimeout(refreshContext(data.user), 10000, 'Tempo esgotado ao carregar contexto.');
+          setLocalLoading(false);
+          window.location.replace('/');
+          return;
+        }
+      } catch (repairErr) {
+        console.warn('[Login] repairSessionAccess:', repairErr);
+      }
+
       const membersRes: any = await withTimeout(
         Promise.resolve(supabase.from('organization_members').select('id').eq('user_id', data.user.id).limit(1)),
         8000,
@@ -208,6 +225,17 @@ const Login: React.FC = () => {
           20000,
           'Tempo esgotado ao vincular convite.',
         );
+        try {
+          const repairedAfter = await repairSessionAccess();
+          if ((repairedAfter.membershipCount || 0) > 0) {
+            await refreshContext(data.user);
+            setLocalLoading(false);
+            window.location.replace('/');
+            return;
+          }
+        } catch {
+          /* ignore */
+        }
         const { data: membersAfter } = await supabase
           .from('organization_members')
           .select('id')
@@ -221,30 +249,12 @@ const Login: React.FC = () => {
         }
 
         setLocalLoading(false);
-        setError('Nao foi possivel vincular o convite. Use o e-mail exatamente igual ao do convite.');
+        setError('Nao foi possivel liberar o acesso. Peca ao administrador para recriar seu usuario na Equipe.');
         return;
       }
 
-      // Tenta ativar/vincular automaticamente por e-mail (caso tenha convite no banco)
-      try {
-        await withTimeout(activateUnconfirmedAccount(normalizedEmail), 15000, 'Ativacao demorou demais.');
-        await withTimeout(processInviteAfterAuth(), 15000, 'Vinculo demorou demais.');
-        const { data: membersRetry } = await supabase
-          .from('organization_members')
-          .select('id')
-          .eq('user_id', data.user.id)
-          .limit(1);
-        if ((membersRetry?.length || 0) > 0) {
-          setLocalLoading(false);
-          window.location.replace('/');
-          return;
-        }
-      } catch {
-        // segue para mensagem amigavel
-      }
-
       setLocalLoading(false);
-      setError('Sua conta nao possui vinculo com uma empresa. Solicite um convite ao administrador.');
+      setError('Seu acesso ainda nao foi liberado. Peca ao administrador da empresa para adicionar seu e-mail na Equipe.');
     } catch (err: any) {
       console.error(err);
       if (err.message === 'Invalid login credentials') {
@@ -254,7 +264,7 @@ const Login: React.FC = () => {
               : 'E-mail ou senha incorretos. Verifique suas credenciais.',
           );
       } else if (String(err.message || '').toLowerCase().includes('email not confirmed')) {
-          setError('E-mail ainda nao confirmado. Use "Continuar com Google" ou ative a conta na tela de cadastro.');
+          setError('E-mail ainda nao confirmado. Use "Continuar com Google" ou peca ao admin para redefinir sua senha.');
       } else {
           setError(err.message || 'Nao foi possivel conectar. Tente novamente mais tarde.');
       }

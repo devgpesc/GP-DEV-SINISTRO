@@ -214,6 +214,19 @@ export default async function handler(req, res) {
       .eq('email', email)
       .eq('status', 'pending');
 
+    // Confirma membership real antes de responder ok.
+    const { data: confirmedMembers, error: confirmError } = await admin
+      .from('organization_members')
+      .select('id, tenant_id, role')
+      .eq('user_id', user.id)
+      .eq('tenant_id', tenantId);
+    if (confirmError) throw confirmError;
+    if (!confirmedMembers || confirmedMembers.length === 0) {
+      return sendJson(res, 500, {
+        error: 'Usuario criado, mas o vinculo com a empresa nao foi confirmado. Tente novamente.',
+      });
+    }
+
     const loginUrl = `${process.env.APP_ORIGIN || process.env.VITE_APP_ORIGIN || 'https://eventos.escsistemas.com'}/login`;
 
     return sendJson(res, 200, {
@@ -227,6 +240,7 @@ export default async function handler(req, res) {
       tenantName: tenant.name,
       loginUrl,
       linkedAccounts: siblings.length,
+      membershipCount: confirmedMembers.length,
       message: created
         ? 'Membro criado. Ja pode entrar com e-mail e senha (sem confirmacao).'
         : 'Senha atualizada e acesso liberado (incluindo conta Google do mesmo e-mail).',

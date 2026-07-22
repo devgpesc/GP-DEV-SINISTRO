@@ -257,6 +257,40 @@ export const ensureInviteAccess = async (token?: string | null, emailHint?: stri
   return { status: 'no_invite' };
 };
 
+export const deleteMemberViaApi = async (params: {
+  userId: string;
+  tenantId: string;
+  deleteAuthAccount?: boolean;
+}) => {
+  assertSupabaseReady();
+  const { data: sessionData } = await (supabase.auth as any).getSession();
+  const accessToken = sessionData?.session?.access_token;
+  if (!accessToken) throw new Error('Sessao expirada. Faca login novamente.');
+
+  const response = await withTimeoutReject(
+    fetch('/api/auth/delete-member', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        userId: params.userId,
+        tenantId: params.tenantId,
+        deleteAuthAccount: params.deleteAuthAccount !== false,
+      }),
+    }),
+    20000,
+    'Tempo esgotado ao excluir membro.',
+  );
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || 'Falha ao excluir membro.');
+  }
+  return payload as { ok: boolean; authDeleted?: boolean; message?: string };
+};
+
 export const createMemberViaApi = async (params: {
   email: string;
   password: string;

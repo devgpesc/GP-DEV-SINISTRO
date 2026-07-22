@@ -15,6 +15,7 @@ import {
   buildInviteRegisterUrl,
   createInvitation,
   createMemberViaApi,
+  deleteMemberViaApi,
 } from '../services/inviteService';
 
 const Settings: React.FC = () => {
@@ -275,8 +276,33 @@ const Settings: React.FC = () => {
   const handleDeleteUser = async () => { 
       if (!userToDelete) return; 
       try { 
-          // Executa a função RPC para apagar o usuário de verdade da tabela auth.users
           if (!currentTenant?.id) throw new Error('Empresa atual nao encontrada.');
+
+          // Exclusao definitiva (Auth + empresa) — limpa fantasma para recriar limpo.
+          try {
+            const result = await deleteMemberViaApi({
+              userId: userToDelete.id,
+              tenantId: currentTenant.id,
+              deleteAuthAccount: true,
+            });
+            await auditService.log('Delete User', 'User', userToDelete.id, {
+              email: userToDelete.email,
+              authDeleted: result.authDeleted,
+            });
+            setUsersList(prev => prev.filter(u => u.id !== userToDelete.id)); 
+            setUserToDelete(null); 
+            addToast(
+              'success',
+              'Removido',
+              result.authDeleted
+                ? 'Acesso e conta excluidos. Pode adicionar o membro novamente com senha nova.'
+                : (result.message || 'Acesso removido desta empresa.'),
+            );
+            return;
+          } catch (apiErr: any) {
+            console.warn('[Settings] delete-member API, fallback RPC:', apiErr);
+          }
+
           const { error } = await supabase.rpc('detach_tenant_member', {
               target_tenant_id: currentTenant.id,
               target_user_id: userToDelete.id
@@ -987,8 +1013,9 @@ const Settings: React.FC = () => {
                   <div className="flex-1 overflow-y-auto pr-1">
                       <div className="space-y-5">
                           <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-[11px] font-semibold text-emerald-800 leading-relaxed">
-                            Como no Esc Finan: voce define e-mail e senha. O acesso e liberado na hora —
+                            Como no Esc Finan: defina e-mail e senha. Acesso liberado na hora —
                             <strong> sem link de convite e sem confirmacao de e-mail</strong>.
+                            Se o usuario ja existia com problema, exclua a conta na lista e adicione de novo.
                           </div>
                           <div>
                               <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Nome</label>
@@ -1110,7 +1137,15 @@ const Settings: React.FC = () => {
           </div>
       )}
 
-      <ActionModal isOpen={!!userToDelete} onClose={() => setUserToDelete(null)} onConfirm={handleDeleteUser} title="Excluir Usuário?" description={`O usuário ${userToDelete?.full_name} perderá acesso imediato.`} type="danger" confirmText="Sim, Remover Acesso" />
+      <ActionModal
+        isOpen={!!userToDelete}
+        onClose={() => setUserToDelete(null)}
+        onConfirm={handleDeleteUser}
+        title="Excluir usuário?"
+        description={`Remove ${userToDelete?.full_name || userToDelete?.email} desta empresa e apaga a conta de login para poder recriar limpo (e-mail + senha).`}
+        type="danger"
+        confirmText="Sim, excluir acesso e conta"
+      />
     </div>
   );
 };
