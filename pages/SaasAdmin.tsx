@@ -12,6 +12,7 @@ import { SaasTenant, SaasPlan } from '../types';
 import { useToast } from '../context/ToastContext';
 import ActionModal from '../components/ActionModal';
 import { useAuth } from '../context/AuthContext';
+import { createMemberViaApi } from '../services/inviteService';
 
 const SaasAdmin: React.FC = () => {
   const { addToast } = useToast();
@@ -150,47 +151,78 @@ const SaasAdmin: React.FC = () => {
       setIsTenantModalOpen(true);
       setTenantModalTab('company');
       setShowPassword(false);
-      
+
       let adminName = tenantOwners[tenant.id]?.full_name || '';
       let adminEmail = tenantOwners[tenant.id]?.email || '';
-      
-      if (tenant.owner_id) {
-          setLoadingAdminData(true);
-          try {
-              // 1. Tenta buscar o dono original no Profiles
-              const { data: profile } = await supabase.from('profiles').select('full_name, email').eq('id', tenant.owner_id).single();
-              if (profile) {
-                  adminName = profile.full_name || '';
-                  adminEmail = profile.email || '';
-              }
 
-              // 2. Se for uma criação manual recente (Fallback), o owner_id ainda é do Super Admin.
-              // Vamos checar se há um convite "pending" de 'owner' para essa empresa, e usar ele como exibição real.
-              const { data: pendingInvite } = await supabase
-                  .from('invitations')
-                  .select('name, email')
-                  .eq('tenant_id', tenant.id)
-                  .eq('role', 'owner')
-                  .eq('status', 'pending')
-                  .order('created_at', { ascending: false })
-                  .limit(1)
+      setLoadingAdminData(true);
+      try {
+          // 1) Profile pelo owner_id (quando existir)
+          if (tenant.owner_id) {
+              const { data: profile } = await supabase
+                  .from('profiles')
+                  .select('full_name, email')
+                  .eq('id', tenant.owner_id)
                   .maybeSingle();
-
-              if (pendingInvite) {
-                  adminName = pendingInvite.name || adminName;
-                  adminEmail = pendingInvite.email || adminEmail;
+              if (profile) {
+                  adminName = profile.full_name || adminName;
+                  adminEmail = profile.email || adminEmail;
               }
+          }
 
-          } catch (e) { console.error(e); } finally { setLoadingAdminData(false); }
+          // 2) Membro owner/admin via organization_members (mesmo sem owner_id)
+          if (!adminEmail) {
+              const { data: memberRows } = await supabase
+                  .from('organization_members')
+                  .select('user_id, role')
+                  .eq('tenant_id', tenant.id)
+                  .in('role', ['owner', 'admin'])
+                  .limit(10);
+
+              const preferred =
+                  (memberRows || []).find((m: any) => String(m.role).toLowerCase() === 'owner') ||
+                  (memberRows || [])[0];
+
+              if (preferred?.user_id) {
+                  const { data: memberProfile } = await supabase
+                      .from('profiles')
+                      .select('full_name, email')
+                      .eq('id', preferred.user_id)
+                      .maybeSingle();
+                  if (memberProfile) {
+                      adminName = memberProfile.full_name || adminName;
+                      adminEmail = memberProfile.email || adminEmail;
+                  }
+              }
+          }
+
+          // 3) Convite owner (pending ou mais recente) — cobre fallback com owner_id null
+          const { data: ownerInvite } = await supabase
+              .from('invitations')
+              .select('name, email, status')
+              .eq('tenant_id', tenant.id)
+              .eq('role', 'owner')
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+          if (ownerInvite && (!adminEmail || ownerInvite.status === 'pending')) {
+              adminName = ownerInvite.name || adminName;
+              adminEmail = ownerInvite.email || adminEmail;
+          }
+      } catch (e) {
+          console.error(e);
+      } finally {
+          setLoadingAdminData(false);
       }
 
       setTenantForm({
           name: tenant.name,
           document: tenant.document,
-          plan_id: tenant.plan_id || '', // Garante string vazia para o value do input/select
+          plan_id: tenant.plan_id || '',
           status: tenant.status,
-          adminName: adminName, 
-          adminEmail: adminEmail, 
+          adminName: adminName,
+          adminEmail: adminEmail,
           adminPassword: ''
       });
   };
@@ -260,7 +292,66 @@ const SaasAdmin: React.FC = () => {
               }).eq('id', editingTenant.id);
 
               if (error) throw error;
-              addToast('success', 'Atualizado', 'Dados da empresa atualizados.');
+
+              const adminName = tenantForm.adminName.trim();
+              const adminEmail = tenantForm.adminEmail.trim().toLowerCase();
+              const adminPassword = tenantForm.adminPassword.trim();
+
+              if (adminEmail && adminName) {
+                  // Com senha: cria/atualiza Auth + membership owner (persiste de verdade).
+                  if (adminPassword.length >= 8) {
+                      const result = await createMemberViaApi({
+                          email: adminEmail,
+                          password: adminPassword,
+                          name: adminName,
+                          role: 'owner',
+                          tenantId: editingTenant.id,
+                      });
+                      if (result.userId) {
+                          await supabase
+                              .from('saas_tenants')
+                              .update({ owner_id: result.userId })
+                              .eq('id', editingTenant.id);
+                      }
+                      addToast(
+                          'success',
+                          'Empresa e admin salvos',
+                          'Administrador liberado. Pode entrar com e-mail e senha em /login.',
+                      );
+                  } else if (editingTenant.owner_id) {
+                      // Sem senha nova: só atualiza nome do owner atual.
+                      await supabase
+                          .from('profiles')
+                          .update({ full_name: adminName, updated_at: new Date().toISOString() })
+                          .eq('id', editingTenant.owner_id);
+                      addToast('success', 'Atualizado', 'Dados da empresa e nome do administrador salvos.');
+                  } else {
+                      // Sem owner e sem senha: guarda convite owner para o form nao ficar vazio.
+                      if (!user) throw new Error('Voce precisa estar logado.');
+                      const token = Math.random().toString(36).substring(2) + Date.now().toString(36);
+                      await supabase.from('invitations').update({ status: 'cancelled' })
+                          .eq('tenant_id', editingTenant.id)
+                          .eq('role', 'owner')
+                          .eq('status', 'pending');
+                      await supabase.from('invitations').insert([{
+                          tenant_id: editingTenant.id,
+                          email: adminEmail,
+                          name: adminName,
+                          role: 'owner',
+                          token,
+                          created_by: user.id,
+                          status: 'pending',
+                      }]);
+                      addToast(
+                          'warning',
+                          'Admin pendente',
+                          'Informe uma senha (8+ caracteres) na aba Administrador para liberar o login sem convite.',
+                      );
+                  }
+              } else {
+                  addToast('success', 'Atualizado', 'Dados da empresa atualizados.');
+              }
+
               setIsTenantModalOpen(false);
           } else {
               // ... (Logica de criação mantida) ...
@@ -568,35 +659,49 @@ const SaasAdmin: React.FC = () => {
                         </div>
                         <div className="mt-4">
                             <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">E-mail de Acesso</label>
-                            <input required type="email" disabled={!!editingTenant} className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-bold outline-none disabled:opacity-60 disabled:bg-slate-100 focus:border-blue-300 focus:ring-4 focus:ring-blue-100/40 transition-all" 
-                                value={tenantForm.adminEmail} onChange={e => setTenantForm({...tenantForm, adminEmail: e.target.value})} placeholder="admin@empresa.com" autoComplete="new-admin-email" data-lpignore="true" />
-                            {editingTenant && <p className="text-[9px] text-slate-400 mt-1 pl-1 flex items-center gap-1"><AlertCircle size={10}/> Para alterar o e-mail, utilize a gestão de usuários.</p>}
+                            <input
+                              required
+                              type="email"
+                              disabled={!!editingTenant && !!editingTenant.owner_id && !!tenantForm.adminEmail}
+                              className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-bold outline-none disabled:opacity-60 disabled:bg-slate-100 focus:border-blue-300 focus:ring-4 focus:ring-blue-100/40 transition-all"
+                              value={tenantForm.adminEmail}
+                              onChange={e => setTenantForm({...tenantForm, adminEmail: e.target.value})}
+                              placeholder="admin@empresa.com"
+                              autoComplete="new-admin-email"
+                              data-lpignore="true"
+                            />
+                            {editingTenant && editingTenant.owner_id && tenantForm.adminEmail ? (
+                              <p className="text-[9px] text-slate-400 mt-1 pl-1 flex items-center gap-1"><AlertCircle size={10}/> Para alterar o e-mail, use a Equipe da empresa.</p>
+                            ) : editingTenant ? (
+                              <p className="text-[9px] text-amber-600 mt-1 pl-1 flex items-center gap-1"><AlertCircle size={10}/> Informe e-mail + senha para gravar o administrador.</p>
+                            ) : null}
                         </div>
-                        {!editingTenant && (
-                            <div className="mt-4">
-                                <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Senha Provisória</label>
-                                <div className="relative">
-                                    <input 
-                                        required 
-                                        type={showPassword ? "text" : "password"} 
-                                        className="w-full p-4 pr-12 bg-white border border-slate-200 rounded-2xl font-bold outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-100/40 transition-all" 
-                                        value={tenantForm.adminPassword} 
-                                        onChange={e => setTenantForm({...tenantForm, adminPassword: e.target.value})} 
-                                        placeholder="Defina uma senha" 
-                                        autoComplete="new-password"
-                                        data-lpignore="true"
-                                    />
-                                    <button 
-                                        type="button"
-                                        onClick={() => setShowPassword(!showPassword)}
-                                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-blue-600 transition-colors p-1"
-                                    >
-                                        {showPassword ? <EyeOff size={18}/> : <Eye size={18}/>}
-                                    </button>
-                                </div>
-                                <p className="text-[10px] text-slate-500 mt-2 pl-1">Use pelo menos 8 caracteres, com letras e números.</p>
+                        <div className="mt-4">
+                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">
+                              {editingTenant && editingTenant.owner_id ? 'Senha (opcional para redefinir)' : 'Senha do Administrador'}
+                            </label>
+                            <div className="relative">
+                                <input 
+                                    required={!editingTenant || !editingTenant.owner_id}
+                                    type={showPassword ? "text" : "password"} 
+                                    className="w-full p-4 pr-12 bg-white border border-slate-200 rounded-2xl font-bold outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-100/40 transition-all" 
+                                    value={tenantForm.adminPassword} 
+                                    onChange={e => setTenantForm({...tenantForm, adminPassword: e.target.value})} 
+                                    placeholder={editingTenant && editingTenant.owner_id ? 'Deixe em branco para manter' : 'Min. 8 caracteres'} 
+                                    autoComplete="new-password"
+                                    data-lpignore="true"
+                                    minLength={editingTenant && editingTenant.owner_id && !tenantForm.adminPassword ? undefined : 8}
+                                />
+                                <button 
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-blue-600 transition-colors p-1"
+                                >
+                                    {showPassword ? <EyeOff size={18}/> : <Eye size={18}/>}
+                                </button>
                             </div>
-                        )}
+                            <p className="text-[10px] text-slate-500 mt-2 pl-1">Com senha, o admin entra em /login sem link de convite.</p>
+                        </div>
                     </div>
                 </div>
 

@@ -286,6 +286,14 @@ const PendingAccess: React.FC = () => {
 
           <button
             type="button"
+            onClick={() => signOut().then(() => window.location.replace('/login'))}
+            className="mt-6 w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2"
+          >
+            <LogOut size={14} /> Sair e entrar com e-mail e senha
+          </button>
+
+          <button
+            type="button"
             onClick={() => {
               setLoading(true);
               setError(null);
@@ -294,17 +302,9 @@ const PendingAccess: React.FC = () => {
                 .finally(() => setLoading(false));
             }}
             disabled={accepting}
-            className="mt-6 w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest disabled:opacity-50"
+            className="mt-3 w-full py-3 border border-slate-200 text-slate-600 rounded-2xl font-black text-xs uppercase tracking-widest disabled:opacity-50"
           >
-            {accepting ? 'Tentando...' : 'Tentar entrar novamente'}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => signOut().then(() => window.location.replace('/login'))}
-            className="mt-3 flex items-center justify-center gap-2 w-full py-3 text-slate-400 font-bold text-xs uppercase hover:text-red-500"
-          >
-            <LogOut size={14} /> Sair e usar outra conta
+            {accepting ? 'Tentando...' : 'Tentar liberar acesso novamente'}
           </button>
 
           <details className="mt-6 text-left border-t border-slate-100 pt-4">

@@ -10,7 +10,7 @@ import {
   clearPendingRegistration,
   readPendingRegistration,
 } from '../services/pendingRegistration';
-import { acceptInviteSafe, ensureInviteAccess } from '../services/inviteService';
+import { acceptInviteSafe, ensureInviteAccess, repairSessionAccess } from '../services/inviteService';
 import { saveInviteToken, readInviteToken } from '../services/pendingRegistration';
 
 const parseHashParams = () => new URLSearchParams(window.location.hash.replace(/^#/, ''));
@@ -93,10 +93,11 @@ const AuthCallback: React.FC = () => {
   const [resendEmail, setResendEmail] = useState<string | null>(null);
   const [resending, setResending] = useState(false);
   const [slow, setSlow] = useState(false);
+  const [statusText, setStatusText] = useState('Concluindo acesso seguro...');
   const processingRef = useRef(false);
 
   useEffect(() => {
-    const slowTimer = setTimeout(() => setSlow(true), 12000);
+    const slowTimer = setTimeout(() => setSlow(true), 10000);
     return () => clearTimeout(slowTimer);
   }, []);
 
@@ -129,6 +130,7 @@ const AuthCallback: React.FC = () => {
           throw new Error(decodeURIComponent(String(authError).replace(/\+/g, ' ')));
         }
 
+        setStatusText('Validando sessao...');
         const tokenHash = searchParams.get('token_hash');
         const otpType = searchParams.get('type');
         if (tokenHash && otpType) {
@@ -184,14 +186,31 @@ const AuthCallback: React.FC = () => {
           const storedInvite = inviteToken || readInviteToken() || readPendingRegistration()?.inviteToken;
           if (storedInvite) saveInviteToken(storedInvite);
 
+          setStatusText(storedInvite ? 'Vinculando convite...' : 'Reparando acesso...');
+          let apiMembershipCount = 0;
+          let linkError: string | null = null;
+
           try {
-            await ensureInviteAccess(storedInvite || null, session.user.email || null);
-          } catch (inviteErr) {
+            const linked = await ensureInviteAccess(storedInvite || null, session.user.email || null);
+            if ((linked as any)?.via === 'session-access' || (linked as any)?.status === 'linked') {
+              apiMembershipCount = 1;
+            }
+          } catch (inviteErr: any) {
             console.warn('[AuthCallback] ensureInviteAccess:', inviteErr);
+            linkError = inviteErr?.message || 'Nao foi possivel vincular o convite.';
           }
 
           if (!storedInvite) {
+            setStatusText('Finalizando cadastro...');
             await finishPendingInviteOrRegistration(inviteToken);
+          }
+
+          // Fonte da verdade: API session-access (service role), nao so SELECT com RLS.
+          try {
+            const repaired = await repairSessionAccess();
+            apiMembershipCount = Math.max(apiMembershipCount, repaired.membershipCount || 0);
+          } catch (repairErr) {
+            console.warn('[AuthCallback] repairSessionAccess:', repairErr);
           }
 
           clearPendingRegistration();
@@ -208,16 +227,25 @@ const AuthCallback: React.FC = () => {
             .eq('owner_id', session.user.id)
             .limit(1);
 
-          const hasAccess = (memberships?.length || 0) > 0 || (ownedTenants?.length || 0) > 0;
+          const hasAccess =
+            apiMembershipCount > 0 ||
+            (memberships?.length || 0) > 0 ||
+            (ownedTenants?.length || 0) > 0;
 
           if (hasAccess) {
+            setStatusText('Abrindo painel...');
             await refreshContext(session.user);
             addToast('success', 'Acesso confirmado', 'Sua conta foi ativada com sucesso.');
             window.location.replace('/');
             return;
           }
 
-          addToast('success', 'Conta confirmada', 'Vinculando seu convite...');
+          addToast(
+            'info',
+            'Acesso pendente',
+            linkError ||
+              'Conta autenticada, mas ainda sem empresa. Peca ao admin para liberar na Equipe ou entre com e-mail/senha.',
+          );
           const pendingPath = storedInvite
             ? `/pending-access?invite=${encodeURIComponent(storedInvite)}`
             : '/pending-access';
@@ -296,11 +324,11 @@ const AuthCallback: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 text-slate-700 p-6">
       <Loader2 className="mb-4 animate-spin text-blue-600" size={34} />
-      <p className="text-xs font-black uppercase tracking-widest">Concluindo acesso seguro...</p>
+      <p className="text-xs font-black uppercase tracking-widest">{statusText}</p>
       {slow && (
         <div className="mt-8 max-w-sm text-center">
           <p className="text-sm font-semibold text-slate-500">
-            Demorando mais que o normal. Aguarde ou volte ao login e tente novamente.
+            Demorando mais que o normal. Aguarde ou volte ao login e entre com e-mail e senha.
           </p>
           <button
             type="button"

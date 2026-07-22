@@ -82,7 +82,9 @@ const Register: React.FC = () => {
 
         const status = String(invite.status || '').toLowerCase();
         if (status === 'cancelled') {
-          setInviteStatusError('Este convite foi cancelado. Solicite um novo convite ao administrador.');
+          setInviteStatusError(
+            'Este convite foi cancelado. Peca ao admin para liberar seu e-mail na Equipe (com senha) e entre em /login — sem link de convite.',
+          );
           setInviteData(invite);
           return;
         }
@@ -334,7 +336,16 @@ const Register: React.FC = () => {
     } catch (err: any) {
       console.error(err);
       if (err?.message === 'ALREADY_REGISTERED') {
-        setError('Este e-mail ja possui conta. Use o login com o link do convite.');
+        const loginPath = inviteToken ? `/login?invite=${encodeURIComponent(inviteToken)}` : '/login';
+        setError('Este e-mail ja possui conta. Redirecionando para o login...');
+        addToast(
+          'info',
+          'Conta ja existe',
+          'Entre com a senha ja definida. Nao e necessario cadastrar de novo.',
+        );
+        setTimeout(() => {
+          window.location.assign(loginPath);
+        }, 900);
       } else {
         setError(err.message || 'Erro de conexao. Verifique sua internet e tente novamente.');
       }

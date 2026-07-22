@@ -159,7 +159,7 @@ export const repairSessionAccess = async () => {
       },
       body: '{}',
     }),
-    20000,
+    12000,
     'Tempo esgotado ao reparar acesso da sessao.',
   );
 
@@ -209,10 +209,26 @@ export const ensureInviteAccess = async (token?: string | null, emailHint?: stri
     try {
       const result = await withTimeoutReject(
         acceptInvite(trimmed),
-        10000,
+        8000,
         'Tempo esgotado ao aceitar convite.',
       );
-      if (result) return result;
+      if (result) {
+        // Confirma via repair se o SELECT/RPC deixou membership.
+        try {
+          const repaired = await repairSessionAccess();
+          if ((repaired.membershipCount || 0) > 0) {
+            return {
+              status: 'linked',
+              via: 'accept+session-access',
+              tenant_id: repaired.memberships[0]?.tenant_id,
+              role: repaired.memberships[0]?.role,
+            };
+          }
+        } catch {
+          /* ignore */
+        }
+        return result;
+      }
     } catch (error: any) {
       lastError = error instanceof Error ? error : new Error(String(error?.message || error));
     }
@@ -221,7 +237,7 @@ export const ensureInviteAccess = async (token?: string | null, emailHint?: stri
   try {
     const synced = await withTimeoutReject(
       syncInviteMembership(),
-      10000,
+      8000,
       'Tempo esgotado ao vincular convite. Tente novamente.',
     );
     if (synced?.status === 'linked' || synced?.status === 'already_member' || synced?.status === 'accepted') {
