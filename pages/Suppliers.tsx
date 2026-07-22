@@ -99,8 +99,7 @@ const Suppliers: React.FC = () => {
     setDbError(null);
     try {
         if (!currentTenant?.id && !isSuperAdmin) {
-          setSuppliers([]);
-          return;
+          // Sem tenant no contexto: ainda tenta via RLS (nao zera a lista).
         }
 
         let query = supabase.from('suppliers').select('*').order('created_at', { ascending: false });

@@ -196,7 +196,28 @@ export default async function handler(req, res) {
         {
           tenant_id: tenantId,
           user_id: sibling.id,
-          role,
+          role: role === 'owner' ? 'admin' : role,
+          permissions: {
+            manage_users: role === 'owner' || role === 'admin',
+            view_reports: role === 'owner' || role === 'admin',
+            delete_records: role === 'owner' || role === 'admin',
+            financial_view: role === 'owner' || role === 'admin',
+            approve_purchases: role === 'owner' || role === 'admin',
+          },
+          module_permissions: {
+            dashboard: true,
+            eventos: true,
+            cotacoes: true,
+            compras: true,
+            entregas: true,
+            associados: true,
+            fornecedores: true,
+            veiculos: true,
+            catalogo: true,
+            relatorios: true,
+            notificacoes: true,
+            configuracoes: role === 'owner' || role === 'admin',
+          },
         },
         { onConflict: 'tenant_id,user_id' },
       );
@@ -214,7 +235,9 @@ export default async function handler(req, res) {
       );
     }
 
-    if (role === 'owner') {
+    // Nunca transferir owner_id automaticamente ao criar membro —
+    // evita "roubar" a empresa e o novo usuario ficar sem ver o contexto certo.
+    if (role === 'owner' && !tenant.owner_id) {
       await admin.from('saas_tenants').update({ owner_id: user.id }).eq('id', tenantId);
     }
 

@@ -156,16 +156,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
     if (!mounted.current) return true;
     setMemberships(combinedFromRepair);
-    const selected = combinedFromRepair[0]?.saas_tenants || null;
-    setCurrentTenant(selected);
-    if (selected?.id) localStorage.setItem(TENANT_STORAGE_KEY, selected.id);
+    const storedTenantId = localStorage.getItem(TENANT_STORAGE_KEY);
+    const preferred =
+      combinedFromRepair.find((m: any) => m.tenant_id === storedTenantId)?.saas_tenants ||
+      combinedFromRepair[0]?.saas_tenants ||
+      null;
+    setCurrentTenant(preferred);
+    if (preferred?.id) localStorage.setItem(TENANT_STORAGE_KEY, preferred.id);
     try {
       sessionStorage.setItem(
         MEMBERSHIP_CACHE_KEY,
         JSON.stringify({
           userId,
           memberships: combinedFromRepair,
-          tenantId: selected?.id || null,
+          tenantId: preferred?.id || null,
           at: Date.now(),
         }),
       );
