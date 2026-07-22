@@ -248,9 +248,13 @@ const Login: React.FC = () => {
     } catch (err: any) {
       console.error(err);
       if (err.message === 'Invalid login credentials') {
-          setError('E-mail ou senha incorretos. Verifique suas credenciais.');
+          setError(
+            inviteToken
+              ? 'E-mail ou senha incorretos. Se voce entrou antes com Google, use o botao Google abaixo (conta Google nao usa esta senha).'
+              : 'E-mail ou senha incorretos. Verifique suas credenciais.',
+          );
       } else if (String(err.message || '').toLowerCase().includes('email not confirmed')) {
-          setError('E-mail ainda nao confirmado. Clique em "ativar conta" na tela de cadastro ou tente novamente.');
+          setError('E-mail ainda nao confirmado. Use "Continuar com Google" ou ative a conta na tela de cadastro.');
       } else {
           setError(err.message || 'Nao foi possivel conectar. Tente novamente mais tarde.');
       }

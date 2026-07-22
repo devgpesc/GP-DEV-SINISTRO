@@ -88,7 +88,7 @@ const PendingAccess: React.FC = () => {
     setError(null);
 
     try {
-      const result = await ensureInviteAccess(token);
+      const result = await ensureInviteAccess(token, user?.email || null);
       const status = result?.status;
 
       if (status === 'no_invite') {
@@ -105,14 +105,19 @@ const PendingAccess: React.FC = () => {
         );
       }
 
-      const linked = await verifyMembershipAndRedirect();
-      if (!linked) {
-        throw new Error(
-          'Convite processado, mas o acesso ainda nao foi liberado. Atualize a pagina ou tente novamente.',
-        );
+      // Apos API/RPC, recarrega membership com pequena retentativa.
+      for (let i = 0; i < 3; i++) {
+        const linked = await verifyMembershipAndRedirect();
+        if (linked) {
+          addToast('success', 'Convite aceito!', 'Seu acesso foi configurado com sucesso.');
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 800));
       }
 
-      addToast('success', 'Convite aceito!', 'Seu acesso foi configurado com sucesso.');
+      throw new Error(
+        'Convite processado, mas o acesso ainda nao foi liberado. Clique em "Tentar vincular" ou atualize a pagina (F5).',
+      );
     } finally {
       setAccepting(false);
     }

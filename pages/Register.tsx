@@ -432,6 +432,17 @@ const Register: React.FC = () => {
               {error}
             </div>
           )}
+          {inviteToken && (
+            <button
+              type="button"
+              onClick={handleGoogleRegister}
+              disabled={loading || resendingEmail}
+              className="w-full py-4 mb-3 bg-slate-900 text-white rounded-[22px] font-black text-xs uppercase tracking-widest disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {loading ? <Loader2 className="animate-spin" size={18} /> : <Chrome size={18} />}
+              Preferivel: entrar com Google
+            </button>
+          )}
           <button
             type="button"
             onClick={handleActivateWithoutEmail}

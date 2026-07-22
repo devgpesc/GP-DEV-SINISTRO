@@ -106,8 +106,36 @@ export const syncInviteMembership = async () => {
   return data as { status: string; tenant_id?: string; role?: string } | null;
 };
 
-export const ensureInviteAccess = async (token?: string | null) => {
+export const activateInviteViaApi = async (params: {
+  email: string;
+  inviteToken?: string | null;
+}) => {
+  const email = String(params.email || '').trim().toLowerCase();
+  if (!email) throw new Error('E-mail obrigatorio para ativar o convite.');
+
+  const response = await withTimeoutReject(
+    fetch('/api/auth/activate-invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        inviteToken: params.inviteToken || undefined,
+      }),
+    }),
+    15000,
+    'Tempo esgotado ao ativar convite no servidor.',
+  );
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || 'Falha ao ativar convite no servidor.');
+  }
+  return payload as { ok: boolean; userId?: string; message?: string };
+};
+
+export const ensureInviteAccess = async (token?: string | null, emailHint?: string | null) => {
   const trimmed = String(token || '').trim();
+  let lastError: Error | null = null;
 
   // Com token: aceitar primeiro (mais confiavel que sync por e-mail).
   if (trimmed) {
@@ -119,13 +147,16 @@ export const ensureInviteAccess = async (token?: string | null) => {
       );
       if (result) return result;
     } catch (error: any) {
+      lastError = error instanceof Error ? error : new Error(String(error?.message || error));
       const message = (error?.message || '').toLowerCase();
       if (
         !message.includes('invalido') &&
         !message.includes('utilizado') &&
-        !message.includes('tempo esgotado')
+        !message.includes('tempo esgotado') &&
+        !message.includes('outro e-mail') &&
+        !message.includes('autenticado')
       ) {
-        throw error;
+        // continua para sync/API
       }
     }
   }
@@ -136,27 +167,39 @@ export const ensureInviteAccess = async (token?: string | null) => {
       10000,
       'Tempo esgotado ao vincular convite. Tente novamente.',
     );
-    if (synced?.status === 'linked' || synced?.status === 'already_member') {
+    if (synced?.status === 'linked' || synced?.status === 'already_member' || synced?.status === 'accepted') {
       return synced;
     }
-    if (synced?.status === 'no_invite' && !trimmed) {
+    if (synced?.status === 'no_invite' && !trimmed && !emailHint) {
       return synced;
     }
   } catch (error: any) {
-    const message = (error?.message || '').toLowerCase();
-    if (!message.includes('tempo esgotado') && !message.includes('no_invite')) {
-      throw error;
+    lastError = error instanceof Error ? error : new Error(String(error?.message || error));
+  }
+
+  // Fallback server-side (service role): confirma e-mail + cria membership.
+  const email =
+    String(emailHint || '').trim().toLowerCase() ||
+    String((await (supabase.auth as any).getUser())?.data?.user?.email || '').trim().toLowerCase();
+
+  if (email) {
+    try {
+      await activateInviteViaApi({ email, inviteToken: trimmed || null });
+      const syncedAfter = await withTimeoutReject(
+        syncInviteMembership(),
+        8000,
+        'Tempo esgotado ao confirmar vinculo.',
+      ).catch(() => null);
+      if (syncedAfter?.status === 'linked' || syncedAfter?.status === 'already_member') {
+        return syncedAfter;
+      }
+      return { status: 'linked', via: 'api' };
+    } catch (error: any) {
+      lastError = error instanceof Error ? error : new Error(String(error?.message || error));
     }
   }
 
-  if (trimmed) {
-    return withTimeoutReject(
-      syncInviteMembership(),
-      8000,
-      'Tempo esgotado ao vincular convite. Tente novamente.',
-    );
-  }
-
+  if (lastError) throw lastError;
   return { status: 'no_invite' };
 };
 

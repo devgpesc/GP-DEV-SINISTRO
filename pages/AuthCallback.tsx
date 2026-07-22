@@ -185,7 +185,7 @@ const AuthCallback: React.FC = () => {
           if (storedInvite) saveInviteToken(storedInvite);
 
           try {
-            await ensureInviteAccess(storedInvite || null);
+            await ensureInviteAccess(storedInvite || null, session.user.email || null);
           } catch (inviteErr) {
             console.warn('[AuthCallback] ensureInviteAccess:', inviteErr);
           }
