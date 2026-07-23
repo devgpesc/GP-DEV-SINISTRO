@@ -80,7 +80,7 @@ const Dashboard: React.FC = () => {
     try {
       const eventsPromise = supabase
         .from('events')
-        .select('id, status, created_at, title, protocol')
+        .select('id, status, created_at, description, protocol')
         .order('created_at', { ascending: false })
         .limit(200);
 
@@ -93,7 +93,7 @@ const Dashboard: React.FC = () => {
       const ordersPromise = isExecutive
         ? supabase
             .from('purchase_orders')
-            .select('id, status, total, created_at, createdAt')
+            .select('id, status, total, created_at')
             .order('created_at', { ascending: false })
             .limit(200)
         : Promise.resolve({ data: [] as any[], error: null });

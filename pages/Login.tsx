@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 const { useNavigate, Link, useLocation } = ReactRouterDOM as any;
 import { supabase } from '../services/supabaseClient';
+import { purgeOversizedAuthCookies } from '../services/authStorage';
 import { useAuth } from '../context/AuthContext';
 import { getAuthRedirectUrl } from '../services/authRedirect';
 import { saveInviteToken, readInviteToken } from '../services/pendingRegistration';
@@ -29,6 +30,11 @@ const Login: React.FC = () => {
   const sessionInviteAttempted = useRef(false);
   
   const [company] = useState({ name: 'Grupo Esc Sistemas', product: 'EventsCar' });
+
+  useEffect(() => {
+    // Cookies legados de sessao estouram o header e quebram /api + login.
+    purgeOversizedAuthCookies();
+  }, []);
 
   useEffect(() => {
     if (!inviteToken) return;
@@ -280,25 +286,24 @@ const Login: React.FC = () => {
       setError('Seu acesso ainda nao foi liberado. Peca ao administrador da empresa para adicionar seu e-mail na Equipe.');
     } catch (err: any) {
       console.error(err);
+      purgeOversizedAuthCookies();
       const msg = String(err?.message || err?.error_description || '');
       const lower = msg.toLowerCase();
-      if (lower.includes('invalid login credentials')) {
-          setError(
-            inviteToken
-              ? 'E-mail ou senha incorretos. Se voce entrou antes com Google, use o botao Google abaixo (conta Google nao usa esta senha).'
-              : 'E-mail ou senha incorretos. Verifique suas credenciais.',
-          );
-      } else if (lower.includes('email not confirmed')) {
-          setError('E-mail ainda nao confirmado. Use "Continuar com Google" ou peca ao admin para redefinir sua senha.');
-      } else if (
+      const looksLikeNetwork =
         lower.includes('failed to fetch') ||
         lower.includes('networkerror') ||
         lower.includes('network request failed') ||
         lower.includes('load failed') ||
-        err?.name === 'TypeError'
-      ) {
+        (err?.name === 'TypeError' && (!msg || lower.includes('fetch') || lower.includes('network')));
+      if (lower.includes('invalid login credentials')) {
           setError(
-            'Falha de conexao com o servidor. Verifique a internet, desative bloqueador/VPN e tente novamente. Se persistir, use outra rede ou o login Google.',
+            'E-mail ou senha incorretos. Se a conta foi criada com Google, use o botao Google (Gmail) abaixo.',
+          );
+      } else if (lower.includes('email not confirmed')) {
+          setError('E-mail ainda nao confirmado. Use "Google (Gmail)" ou peca ao admin para redefinir sua senha.');
+      } else if (looksLikeNetwork) {
+          setError(
+            'Falha de conexao com o servidor. Atualize com Ctrl+Shift+R, desative bloqueador/VPN e tente de novo. Conta Google: use o botao Google (Gmail).',
           );
       } else {
           setError(msg || 'Nao foi possivel conectar. Tente novamente mais tarde.');
