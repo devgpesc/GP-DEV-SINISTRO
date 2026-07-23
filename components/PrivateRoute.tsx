@@ -25,7 +25,15 @@ export const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children
         
         <button 
             onClick={() => {
-                localStorage.clear(); 
+                try {
+                  const keys = Object.keys(localStorage);
+                  for (const key of keys) {
+                    if (key.startsWith('sb-autoclaims') || key.startsWith('sb-')) {
+                      localStorage.removeItem(key);
+                    }
+                  }
+                  sessionStorage.removeItem('sb-autoclaims-membership-cache');
+                } catch { /* ignore */ }
                 signOut().then(() => window.location.replace('/login'));
             }}
             className="flex items-center gap-2 text-xs font-bold text-red-400 hover:text-red-600 transition-colors bg-red-50 hover:bg-red-100 px-4 py-2 rounded-full cursor-pointer"

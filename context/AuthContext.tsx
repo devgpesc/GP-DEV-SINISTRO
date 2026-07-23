@@ -76,6 +76,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const userRef = useRef(user);
   useEffect(() => { userRef.current = user; }, [user]);
 
+  const membershipsRef = useRef(memberships);
+  useEffect(() => { membershipsRef.current = memberships; }, [memberships]);
+
   const completePendingRegistration = useCallback(async (userId: string, userEmail?: string, userMeta?: any) => {
     const normalizedUserEmail = String(userEmail || '').trim().toLowerCase();
 
@@ -443,7 +446,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw err;
       }
 
-      // Nao desloga automaticamente: deixa MembershipGate / pending-access tratar.
+      // Timeout/rede: NÃO zerar memberships se já temos acesso (cache ou estado).
+      // Zerar aqui manda o usuário para /pending-access e parece "logout".
+      try {
+        const raw = sessionStorage.getItem(MEMBERSHIP_CACHE_KEY);
+        if (raw) {
+          const cached = JSON.parse(raw);
+          if (
+            cached?.userId === userId &&
+            Array.isArray(cached.memberships) &&
+            cached.memberships.length > 0
+          ) {
+            if (mounted.current) {
+              setMemberships(cached.memberships);
+              const selected =
+                cached.memberships.find((m: any) => m.tenant_id === cached.tenantId)?.saas_tenants ||
+                cached.memberships[0]?.saas_tenants ||
+                null;
+              setCurrentTenant(selected);
+              setProfile({
+                id: userId,
+                email: userEmail,
+                full_name: userMeta?.full_name || userMeta?.name || userEmail?.split('@')[0],
+                avatar_url: userMeta?.avatar_url,
+                permissions: {},
+                created_at: new Date().toISOString(),
+                role: resolvePlatformRole(userEmail, undefined),
+              });
+            }
+            return;
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+
+      if (membershipsRef.current.length > 0) {
+        console.warn('[Auth] Mantendo memberships atuais apos falha de contexto.');
+        return;
+      }
+
       if (mounted.current) {
         setProfile({
           id: userId,
@@ -454,8 +496,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           created_at: new Date().toISOString(),
           role: resolvePlatformRole(userEmail, undefined),
         });
-        setMemberships([]);
-        setCurrentTenant(null);
       }
     }
   }, [completePendingRegistration, applyRepairedAccess]);
@@ -537,11 +577,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
         }
       } catch (error) {
-        console.error('[Auth] Falha na inicialização:', error);
-        if (mounted.current) {
-            setSession(null);
-            setUser(null);
-        }
+        // Nao zerar sessao aqui: erro de rede/timeout na init nao significa logout.
+        // So o evento SIGNED_OUT do Supabase deve limpar user/session.
+        console.error('[Auth] Falha na inicialização (sessao preservada):', error);
       } finally {
         clearTimeout(safetyTimer);
         if (mounted.current) setLoading(false);
@@ -550,25 +588,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     initialize();
 
-    const { data: listenerData } = (supabase.auth as any).onAuthStateChange(async (event: string, newSession: any) => {
+    // IMPORTANTE: callback sincronizado. await dentro de onAuthStateChange
+    // pode travar o lock interno do GoTrue e derrubar o refresh do token.
+    const { data: listenerData } = (supabase.auth as any).onAuthStateChange((event: string, newSession: any) => {
       if (!mounted.current) return;
 
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+      if (event === 'INITIAL_SESSION') {
+        if (newSession?.user) {
           setSession(newSession);
-          setUser(newSession?.user ?? null);
+          setUser(newSession.user);
+        }
+        return;
+      }
+
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          // Token refresh ocasionalmente chega sem session — nao tratar como logout.
+          if (!newSession?.user) {
+            console.warn('[Auth]', event, 'sem session; ignorando.');
+            return;
+          }
+          setSession(newSession);
+          setUser(newSession.user);
           
-          if (newSession?.user && newSession.user.id !== userRef.current?.id) {
+          if (newSession.user.id !== userRef.current?.id) {
              const onAuthCallback =
                typeof window !== 'undefined' && window.location.pathname === '/auth/callback';
              if (!onAuthCallback) {
-               await loadContextData(
-                 newSession.user.id,
-                 newSession.user.email,
-                 newSession.user.user_metadata
-               );
+               setTimeout(() => {
+                 void loadContextData(
+                   newSession.user.id,
+                   newSession.user.email,
+                   newSession.user.user_metadata
+                 );
+               }, 0);
              }
           }
       } else if (event === 'SIGNED_OUT') {
+          console.warn('[Auth] SIGNED_OUT recebido');
           setSession(null);
           setUser(null);
           setProfile(null);
