@@ -393,6 +393,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
     try {
       await quotationService.processPurchase(quotationId, activeSelections, eventId);
       setSelections({});
+      await loadData();
       addToast('success', 'Compras enviadas', 'As OCs foram geradas para aprovacao da gestao.');
       navigate('/compras');
     } catch (error: any) {

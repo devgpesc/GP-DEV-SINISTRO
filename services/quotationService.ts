@@ -248,6 +248,114 @@ export const quotationService = {
     }
   },
 
+  async getLockedQuotationItemIds(quotationId: string): Promise<Set<string>> {
+    const { data, error } = await supabase
+      .from('purchase_order_items')
+      .select('quotation_item_id, purchase_orders!inner(quotation_id)')
+      .eq('purchase_orders.quotation_id', quotationId)
+      .not('quotation_item_id', 'is', null);
+
+    if (error) {
+      console.warn('[quotationService] Nao foi possivel validar itens com OC:', error.message);
+      return new Set();
+    }
+
+    return new Set((data || []).map((row: any) => row.quotation_item_id).filter(Boolean));
+  },
+
+  async syncQuotationItems(
+    quotationId: string,
+    wizardItems: Array<{
+      id?: string;
+      name: string;
+      quantity: number;
+      unit: string;
+      category?: string;
+      item_type?: 'Peça' | 'Serviço';
+      catalog_item_id?: string;
+    }>
+  ) {
+    const lockedIds = await this.getLockedQuotationItemIds(quotationId);
+
+    const { data: existingRows, error: existingError } = await supabase
+      .from('quotation_items')
+      .select('id')
+      .eq('quotation_id', quotationId);
+
+    if (existingError) throw existingError;
+
+    const existingIds = new Set((existingRows || []).map((row) => row.id));
+    const wizardIds = new Set(wizardItems.filter((item) => item.id).map((item) => item.id!));
+
+    for (const item of wizardItems) {
+      const payload = {
+        name: item.name,
+        quantity: item.quantity,
+        unit: item.unit || (item.item_type === 'Serviço' ? 'HL' : 'UN'),
+        category: item.category,
+        item_type: item.item_type || 'Peça',
+        catalog_item_id: item.catalog_item_id || null,
+      };
+
+      if (item.id && existingIds.has(item.id)) {
+        const { error } = await supabase.from('quotation_items').update(payload).eq('id', item.id);
+        if (error) throw error;
+        continue;
+      }
+
+      const { error } = await supabase.from('quotation_items').insert([{
+        quotation_id: quotationId,
+        ...payload,
+        status: 'Pendente',
+      }]);
+      if (error) throw error;
+    }
+
+    const removableIds = (existingRows || [])
+      .map((row) => row.id)
+      .filter((id) => !wizardIds.has(id) && !lockedIds.has(id));
+
+    if (removableIds.length > 0) {
+      const { error } = await supabase.from('quotation_items').delete().in('id', removableIds);
+      if (error) throw error;
+    }
+  },
+
+  async syncQuotationSuppliers(quotationId: string, supplierIds: string[]) {
+    const { data: existingRows, error: existingError } = await supabase
+      .from('quotation_suppliers')
+      .select('supplier_id')
+      .eq('quotation_id', quotationId);
+
+    if (existingError) throw existingError;
+
+    const existingIds = new Set((existingRows || []).map((row) => row.supplier_id));
+    const desiredIds = new Set(supplierIds);
+
+    const toRemove = [...existingIds].filter((id) => !desiredIds.has(id));
+    const toAdd = supplierIds.filter((id) => !existingIds.has(id));
+
+    if (toRemove.length > 0) {
+      const { error } = await supabase
+        .from('quotation_suppliers')
+        .delete()
+        .eq('quotation_id', quotationId)
+        .in('supplier_id', toRemove);
+      if (error) throw error;
+    }
+
+    if (toAdd.length > 0) {
+      const { error } = await supabase.from('quotation_suppliers').insert(
+        toAdd.map((supplierId) => ({
+          quotation_id: quotationId,
+          supplier_id: supplierId,
+          status: 'Aguardando',
+        }))
+      );
+      if (error) throw error;
+    }
+  },
+
   async removePurchaseSelection(quotationId: string, itemId: string) {
     const { error } = await supabase
       .from('quotation_purchase_selections')

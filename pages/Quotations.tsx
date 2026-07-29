@@ -11,6 +11,7 @@ import { useEventTypes } from '../hooks/useEventTypes';
 import { ATTACHMENT_ACCEPT } from '../utils/defaults';
 import { lookupService } from '../services/lookupService';
 import { formatDateTimeBr, formatVehicleLabel, formatVehicleModelShort } from '../utils/vehicleLabel';
+import { quotationService } from '../services/quotationService';
 
 const Quotations: React.FC = () => {
   const { addToast } = useToast();
@@ -203,7 +204,7 @@ const Quotations: React.FC = () => {
         const quotaValue = newQuote.participationQuota ? Number(newQuote.participationQuota) : null;
 
         if (editingQuoteId) {
-            await supabase.from('quotations').update({
+            const { error: updateError } = await supabase.from('quotations').update({
                 suppliers: newQuote.selectedSuppliers.length,
                 "itemCount": newQuote.items.length,
                 participation_quota: quotaValue,
@@ -211,9 +212,7 @@ const Quotations: React.FC = () => {
                 updated_at: new Date().toISOString()
             }).eq('id', editingQuoteId);
 
-            await supabase.from('quotation_suppliers').delete().eq('quotation_id', editingQuoteId);
-            await supabase.from('quotation_items').delete().eq('quotation_id', editingQuoteId);
-            
+            if (updateError) throw updateError;
         } else {
             const code = `COT-${new Date().getFullYear()}-${String(quotes.length + 1).padStart(4, '0')}`;
             const { data: quoteData, error: quoteError } = await supabase.from('quotations').insert([{
@@ -235,27 +234,34 @@ const Quotations: React.FC = () => {
 
         if (!quoteId) throw new Error("ID da cotação inválido");
 
-        if (newQuote.items.length > 0) {
-            const itemsPayload = newQuote.items.map(item => ({
-                quotation_id: quoteId,
-                name: item.name,
-                quantity: item.quantity,
-                unit: item.unit || (item.item_type === 'Serviço' ? 'HL' : 'UN'),
-                category: item.category,
-                item_type: item.item_type || 'Peça',
-                catalog_item_id: item.catalog_item_id || null, 
-                status: 'Pendente'
-            }));
-            await supabase.from('quotation_items').insert(itemsPayload);
-        }
+        if (editingQuoteId) {
+            await quotationService.syncQuotationItems(quoteId, newQuote.items);
+            await quotationService.syncQuotationSuppliers(quoteId, newQuote.selectedSuppliers);
+        } else {
+            if (newQuote.items.length > 0) {
+                const itemsPayload = newQuote.items.map(item => ({
+                    quotation_id: quoteId,
+                    name: item.name,
+                    quantity: item.quantity,
+                    unit: item.unit || (item.item_type === 'Serviço' ? 'HL' : 'UN'),
+                    category: item.category,
+                    item_type: item.item_type || 'Peça',
+                    catalog_item_id: item.catalog_item_id || null,
+                    status: 'Pendente'
+                }));
+                const { error: itemsError } = await supabase.from('quotation_items').insert(itemsPayload);
+                if (itemsError) throw itemsError;
+            }
 
-        if (newQuote.selectedSuppliers.length > 0) {
-            const suppliersPayload = newQuote.selectedSuppliers.map(supId => ({
-                quotation_id: quoteId,
-                supplier_id: supId,
-                status: 'Aguardando'
-            }));
-            await supabase.from('quotation_suppliers').insert(suppliersPayload);
+            if (newQuote.selectedSuppliers.length > 0) {
+                const suppliersPayload = newQuote.selectedSuppliers.map(supId => ({
+                    quotation_id: quoteId,
+                    supplier_id: supId,
+                    status: 'Aguardando'
+                }));
+                const { error: suppliersError } = await supabase.from('quotation_suppliers').insert(suppliersPayload);
+                if (suppliersError) throw suppliersError;
+            }
         }
         
         await supabase.from('events').update({ status: 'Em Cotação' }).eq('id', newQuote.eventId);
