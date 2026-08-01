@@ -17,7 +17,7 @@ const Quotations: React.FC = () => {
   const { addToast } = useToast();
   const { eventTypes } = useEventTypes();
   const [step, setStep] = useState(1); // 1: List, 2: Wizard, 3: Matrix
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+  const [viewMode] = useState<'grid' | 'list'>('list');
   const [wizardStep, setWizardStep] = useState(1);
   const [realEvents, setRealEvents] = useState<Event[]>([]);
   const [realSuppliers, setRealSuppliers] = useState<Supplier[]>([]);
@@ -528,23 +528,19 @@ const Quotations: React.FC = () => {
 
   const renderList = () => (
     <div className="space-y-6 animate-in fade-in duration-300">
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+      <div className="app-toolbar flex-col md:flex-row justify-between">
         <div className="relative flex-1 w-full">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
           <input 
             type="text" 
             placeholder="Buscar cotações por código ou protocolo..." 
-            className="w-full pl-12 pr-4 py-3 bg-slate-50 rounded-2xl outline-none border border-slate-100 text-sm font-medium focus:ring-2 focus:ring-blue-500/10 transition-all" 
+            className="w-full pl-11 pr-4 py-3 bg-white outline-none border border-slate-200 text-sm font-medium transition-all"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex bg-slate-100 p-1 rounded-2xl">
-             <button onClick={() => setViewMode('grid')} className={`p-3 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}><LayoutGrid size={20}/></button>
-             <button onClick={() => setViewMode('list')} className={`p-3 rounded-xl transition-all ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}><List size={20}/></button>
-          </div>
-          <button onClick={() => { setStep(2); setWizardStep(1); setEditingQuoteId(null); setNewQuote({eventId: '', eventProtocol: '', items: [], selectedSuppliers: [], participationQuota: '', attachments: []}); }} className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 shadow-xl shadow-blue-600/20 whitespace-nowrap">
+          <button onClick={() => { setStep(2); setWizardStep(1); setEditingQuoteId(null); setNewQuote({eventId: '', eventProtocol: '', items: [], selectedSuppliers: [], participationQuota: '', attachments: []}); }} className="app-btn-primary flex items-center gap-2 whitespace-nowrap">
             <Plus size={20} /> Nova Cotação
           </button>
         </div>
@@ -585,7 +581,7 @@ const Quotations: React.FC = () => {
           ))}
         </div>
       ) : (
-        <div className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm animate-in fade-in duration-300">
+        <div className="app-table-wrap animate-in fade-in duration-300">
             <table className="w-full text-left">
               <thead className="bg-slate-50 border-b border-slate-100">
                 <tr>
@@ -598,6 +594,13 @@ const Quotations: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
+                {filteredQuotes.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="app-empty-cell px-8 py-12 text-center text-sm font-bold text-slate-400">
+                      <span className="app-empty-message block">Nenhuma cotação encontrada.</span>
+                    </td>
+                  </tr>
+                )}
                 {filteredQuotes.map(quote => (
                   <tr key={quote.id} className="hover:bg-slate-50/50 group cursor-pointer" onClick={() => openMatrix(quote)}>
                     <td className="px-8 py-5">
@@ -640,22 +643,22 @@ const Quotations: React.FC = () => {
   );
 
   const renderWizard = () => (
-    <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-6">
+    <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-6">
       <div className="flex items-center gap-6">
-        <button onClick={() => setStep(1)} className="p-4 bg-white border border-slate-200 rounded-3xl hover:bg-slate-50 text-slate-600 shadow-sm transition-all"><ArrowLeft size={24}/></button>
+        <button onClick={() => setStep(1)} className="app-icon-button"><ArrowLeft size={20}/></button>
         <div>
-          <h2 className="text-3xl font-black text-slate-800 tracking-tight">{editingQuoteId ? 'Editar Cotação' : 'Nova Cotação (RFQ)'}</h2>
+          <h2 className="text-2xl font-bold text-slate-800">{editingQuoteId ? 'Editar Cotação' : 'Nova Cotação (RFQ)'}</h2>
           <p className="text-sm text-slate-500 font-medium">Configure os itens e convide fornecedores.</p>
         </div>
       </div>
 
       {wizardStep === 1 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div className="bg-white p-10 rounded-[48px] shadow-sm border border-slate-200 h-full">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <div className="app-panel p-6 h-full">
                <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2"><Package size={20} className="text-blue-600"/> 1. Selecione o Sinistro</h3>
                <div className="space-y-4">
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Eventos Disponíveis</label>
-                  <select className="w-full p-5 bg-slate-50 border border-slate-100 rounded-3xl outline-none focus:ring-4 focus:ring-blue-500/5 font-bold text-slate-800 disabled:opacity-50" value={newQuote.eventId} onChange={(e) => {
+                  <select className="w-full p-3 bg-white border border-slate-200 rounded-md outline-none focus:ring-4 focus:ring-blue-500/5 font-bold text-slate-800 disabled:opacity-50" value={newQuote.eventId} onChange={(e) => {
                       const evt = realEvents.find(ev => ev.id === e.target.value);
                       setNewQuote({
                         ...newQuote,
@@ -832,7 +835,7 @@ const Quotations: React.FC = () => {
                </div>
             </div>
 
-            <div className="bg-white p-10 rounded-[48px] shadow-sm border border-slate-200 h-full flex flex-col relative">
+            <div className="app-panel p-6 h-full flex flex-col relative">
                <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2"><List size={20} className="text-blue-600"/> 2. Defina os Itens</h3>
                <div className="flex-1 space-y-4">
                   <div className="flex bg-slate-100 p-1 rounded-2xl">
@@ -940,7 +943,7 @@ const Quotations: React.FC = () => {
       )}
 
       {wizardStep === 2 && (
-        <div className="bg-white p-10 rounded-[48px] shadow-sm border border-slate-200">
+        <div className="app-panel p-6">
           <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2"><Users size={20} className="text-blue-600"/> 3. Convide Fornecedores</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8 max-h-[400px] overflow-y-auto p-2">
              {realSuppliers.map(sup => (
@@ -957,7 +960,7 @@ const Quotations: React.FC = () => {
           </div>
           <div className="flex justify-between pt-6 border-t border-slate-50">
             <button onClick={() => setWizardStep(1)} className="px-8 py-4 text-slate-400 font-black uppercase text-[10px] hover:text-slate-600">Voltar</button>
-            <button onClick={handleCreateOrUpdateQuote} disabled={newQuote.selectedSuppliers.length === 0} className="px-16 py-6 bg-blue-600 text-white rounded-[28px] font-black text-sm uppercase tracking-[0.3em] shadow-2xl shadow-blue-600/40 flex items-center gap-4 hover:scale-105 transition-all disabled:opacity-50">
+            <button onClick={handleCreateOrUpdateQuote} disabled={newQuote.selectedSuppliers.length === 0} className="app-btn-primary min-h-[46px] px-6 flex items-center gap-3 disabled:opacity-50">
                 {editingQuoteId ? 'Atualizar Cotação' : 'Lançar Cotação'} <Rocket size={20}/>
             </button>
           </div>

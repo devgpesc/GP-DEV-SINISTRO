@@ -17,6 +17,7 @@ const actionLabels: Record<string, string> = {
   created: 'OC criada',
   approved: 'Aprovada por escrito',
   cancelled: 'Cancelada',
+  repurchase_released: 'Itens liberados para recompra',
   received: 'Recebida / entregue',
   updated: 'Atualizada',
   deleted: 'Excluída',
@@ -90,5 +91,22 @@ export const purchaseOrderService = {
       details: input.details || {},
       user_id: user?.id || null,
     }]);
+  },
+
+  async cancelAndReleaseForRepurchase(input: {
+    purchaseOrderId: string;
+    reason?: string;
+  }) {
+    const reason = input.reason?.trim() || 'Ordem de compra cancelada; itens liberados automaticamente para nova cotacao/compra.';
+    const { data, error } = await supabase.rpc(
+      'cancel_purchase_order_and_release_for_repurchase',
+      {
+        p_purchase_order_id: input.purchaseOrderId,
+        p_reason: reason,
+      },
+    );
+
+    if (error) throw error;
+    return data;
   },
 };

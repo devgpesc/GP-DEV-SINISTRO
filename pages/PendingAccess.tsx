@@ -100,7 +100,10 @@ const PendingAccess: React.FC = () => {
       if (token) {
         await ensureInviteAccess(token, user?.email || null).catch(() => null);
       } else {
-        await repairSessionAccess().catch(() => null);
+        const repaired = await repairSessionAccess().catch(() => null);
+        if (repaired && (repaired.membershipCount || 0) > 0) {
+          applySessionAccess(repaired, user || undefined);
+        }
       }
       const linked = await verifyMembershipAndRedirect();
       if (!linked) {

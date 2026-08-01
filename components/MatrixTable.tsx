@@ -24,7 +24,6 @@ import { useToast } from '../context/ToastContext';
 import { supabase } from '../services/supabaseClient';
 import { openMatrixPrintPreview } from '../utils/matrixPrint';
 import { formatDateTimeBr, formatVehicleLabel } from '../utils/vehicleLabel';
-import * as XLSX from 'xlsx';
 
 interface MatrixProps {
   quotationId?: string;
@@ -37,6 +36,12 @@ interface EditingCell {
 }
 
 const money = (value: number) => value.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+const escapeSpreadsheetXml = (value: unknown) => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&apos;');
 
 const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
   const navigate = useNavigate();
@@ -456,7 +461,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
     URL.revokeObjectURL(url);
   };
 
-  const exportXlsx = () => {
+  const exportExcel = () => {
     const rows = items.flatMap((item: any) => suppliers.map((supplier) => {
       const price = prices.find((candidate) => candidate.quotation_item_id === item.id && candidate.supplier_id === supplier.id);
       const selection = selections[item.id];
@@ -474,10 +479,29 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
       };
     }));
 
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'MatrizCotacao');
-    XLSX.writeFile(wb, `matriz-cotacao-${quotationId}.xlsx`);
+    const headers = Object.keys(rows[0] || {});
+    const toCell = (value: unknown) => {
+      const type = typeof value === 'number' ? 'Number' : 'String';
+      return `<Cell><Data ss:Type="${type}">${escapeSpreadsheetXml(value)}</Data></Cell>`;
+    };
+    const spreadsheetRows = [
+      `<Row>${headers.map(toCell).join('')}</Row>`,
+      ...rows.map((row) => (
+        `<Row>${headers.map((header) => toCell(row[header as keyof typeof row])).join('')}</Row>`
+      )),
+    ].join('');
+    const spreadsheet = `<?xml version="1.0" encoding="UTF-8"?>
+      <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+        xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+        <Worksheet ss:Name="MatrizCotacao"><Table>${spreadsheetRows}</Table></Worksheet>
+      </Workbook>`;
+    const blob = new Blob(['\ufeff', spreadsheet], { type: 'application/vnd.ms-excel;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `matriz-cotacao-${quotationId}.xls`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const toggleSupplierDetails = (supplierId: string) => {
@@ -493,19 +517,19 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
   }
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 pb-20 print:p-0">
-      <div className="bg-amber-50 border border-amber-100 p-5 rounded-2xl text-amber-900 print:hidden">
+    <div className="space-y-5 animate-in fade-in duration-500 pb-20 print:p-0">
+      <div className="border-l-4 border-amber-500 bg-amber-50 px-4 py-3 text-amber-900 print:hidden">
         <div className="flex items-start gap-3">
           <AlertTriangle size={22} className="mt-0.5" />
           <div>
-            <p className="font-black text-sm uppercase tracking-widest">Decisao de compra manual</p>
-            <p className="text-sm font-medium">O menor preco e apenas destacado. O sistema nao seleciona fornecedor automaticamente. Clique no valor desejado para escolher onde comprar cada item.</p>
+            <p className="font-bold text-sm">Decisão de compra manual</p>
+            <p className="text-sm font-medium">O menor preço é apenas destacado. Selecione o fornecedor desejado em cada linha.</p>
           </div>
         </div>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-[24px] p-5 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4 text-sm">
+      <div className="app-panel px-5 py-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-x-5 gap-y-4 text-sm">
           <div>
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Pré-Orçamento</p>
             <p className="font-black text-slate-800">{headerMeta?.quotationCode || quotationId}</p>
@@ -533,20 +557,20 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 print:hidden">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="app-kpi-grid print:hidden">
+        <div className="app-kpi">
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Itens / Cotados</p>
           <span className="text-2xl font-black text-slate-800">{stats.quotedItems}/{stats.totalItems}</span>
         </div>
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="app-kpi">
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Orcamentos recebidos</p>
           <span className="text-2xl font-black text-slate-800">{stats.responsesCount}</span>
         </div>
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="app-kpi">
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Cobertura</p>
           <div className="flex items-center gap-2"><div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-blue-500" style={{ width: `${stats.coverage}%` }} /></div><span className="text-xs font-bold text-blue-600">{stats.coverage.toFixed(0)}%</span></div>
         </div>
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="app-kpi">
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Total selecionado</p>
           <span className="text-2xl font-black text-slate-800">R$ {money(stats.selectedTotal)}</span>
         </div>
@@ -561,11 +585,11 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
         </div>
       )}
 
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-100 p-2 rounded-2xl print:hidden">
+      <div className="app-toolbar flex-col md:flex-row justify-between print:hidden">
         <div className="flex items-center gap-2 flex-1 flex-wrap">
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input placeholder="Filtrar itens..." className="pl-9 pr-4 py-2 bg-white rounded-xl text-sm font-medium outline-none w-48" value={filterText} onChange={(event) => setFilterText(event.target.value)} />
+            <input placeholder="Filtrar itens..." className="pl-9 pr-4 py-2 bg-white border border-slate-200 text-sm font-medium outline-none w-48" value={filterText} onChange={(event) => setFilterText(event.target.value)} />
           </div>
           <select className="px-4 py-2 bg-white rounded-xl text-sm font-bold text-slate-600 outline-none" value={filterSupplier} onChange={(event) => setFilterSupplier(event.target.value)}>
             <option value="">Todos fornecedores</option>
@@ -586,25 +610,25 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
           </select>
         </div>
         <div className="flex gap-2 relative">
-          <button onClick={() => setPrintMenuOpen(v => !v)} className="p-2 bg-white text-slate-600 hover:text-blue-600 rounded-xl transition-all shadow-sm" title="Visualizar impressão"><FileText size={18} /></button>
+          <button onClick={() => setPrintMenuOpen(v => !v)} className="app-icon-button" title="Visualizar impressão"><FileText size={18} /></button>
           {printMenuOpen && (
             <div className="absolute right-0 top-full mt-2 z-30 bg-white border border-slate-200 rounded-2xl shadow-xl p-2 min-w-[180px]">
               <button onClick={() => openPrintPreview('landscape')} className="w-full text-left px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider text-slate-700 hover:bg-blue-50 hover:text-blue-700">Paisagem</button>
               <button onClick={() => openPrintPreview('list')} className="w-full text-left px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider text-slate-700 hover:bg-blue-50 hover:text-blue-700">Lista</button>
             </div>
           )}
-          <button onClick={exportCsv} className="p-2 bg-white text-slate-600 hover:text-green-600 rounded-xl transition-all shadow-sm" title="Exportar CSV/Excel"><Download size={18} /></button>
-          <button onClick={exportXlsx} className="px-3 py-2 bg-white text-slate-600 hover:text-emerald-700 rounded-xl transition-all shadow-sm text-xs font-black uppercase tracking-wider" title="Exportar XLSX">XLSX</button>
+          <button onClick={exportCsv} className="app-icon-button hover:text-green-600" title="Exportar CSV/Excel"><Download size={18} /></button>
+          <button onClick={exportExcel} className="px-3 py-2 bg-white text-slate-600 hover:text-emerald-700 rounded-xl transition-all shadow-sm text-xs font-black uppercase tracking-wider" title="Exportar para Excel">Excel</button>
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-[32px] border border-slate-200 shadow-sm bg-white">
+      <div className="app-table-wrap">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
-              <th className="p-6 text-xs font-black text-slate-500 uppercase tracking-widest min-w-[270px] sticky left-0 bg-slate-50 z-20 border-r border-slate-200">Item / Qtd</th>
+              <th className="px-4 py-3 text-xs font-bold text-slate-500 uppercase min-w-[250px] sticky left-0 bg-slate-50 z-20 border-r border-slate-200">Item / Qtd</th>
               {filteredSuppliers.map((supplier) => (
-                <th key={supplier.id} className="p-6 text-center min-w-[220px]">
+                <th key={supplier.id} className="px-4 py-3 text-center min-w-[210px]">
                   <span className="font-bold text-slate-800 text-sm">{supplier.name}</span>
                   <p className="text-[10px] text-slate-400 font-bold">{supplier.city || 'Local'}</p>
                 </th>
@@ -616,7 +640,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
               const isProcessed = processedItemIds.includes(item.id);
               return (
                 <tr key={item.id} className={isProcessed ? 'bg-slate-50/80' : 'hover:bg-slate-50/50'}>
-                  <td className="p-6 sticky left-0 bg-white border-r border-slate-100 z-10 font-bold text-slate-700">
+                  <td className="px-4 py-3 sticky left-0 bg-white border-r border-slate-100 z-10 font-bold text-slate-700">
                     <span className="block text-sm">{item.name}</span>
                     <div className="flex gap-2 mt-2 items-center">
                       <span className="text-[10px] text-slate-400 font-black uppercase bg-slate-50 px-2 py-0.5 rounded border border-slate-100">{item.quantity} {item.unit}</span>
@@ -643,8 +667,8 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
 
                     if (isEditing) {
                       return (
-                        <td key={supplier.id} className="p-2 min-w-[220px]">
-                          <div className="bg-white border-2 border-blue-500 rounded-2xl p-3 shadow-lg">
+                        <td key={supplier.id} className="p-2 min-w-[210px]">
+                          <div className="bg-white border border-blue-500 rounded-md p-3 shadow-sm">
                             <div className="flex items-center gap-2 mb-2"><span className="text-xs font-bold text-slate-500">R$</span><input autoFocus type="number" className="w-full font-black text-slate-800 outline-none border-b border-slate-200" value={editPrice} onChange={(event) => setEditPrice(event.target.value)} placeholder="0.00" /></div>
                             <div className="grid grid-cols-2 gap-2 mb-2">
                               <input className="text-[10px] font-medium text-slate-500 outline-none bg-slate-50 p-1.5 rounded" placeholder="Prazo dias" value={editDeliveryDays} onChange={(event) => setEditDeliveryDays(event.target.value)} />
@@ -659,8 +683,8 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
 
                     if (!price) {
                       return (
-                        <td key={supplier.id} className="p-4 text-center">
-                          <button onClick={() => startEditing(item.id, supplier.id)} className="w-full py-4 rounded-2xl bg-slate-50 border border-slate-100 text-xs text-slate-400 font-bold flex flex-col items-center justify-center gap-1 hover:bg-blue-50 hover:text-blue-500 hover:border-blue-200">
+                        <td key={supplier.id} className="p-2 text-center">
+                          <button onClick={() => startEditing(item.id, supplier.id)} className="w-full min-h-[64px] px-3 py-2 rounded-md bg-white border border-dashed border-slate-300 text-xs text-slate-500 font-bold flex items-center justify-center gap-2 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300">
                             <Edit2 size={14} /> Lancar valor
                           </button>
                         </td>
@@ -668,14 +692,14 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
                     }
 
                     return (
-                      <td key={supplier.id} className="p-3 text-center relative group/cell">
+                      <td key={supplier.id} className="p-2 text-center relative group/cell">
                         <button onClick={(event) => { event.stopPropagation(); startEditing(item.id, supplier.id, price); }} className="absolute top-2 right-2 p-1.5 bg-white text-slate-400 hover:text-blue-600 rounded-full shadow-sm border border-slate-100 opacity-0 group-hover/cell:opacity-100 transition-opacity z-20"><Edit2 size={12} /></button>
-                        <button onClick={() => selectForPurchase(item, supplier, price)} disabled={isProcessed || price.availability === false} className={`w-full py-4 rounded-2xl border-2 transition-all flex flex-col items-center justify-center relative ${selected ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105 z-10' : isBest ? 'bg-green-50 border-green-300 text-slate-800 hover:border-blue-500' : 'bg-white border-slate-200 text-slate-500 hover:border-blue-300'} disabled:opacity-50 disabled:cursor-not-allowed`}>
-                          {isBest && !selected && <span className="absolute -top-3 bg-green-500 text-white text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-wide shadow-sm border border-white">Menor preco</span>}
+                        <button onClick={() => selectForPurchase(item, supplier, price)} disabled={isProcessed || price.availability === false} className={`w-full min-h-[70px] px-3 py-2 rounded-md border transition-all flex flex-col items-center justify-center relative ${selected ? 'bg-blue-50 border-blue-500 text-blue-900 ring-1 ring-blue-200' : isBest ? 'bg-emerald-50 border-emerald-300 text-slate-800 hover:border-blue-500' : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'} disabled:opacity-50 disabled:cursor-not-allowed`}>
+                          {isBest && !selected && <span className="absolute top-1 right-1 bg-emerald-100 text-emerald-700 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase">Menor preço</span>}
                           <span className="text-sm font-black"><span className="opacity-50 text-[10px]">R$</span> {money(price.price)}</span>
-                          <span className={`text-[9px] font-bold mt-1 uppercase ${selected ? 'text-blue-200' : 'text-slate-400'}`}>Total R$ {money(price.price * (activeSelections[item.id]?.quantity || item.quantity || 1))}</span>
-                          <span className={`text-[9px] font-bold mt-1 ${price.availability === false ? 'text-red-400' : selected ? 'text-blue-100' : 'text-slate-400'}`}>{price.availability === false ? 'Indisponivel' : price.delivery_days ? `${price.delivery_days} dia(s)` : 'Prazo nao informado'}</span>
-                          {price.obs && <MessageSquare size={10} className={selected ? 'text-blue-300 mt-1' : 'text-slate-300 mt-1'} />}
+                          <span className="text-[9px] font-bold mt-1 uppercase text-slate-500">Total R$ {money(price.price * (activeSelections[item.id]?.quantity || item.quantity || 1))}</span>
+                          <span className={`text-[9px] font-bold mt-1 ${price.availability === false ? 'text-red-500' : 'text-slate-500'}`}>{price.availability === false ? 'Indisponível' : price.delivery_days ? `${price.delivery_days} dia(s)` : 'Prazo não informado'}</span>
+                          {price.obs && <MessageSquare size={10} className="text-slate-400 mt-1" />}
                         </button>
                       </td>
                     );
@@ -697,7 +721,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
       </div>
 
       {selectedGroups.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-[32px] shadow-sm p-6 print:break-before-page">
+        <div className="app-panel p-5 print:break-before-page">
           <div className="flex items-center justify-between gap-4 mb-5">
             <div>
               <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><ShoppingCart size={20} className="text-blue-600" /> Itens selecionados para compra</h3>

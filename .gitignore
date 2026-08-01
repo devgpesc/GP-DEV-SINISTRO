@@ -32,3 +32,10 @@ dist-ssr
 .env*.local
 .env.vercel
 supabase/.temp/
+
+# Local operational diagnostics and one-off account recovery scripts
+scripts/diag-*.mjs
+scripts/reset-*-password.mjs
+supabase/scripts/diag_*.sql
+supabase/scripts/inspect_*.sql
+supabase/scripts/fix_*_access.sql

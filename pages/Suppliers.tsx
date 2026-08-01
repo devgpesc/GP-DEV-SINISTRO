@@ -56,7 +56,7 @@ const Suppliers: React.FC = () => {
   const { addToast } = useToast();
   const { user, currentTenant, isSuperAdmin } = useAuth();
   
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+  const [viewMode] = useState<'grid' | 'list'>('list');
   const [searchTerm, setSearchTerm] = useState('');
   
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -361,17 +361,13 @@ const Suppliers: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header e Filtros */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4">
+      <div className="app-toolbar flex-col md:flex-row">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input type="text" placeholder="Buscar por nome ou CNPJ..." className="w-full pl-10 pr-4 py-3 bg-slate-50 rounded-2xl outline-none border border-slate-100 text-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
         </div>
         <div className="flex items-center gap-3">
-            <div className="flex bg-slate-100 p-1 rounded-xl">
-               <button onClick={() => setViewMode('grid')} className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}><LayoutGrid size={18}/></button>
-               <button onClick={() => setViewMode('list')} className={`p-2 rounded-lg transition-all ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}><List size={18}/></button>
-            </div>
-            <button onClick={handleCreate} className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 shadow-xl shadow-blue-500/20 whitespace-nowrap">
+            <button onClick={handleCreate} className="app-btn-primary flex items-center gap-2 whitespace-nowrap">
               <Plus size={18} /> Novo Parceiro
             </button>
         </div>
@@ -413,7 +409,7 @@ const Suppliers: React.FC = () => {
               ))}
           </div>
       ) : (
-          <div className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm animate-in fade-in duration-300">
+          <div className="app-table-wrap animate-in fade-in duration-300">
             <table className="w-full text-left">
               <thead className="bg-slate-50 border-b border-slate-100">
                 <tr>

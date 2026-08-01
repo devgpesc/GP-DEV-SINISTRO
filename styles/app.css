@@ -1,0 +1,243 @@
+:root {
+  --app-bg: #f4f6f8;
+  --app-panel: #ffffff;
+  --app-panel-muted: #f8fafc;
+  --app-ink: #172033;
+  --app-muted: #64748b;
+  --app-line: #dce2e9;
+  --app-line-strong: #cbd5e1;
+  --app-brand: #2463eb;
+  --app-brand-hover: #1d4ed8;
+  --app-success: #16835d;
+  --app-warning: #b96816;
+  --app-danger: #c53a3a;
+  --app-radius: 8px;
+  --app-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+html {
+  background: var(--app-bg);
+}
+
+body {
+  margin: 0;
+  background: var(--app-bg);
+  color: var(--app-ink);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  letter-spacing: 0 !important;
+}
+
+.app-shell main :where(input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']), select, textarea) {
+  border-radius: 6px !important;
+  border-color: var(--app-line) !important;
+  font-weight: 600;
+  box-shadow: none !important;
+}
+
+.app-shell main :where(input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']), select, textarea):focus {
+  border-color: #7aa2f7 !important;
+  box-shadow: 0 0 0 3px rgba(36, 99, 235, 0.1) !important;
+}
+
+.app-shell main button {
+  border-radius: 6px !important;
+}
+
+.app-shell main :where(.rounded-3xl, .rounded-\[24px\], .rounded-\[28px\], .rounded-\[32px\], .rounded-\[36px\], .rounded-\[40px\], .rounded-\[48px\]) {
+  border-radius: var(--app-radius) !important;
+}
+
+.app-shell main :where(.shadow-xl, .shadow-2xl) {
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.1) !important;
+}
+
+.app-shell main table {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 780px;
+}
+
+.app-shell main thead th {
+  background: #f7f9fb;
+  color: #667085 !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0 !important;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.app-shell main tbody td {
+  border-color: #edf0f4;
+}
+
+.app-shell main tbody tr {
+  transition: background-color 140ms ease;
+}
+
+.app-shell main tbody tr:hover {
+  background: #f8fafc;
+}
+
+.app-shell main :where(h1, h2, h3, h4, p, span, label) {
+  letter-spacing: 0 !important;
+}
+
+.app-shell main :where(.uppercase) {
+  letter-spacing: 0.035em !important;
+}
+
+.app-panel {
+  border: 1px solid var(--app-line);
+  border-radius: var(--app-radius);
+  background: var(--app-panel);
+  box-shadow: var(--app-shadow);
+}
+
+.app-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--app-line);
+  border-radius: var(--app-radius);
+  background: var(--app-panel);
+  box-shadow: var(--app-shadow);
+}
+
+.app-table-wrap {
+  overflow: auto;
+  border: 1px solid var(--app-line);
+  border-radius: var(--app-radius);
+  background: var(--app-panel);
+  box-shadow: var(--app-shadow);
+}
+
+.app-empty-cell {
+  position: sticky;
+  left: 0;
+  background: #fff;
+}
+
+.app-empty-message {
+  width: calc(100vw - 340px);
+  max-width: 1100px;
+  text-align: center;
+}
+
+.app-btn-primary {
+  min-height: 42px;
+  padding: 0 18px;
+  border: 1px solid var(--app-brand);
+  border-radius: 6px;
+  background: var(--app-brand);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 2px 5px rgba(36, 99, 235, 0.18);
+}
+
+.app-btn-primary:hover {
+  background: var(--app-brand-hover);
+}
+
+.app-icon-button {
+  display: inline-flex;
+  width: 38px;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--app-line);
+  border-radius: 6px;
+  background: #fff;
+  color: #64748b;
+}
+
+.app-icon-button:hover {
+  border-color: #b7c7e8;
+  background: #f4f7fe;
+  color: var(--app-brand);
+}
+
+.app-segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--app-line);
+  border-radius: 7px;
+  background: #f3f5f8;
+}
+
+.app-segmented button {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 5px !important;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.app-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--app-line);
+  border-radius: var(--app-radius);
+  background: #fff;
+}
+
+.app-kpi {
+  min-width: 0;
+  padding: 16px 18px;
+  border-right: 1px solid var(--app-line);
+}
+
+.app-kpi:last-child {
+  border-right: 0;
+}
+
+@media (max-width: 900px) {
+  .app-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .app-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .app-kpi:nth-child(2) {
+    border-right: 0;
+  }
+
+  .app-kpi:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--app-line);
+  }
+
+  .app-empty-message {
+    width: calc(100vw - 64px);
+  }
+}
+
+@media (max-width: 560px) {
+  .app-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .app-kpi {
+    border-right: 0;
+    border-bottom: 1px solid var(--app-line);
+  }
+
+  .app-kpi:last-child {
+    border-bottom: 0;
+  }
+}

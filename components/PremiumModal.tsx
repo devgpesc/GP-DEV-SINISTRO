@@ -20,7 +20,7 @@ const PremiumModal: React.FC<PremiumModalProps> = ({
   title,
   subtitle,
   icon: Icon,
-  iconClassName = 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white',
+  iconClassName = 'bg-blue-600 text-white',
   children,
   footer,
   maxWidthClass = 'max-w-3xl',
@@ -29,25 +29,24 @@ const PremiumModal: React.FC<PremiumModalProps> = ({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-6">
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-5">
       <div
-        className="absolute inset-0 bg-[#0B1220]/70 backdrop-blur-md"
+        className="absolute inset-0 bg-[#0B1220]/62 backdrop-blur-[2px]"
         onClick={() => !busy && onClose()}
       />
       <div
-        className={`relative w-full ${maxWidthClass} bg-white md:rounded-[36px] rounded-t-[32px] shadow-[0_40px_120px_-30px_rgba(15,23,42,0.55)] overflow-hidden animate-in slide-in-from-bottom-6 md:zoom-in-95 duration-300 flex flex-col max-h-[94vh] md:max-h-[90vh] border border-white/60`}
+        className={`relative w-full ${maxWidthClass} bg-white md:rounded-lg rounded-t-lg shadow-[0_24px_70px_-24px_rgba(15,23,42,0.5)] overflow-hidden animate-in slide-in-from-bottom-6 md:zoom-in-95 duration-200 flex flex-col max-h-[96vh] md:max-h-[92vh] border border-slate-300`}
       >
-        <div className="relative px-6 md:px-8 pt-6 md:pt-8 pb-5 border-b border-slate-100 bg-gradient-to-r from-slate-50 via-white to-blue-50/40">
-          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-600 via-indigo-500 to-violet-500" />
+        <div className="relative px-5 md:px-7 py-5 border-b border-slate-200 bg-white">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-start gap-4 min-w-0">
               {Icon && (
-                <div className={`shrink-0 p-3 rounded-2xl shadow-lg shadow-blue-600/20 ${iconClassName}`}>
+                <div className={`shrink-0 p-2.5 rounded-lg ${iconClassName}`}>
                   <Icon size={22} strokeWidth={2.2} />
                 </div>
               )}
               <div className="min-w-0">
-                <h3 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight truncate">
+                <h3 className="text-xl md:text-2xl font-bold text-slate-900 truncate">
                   {title}
                 </h3>
                 {subtitle && (
@@ -67,12 +66,12 @@ const PremiumModal: React.FC<PremiumModalProps> = ({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 md:px-8 py-6 md:py-8 bg-[linear-gradient(180deg,#F8FAFC_0%,#FFFFFF_100%)]">
+        <div className="flex-1 overflow-y-auto px-5 md:px-7 py-5 md:py-6 bg-white">
           {children}
         </div>
 
         {footer && (
-          <div className="px-6 md:px-8 py-5 border-t border-slate-100 bg-white/95 backdrop-blur-sm sticky bottom-0">
+          <div className="px-5 md:px-7 py-4 border-t border-slate-200 bg-slate-50 sticky bottom-0">
             {footer}
           </div>
         )}
@@ -96,17 +95,17 @@ export const FormSection: React.FC<{
   children: React.ReactNode;
 }> = ({ step, title, description, locked, complete, children }) => (
   <section
-    className={`relative rounded-[28px] border transition-all duration-300 ${
+    className={`relative border transition-all duration-200 ${
       locked
-        ? 'border-slate-200 bg-slate-50/80 opacity-80'
+        ? 'border-slate-200 bg-slate-50 opacity-75'
         : complete
-          ? 'border-emerald-200 bg-white shadow-sm shadow-emerald-100/40'
-          : 'border-slate-200 bg-white shadow-sm'
+          ? 'border-emerald-200 bg-white'
+          : 'border-slate-200 bg-white'
     }`}
   >
     <div className="px-5 md:px-6 py-5 border-b border-slate-100 flex items-start gap-4">
       <div
-        className={`shrink-0 w-10 h-10 rounded-2xl flex items-center justify-center text-sm font-black ${
+        className={`shrink-0 w-8 h-8 rounded-md flex items-center justify-center text-sm font-bold ${
           complete
             ? 'bg-emerald-500 text-white'
             : locked
@@ -117,7 +116,7 @@ export const FormSection: React.FC<{
         {step}
       </div>
       <div>
-        <h4 className="text-sm font-black text-slate-800 uppercase tracking-wide">{title}</h4>
+        <h4 className="text-sm font-bold text-slate-800">{title}</h4>
         {description && <p className="text-xs text-slate-500 font-medium mt-1">{description}</p>}
       </div>
     </div>
@@ -129,13 +128,13 @@ export const FieldLabel: React.FC<{ children: React.ReactNode; required?: boolea
   children,
   required,
 }) => (
-  <label className="block text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 mb-2">
+  <label className="block text-xs font-bold text-slate-600 mb-1.5">
     {children}
     {required && <span className="text-red-500 ml-1">*</span>}
   </label>
 );
 
 export const fieldClassName =
-  'w-full px-4 py-3.5 bg-white border border-slate-200 rounded-2xl font-semibold text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 placeholder:text-slate-300 disabled:bg-slate-50 disabled:text-slate-400';
+  'w-full px-3.5 py-3 bg-white border border-slate-300 rounded-md font-semibold text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 placeholder:text-slate-400 disabled:bg-slate-50 disabled:text-slate-400';
 
 export default PremiumModal;

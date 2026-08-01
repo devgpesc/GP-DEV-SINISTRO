@@ -23,7 +23,7 @@ interface Associate {
 const Associates: React.FC = () => {
   const { addToast } = useToast();
   const [associates, setAssociates] = useState<Associate[]>([]);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+  const [viewMode] = useState<'grid' | 'list'>('list');
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -256,13 +256,13 @@ const Associates: React.FC = () => {
         </div>
         <button 
           onClick={() => handleOpenModal()}
-          className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-blue-700 shadow-xl shadow-blue-500/20 transition-all"
+          className="app-btn-primary flex items-center gap-2"
         >
           <Plus size={18} /> Novo Associado
         </button>
       </div>
 
-      <div className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-3xl border border-slate-200 shadow-sm">
+      <div className="app-toolbar flex-col md:flex-row">
         <div className="flex-1 relative">
            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
            <input 
@@ -272,10 +272,6 @@ const Associates: React.FC = () => {
              value={searchTerm} 
              onChange={e => setSearchTerm(e.target.value)} 
            />
-        </div>
-        <div className="flex bg-slate-100 p-1 rounded-2xl">
-           <button onClick={() => setViewMode('grid')} className={`p-3 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}><LayoutGrid size={20}/></button>
-           <button onClick={() => setViewMode('list')} className={`p-3 rounded-xl transition-all ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}><List size={20}/></button>
         </div>
       </div>
 
@@ -309,7 +305,7 @@ const Associates: React.FC = () => {
           ))}
         </div>
       ) : (
-        <div className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm animate-in fade-in duration-300">
+        <div className="app-table-wrap animate-in fade-in duration-300">
            <table className="w-full text-left">
               <thead className="bg-slate-50 border-b border-slate-100">
                 <tr>

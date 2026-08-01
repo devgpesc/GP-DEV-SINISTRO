@@ -21,7 +21,7 @@ const Vehicles: React.FC = () => {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [associates, setAssociates] = useState<Associate[]>([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+  const [viewMode] = useState<'grid' | 'list'>('list');
   const [searchTerm, setSearchTerm] = useState('');
   
   // Selection & Bulk Actions
@@ -350,7 +350,7 @@ const Vehicles: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
+      <div className="app-panel p-4">
          <div className="flex justify-between items-center mb-6">
             
             {/* SEARCH OR BULK ACTION BAR */}
@@ -380,45 +380,57 @@ const Vehicles: React.FC = () => {
                 </div>
             )}
 
-            <div className="flex bg-slate-100 p-1 rounded-xl ml-4">
-                <button onClick={() => setViewMode('grid')} className={`p-2 rounded-lg ${viewMode === 'grid' ? 'bg-white shadow' : ''}`}><LayoutGrid size={18}/></button>
-                <button onClick={() => setViewMode('list')} className={`p-2 rounded-lg ${viewMode === 'list' ? 'bg-white shadow' : ''}`}><List size={18}/></button>
-            </div>
          </div>
 
          {loading ? <div className="text-center py-20 flex flex-col items-center justify-center text-slate-400">
             <Loader2 className="animate-spin mb-4 text-blue-600" size={32}/>
             <p className="text-xs font-bold uppercase tracking-widest">Carregando Veículos...</p>
          </div> : (
-            <div className={`grid gap-4 ${viewMode === 'grid' ? 'grid-cols-3' : 'grid-cols-1'}`}>
+            <div className="app-table-wrap">
+              <table className="w-full text-left">
+                <thead>
+                  <tr>
+                    <th className="px-4 py-3 w-12" aria-label="Selecionar"></th>
+                    <th className="px-4 py-3">Placa / Veículo</th>
+                    <th className="px-4 py-3">Proprietário</th>
+                    <th className="px-4 py-3">Quilometragem</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
                 {filteredVehicles.length === 0 && (
-                    <div className="col-span-full py-10 text-center text-slate-400 font-medium bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                        <Car size={32} className="mx-auto mb-2 opacity-50"/>
-                        Nenhum veículo encontrado.
-                    </div>
+                    <tr><td colSpan={6} className="app-empty-cell py-12 text-center text-slate-400 font-medium"><span className="app-empty-message block">Nenhum veículo encontrado.</span></td></tr>
                 )}
                 {filteredVehicles.map(v => (
-                    <div 
-                        key={v.id} 
-                        className={`p-5 border rounded-3xl transition-all relative group ${
-                            selectedIds.includes(v.id) 
-                            ? 'bg-blue-50 border-blue-200 shadow-md ring-1 ring-blue-200' 
-                            : 'bg-slate-50/50 border-slate-100 hover:border-blue-200'
-                        }`}
-                    >
-                        {/* Checkbox Selection */}
+                    <tr key={v.id} className={selectedIds.includes(v.id) ? 'bg-blue-50' : 'group'}>
+                      <td className="px-4 py-3">
                         <button 
                             onClick={(e) => { e.stopPropagation(); handleSelection(v.id); }}
-                            className={`absolute top-4 left-4 p-1 rounded-lg transition-all z-10 ${
+                            className={`p-1 rounded transition-all ${
                                 selectedIds.includes(v.id) 
-                                ? 'text-blue-600 opacity-100' 
-                                : 'text-slate-300 opacity-0 group-hover:opacity-100 hover:text-slate-500'
+                                ? 'text-blue-600'
+                                : 'text-slate-400 hover:text-slate-600'
                             }`}
+                            aria-label={`Selecionar ${v.plate}`}
                         >
                             {selectedIds.includes(v.id) ? <CheckSquare size={20} fill="currentColor" className="text-blue-100"/> : <Square size={20}/>}
                         </button>
-
-                        <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <span className="bg-slate-800 text-white px-2.5 py-1 rounded font-bold text-xs">{v.plate}</span>
+                          <div>
+                            <p className="font-bold text-slate-800 text-sm">{v.model || 'A definir'}</p>
+                            <p className="text-xs text-slate-500">{v.brand} · {v.year_model || v.year_fab || '----'}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm font-semibold text-slate-600">{associates.find(a => a.id === v.associate_id)?.name || 'Não vinculado'}</td>
+                      <td className="px-4 py-3 text-sm font-mono text-slate-600">{v.km} km</td>
+                      <td className="px-4 py-3"><span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${v.status === 'Ativo' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{v.status}</span></td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex justify-end gap-1">
                             <button onClick={() => handleOpenModal(v)} className="p-2 bg-white text-blue-600 hover:text-blue-800 rounded-lg shadow-sm border border-slate-100 hover:bg-blue-50 transition-colors">
                                 <Edit size={16}/>
                             </button>
@@ -426,20 +438,11 @@ const Vehicles: React.FC = () => {
                                 <Trash2 size={16}/>
                             </button>
                         </div>
-
-                        <div className="flex justify-between items-start mb-4 pl-8"> {/* pl-8 para dar espaço ao checkbox */}
-                            <div className="bg-slate-800 text-white px-3 py-1 rounded-lg font-black tracking-widest text-sm">{v.plate}</div>
-                            <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${v.status === 'Ativo' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{v.status}</span>
-                        </div>
-                        <h4 className="font-black text-slate-800 uppercase text-sm truncate">{v.model || 'A DEFINIR'}</h4>
-                        <p className="text-xs text-slate-500 font-bold uppercase mb-4">{v.brand} • {v.year_model || v.year_fab || '----'}</p>
-                        
-                        <div className="pt-4 border-t border-slate-200 flex justify-between items-center text-xs">
-                            <span className="font-bold text-slate-600 flex items-center gap-1"><User size={12}/> {associates.find(a => a.id === v.associate_id)?.name || 'N/A'}</span>
-                            <span className="font-mono text-slate-400">{v.km} km</span>
-                        </div>
-                    </div>
+                      </td>
+                    </tr>
                 ))}
+                </tbody>
+              </table>
             </div>
          )}
       </div>

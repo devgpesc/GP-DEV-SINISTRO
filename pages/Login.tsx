@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 const { useNavigate, Link, useLocation } = ReactRouterDOM as any;
-import { supabase } from '../services/supabaseClient';
+import { isSupabaseConfigured, supabase } from '../services/supabaseClient';
 import { purgeOversizedAuthCookies } from '../services/authStorage';
 import { useAuth } from '../context/AuthContext';
 import { getAuthRedirectUrl } from '../services/authRedirect';
@@ -10,7 +10,8 @@ import { saveInviteToken, readInviteToken } from '../services/pendingRegistratio
 import { ensureInviteAccess, getInviteDetails, repairSessionAccess, type InviteDetails } from '../services/inviteService';
 import { 
   Loader2, ArrowRight, ShieldCheck, Mail, Lock, 
-  LayoutDashboard, Zap, Globe, AlertCircle, Eye, EyeOff, Link as LinkIcon
+  LayoutDashboard, Zap, Globe, AlertCircle, Eye, EyeOff, Link as LinkIcon,
+  CheckCircle2, Building2
 } from 'lucide-react';
 import EscLogo from '../components/EscLogo';
 
@@ -30,6 +31,18 @@ const Login: React.FC = () => {
   const sessionInviteAttempted = useRef(false);
   
   const [company] = useState({ name: 'Grupo Esc Sistemas', product: 'EventsCar' });
+  const isLocalHost = typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
+  const productPill = isLocalHost ? 'Localhost' : 'Producao';
+  const featureCards = [
+    { icon: LayoutDashboard, title: 'Operacao ao vivo', desc: 'Sinistros, prazos e etapas em um painel unico.' },
+    { icon: Zap, title: 'Cotacao ate compra', desc: 'Comparacao, aprovacao e OCs com trilha auditavel.' },
+    { icon: ShieldCheck, title: 'Controle financeiro', desc: 'Historico, permissoes e recompra sem perda de dados.' },
+  ];
+  const loginChecks = [
+    'Acesso por empresa',
+    'Convites e Google OAuth',
+    'Sessoes protegidas',
+  ];
 
   useEffect(() => {
     // Cookies legados de sessao estouram o header e quebram /api + login.
@@ -334,66 +347,99 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex bg-[#F8FAFC] font-sans selection:bg-blue-100 selection:text-blue-900">
-      
-      <div className="hidden lg:flex w-1/2 relative flex-col justify-between p-16 overflow-hidden bg-[#0F172A]">
-        <div className="absolute inset-0 z-0 opacity-20" style={{ 
-            backgroundImage: 'radial-gradient(#3b82f6 1px, transparent 1px)', 
-            backgroundSize: '32px 32px' 
-        }}></div>
-        
-        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-600/20 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+    <div className="min-h-screen bg-[#F4F7FB] font-sans selection:bg-blue-100 selection:text-blue-900">
+      <div className="grid min-h-screen lg:grid-cols-[minmax(420px,0.82fr)_minmax(560px,1.18fr)]">
+        <aside className="relative hidden overflow-hidden bg-[#111827] lg:flex lg:flex-col lg:justify-between p-12 xl:p-14">
+          <div className="absolute inset-0 opacity-[0.16]" style={{
+            backgroundImage: 'linear-gradient(rgba(96,165,250,0.32) 1px, transparent 1px), linear-gradient(90deg, rgba(96,165,250,0.32) 1px, transparent 1px)',
+            backgroundSize: '48px 48px',
+          }} />
+          <div className="absolute inset-x-0 bottom-0 h-64 bg-gradient-to-t from-slate-950/30 to-transparent pointer-events-none" />
 
-        <div className="relative z-10">
-          <div className="mb-12">
-             <div className="flex items-center gap-3">
-                <EscLogo className="w-16 h-16 text-white" classNameText="text-white text-3xl" />
-             </div>
-          </div>
+          <div className="relative z-10">
+            <div className="flex items-center justify-between mb-12">
+              <EscLogo className="w-12 h-12 text-white" classNameText="text-white text-[26px]" />
+              <span className="px-3 py-1 rounded-md border border-white/10 bg-white/[0.04] text-[11px] font-bold text-slate-300">
+                {productPill}
+              </span>
+            </div>
 
-          <h1 className="text-5xl font-extrabold text-white leading-[1.1] mb-6 tracking-tight">
-            Gestao de Sinistros <br/>
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">Inteligente & Agil</span>
-          </h1>
-          <p className="text-slate-400 text-lg max-w-md leading-relaxed font-light mb-10">
-            Plataforma completa para abertura, rastreamento e auditoria financeira de eventos automotivos.
-          </p>
-
-          <div className="space-y-5">
-             {[
-               { icon: LayoutDashboard, label: 'Dashboards Executivos em Tempo Real' },
-               { icon: Zap, label: 'Automacao de Cotacoes e OCs' },
-               { icon: ShieldCheck, label: 'Auditoria e Compliance Financeiro' }
-             ].map((item, idx) => (
-               <div key={idx} className="flex items-center gap-4 group">
-                  <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/10 group-hover:bg-blue-500/20 transition-colors">
-                    <item.icon size={20} />
-                  </div>
-                  <span className="text-slate-300 font-medium text-sm">{item.label}</span>
-               </div>
-             ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-12 relative bg-[#F8FAFC]">
-        <div className="w-full max-w-xl animate-in slide-in-from-right-8 duration-700 fade-in">
-          
-          <div className="lg:hidden flex items-center gap-2 mb-8 justify-center flex-col">
-             <EscLogo className="w-12 h-12 text-slate-900" classNameText="text-slate-900 text-2xl" />
-          </div>
-
-          <div className="bg-white p-10 md:p-14 rounded-[40px] shadow-2xl shadow-slate-200/50 border border-slate-100">
-            <div className="text-center mb-10">
-              <h2 className="text-3xl font-black text-slate-900 tracking-tight">
-                {inviteInfo ? 'Entrar e aceitar convite' : 'Acesso ao Painel'}
-              </h2>
-              <p className="text-slate-500 text-base mt-2 font-medium">
-                {inviteInfo
-                  ? `Convite para ${inviteInfo.tenant_name}`
-                  : 'Entre com e-mail e senha fornecidos pelo administrador.'}
+            <div className="max-w-xl">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-300 mb-4">
+                Plataforma de sinistros
+              </p>
+              <h1 className="text-4xl xl:text-5xl font-extrabold text-white leading-[1.08] tracking-tight mb-6">
+                Gestão clara para cada etapa do sinistro.
+              </h1>
+              <p className="text-[17px] text-slate-300 max-w-md leading-7 font-medium">
+                Abra casos, acompanhe prazos, aprove compras e mantenha a auditoria completa sem perder contexto.
               </p>
             </div>
+
+            <div className="mt-10 grid gap-3">
+              {featureCards.map((item) => (
+                <div key={item.title} className="rounded-xl border border-white/10 bg-white/[0.035] p-4 flex items-start gap-4">
+                  <div className="w-10 h-10 rounded-lg bg-blue-500/12 text-blue-300 flex items-center justify-center border border-blue-400/15 shrink-0">
+                    <item.icon size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-[15px] font-bold text-white">{item.title}</h3>
+                    <p className="text-[13px] font-medium text-slate-400 mt-1 leading-relaxed">{item.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="relative z-10 grid grid-cols-3 gap-3">
+            {[
+              ['24h', 'SLA e prazos'],
+              ['100%', 'Auditoria'],
+              ['Multi', 'Empresa'],
+            ].map(([value, label]) => (
+              <div key={label} className="rounded-xl border border-white/10 bg-white/[0.035] p-4">
+                <p className="text-2xl font-extrabold text-white">{value}</p>
+                <p className="text-[11px] font-semibold text-slate-400 mt-1">{label}</p>
+              </div>
+            ))}
+          </div>
+        </aside>
+
+        <main className="flex items-center justify-center p-4 md:p-8 xl:p-12">
+          <div className="w-full max-w-[520px] animate-in slide-in-from-bottom-4 duration-500 fade-in">
+            <div className="lg:hidden flex items-center justify-between mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <EscLogo className="w-9 h-9 text-slate-900" classNameText="text-slate-900 text-xl" />
+              <span className="px-3 py-1 rounded-md bg-blue-50 text-blue-700 text-[11px] font-bold">
+                {productPill}
+              </span>
+            </div>
+
+            <section className="bg-white rounded-2xl border border-slate-200 shadow-[0_24px_80px_-52px_rgba(15,23,42,0.55)] overflow-hidden">
+              <div className="px-6 md:px-8 pt-7 pb-6 border-b border-slate-100 bg-white">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-600 mb-2">
+                      {inviteInfo ? 'Convite ativo' : 'Acesso restrito'}
+                    </p>
+                    <h2 className="text-2xl md:text-[32px] font-extrabold text-slate-950 tracking-tight">
+                      {inviteInfo ? 'Entrar e aceitar convite' : 'Entrar no sistema'}
+                    </h2>
+                    <p className="text-[15px] text-slate-500 mt-2 font-medium leading-relaxed">
+                      {inviteInfo
+                        ? `Convite para ${inviteInfo.tenant_name}`
+                        : 'Use uma conta cadastrada na empresa ou continue com Google.'}
+                    </p>
+                    <p className="mt-3 text-xs font-semibold text-slate-400">
+                      {isSupabaseConfigured ? `${productPill} conectado ao Supabase` : 'Supabase nao configurado'}
+                    </p>
+                  </div>
+                  <div className="hidden sm:flex w-11 h-11 rounded-xl bg-blue-600 text-white items-center justify-center shadow-lg shadow-blue-600/20">
+                    <Building2 size={22} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 md:p-8">
 
             {inviteInfo && (
               <div className="mb-6 space-y-3">
@@ -415,7 +461,7 @@ const Login: React.FC = () => {
 
             <form onSubmit={handleLogin} className="space-y-6">
                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">E-mail</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide ml-1">E-mail</label>
                   <div className="relative group">
                       <Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={20} />
                       <input 
@@ -424,7 +470,7 @@ const Login: React.FC = () => {
                         value={email}
                         onChange={e => setEmail(e.target.value)}
                         readOnly={!!inviteInfo}
-                        className="w-full pl-14 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none text-base font-semibold text-slate-800 focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all placeholder:text-slate-400"
+                        className="w-full pl-14 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-xl outline-none text-[16px] font-semibold text-slate-800 focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all placeholder:text-slate-400"
                         placeholder="nome@empresa.com"
                       />
                   </div>
@@ -432,7 +478,7 @@ const Login: React.FC = () => {
                
                <div className="space-y-2">
                   <div className="flex justify-between items-center ml-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Senha</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Senha</label>
                     <a href="#" className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:underline">Esqueceu?</a>
                   </div>
                   <div className="relative group">
@@ -442,7 +488,7 @@ const Login: React.FC = () => {
                         required 
                         value={password}
                         onChange={e => setPassword(e.target.value)}
-                        className="w-full pl-14 pr-12 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none text-base font-semibold text-slate-800 focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all placeholder:text-slate-400"
+                        className="w-full pl-14 pr-12 py-4 bg-slate-50 border border-slate-200 rounded-xl outline-none text-[16px] font-semibold text-slate-800 focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all placeholder:text-slate-400"
                         placeholder="********"
                       />
                       <button 
@@ -458,11 +504,11 @@ const Login: React.FC = () => {
                <button 
                   type="submit" 
                   disabled={localLoading}
-                  className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-blue-600/20 hover:bg-blue-700 hover:shadow-blue-600/30 hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none"
+                  className="w-full py-4 bg-blue-600 text-white rounded-xl font-extrabold text-[15px] shadow-xl shadow-blue-600/20 hover:bg-blue-700 hover:shadow-blue-600/30 hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none"
                >
                   {localLoading ? <Loader2 className="animate-spin" size={22}/> : (
                     <>
-                      {inviteInfo ? 'Entrar e aceitar convite' : 'Entrar na Plataforma'} <ArrowRight size={20} className="opacity-80"/>
+                      {inviteInfo ? 'Entrar e aceitar convite' : 'Entrar na plataforma'} <ArrowRight size={20} className="opacity-80"/>
                     </>
                   )}
                </button>
@@ -477,7 +523,7 @@ const Login: React.FC = () => {
             <button 
                onClick={handleGoogle}
                disabled={localLoading}
-               className="w-full py-4 bg-white border border-slate-200 text-slate-700 font-bold text-sm rounded-2xl flex items-center justify-center gap-3 hover:bg-slate-50 hover:border-slate-300 transition-all group disabled:opacity-60"
+               className="w-full py-4 bg-white border border-slate-200 text-slate-700 font-bold text-sm rounded-xl flex items-center justify-center gap-3 hover:bg-slate-50 hover:border-slate-300 transition-all group disabled:opacity-60"
             >
                <Globe size={20} className="text-slate-400 group-hover:text-blue-600 transition-colors"/>
                Google (Gmail)
@@ -499,16 +545,27 @@ const Login: React.FC = () => {
                  </p>
                )}
             </div>
-          </div>
+              </div>
+            </section>
 
-          <div className="mt-8 text-center space-y-2">
-             <div className="inline-flex items-center gap-2 px-3 py-1 bg-slate-100 rounded-full border border-slate-200">
+            <div className="mt-6 grid gap-2 sm:grid-cols-3">
+              {loginChecks.map((check) => (
+                <div key={check} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
+                  <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
+                  <span className="text-[10px] font-bold text-slate-500">{check}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-7 text-center space-y-2">
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-slate-100 rounded-full border border-slate-200">
                 <ShieldCheck size={12} className="text-green-600" />
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Ambiente Seguro SSL</span>
-             </div>
-             <p className="text-xs text-slate-500 font-black">© 2026 {company.product} by {company.name}.</p>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Sessao segura</span>
+              </div>
+              <p className="text-xs text-slate-500 font-black">© 2026 {company.product} by {company.name}.</p>
+            </div>
           </div>
-        </div>
+        </main>
       </div>
     </div>
   );

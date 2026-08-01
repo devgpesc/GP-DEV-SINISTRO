@@ -19,7 +19,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '20.19'
           cache: npm
 
       - name: Install dependencies
@@ -63,7 +63,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '20.19'
           cache: npm
 
       - name: Install dependencies
@@ -88,55 +88,27 @@ jobs:
         run: npx vercel build --prod --yes --token="$VERCEL_TOKEN"
 
       - name: Deploy to Vercel (production)
+        id: deploy
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           set -euo pipefail
+          output=$(npx vercel deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN" 2>&1)
+          printf '%s\n' "$output"
 
-          deploy_and_verify() {
-            local output exit_code=0
-            output=$(npx vercel deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN" 2>&1) || exit_code=$?
-            printf '%s\n' "$output"
+          url=$(printf '%s\n' "$output" | grep -Eo 'https://[^ ]+\.vercel\.app' | tail -1)
+          test -n "$url"
 
-            url=$(printf '%s\n' "$output" | grep -Eo 'https://[^ ]+\.vercel\.app' | tail -1)
-            if [ -z "$url" ]; then
-              return "${exit_code:-1}"
-            fi
+          npx vercel inspect "$url" --wait --timeout 10m --json --token="$VERCEL_TOKEN"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
 
-            echo "Aguardando deploy: $url"
-            for i in $(seq 1 40); do
-              inspect=$(npx vercel inspect "$url" --token="$VERCEL_TOKEN" 2>&1 || true)
-              printf '%s\n' "$inspect"
-              if printf '%s\n' "$inspect" | grep -q '● Ready'; then
-                echo "Deploy confirmado: $url"
-                return 0
-              fi
-              if printf '%s\n' "$inspect" | grep -qiE 'Error|Failed|Canceled|Blocked'; then
-                echo "Deploy falhou na Vercel"
-                return 1
-              fi
-              sleep 15
-            done
+      - name: Smoke test deployment URL
+        run: curl --fail --show-error --silent "${{ steps.deploy.outputs.url }}/api/v1/health"
 
-            echo "Timeout aguardando deploy ficar Ready"
-            return 1
-          }
-
-          for attempt in 1 2 3; do
-            echo "Tentativa de deploy $attempt/3..."
-            if deploy_and_verify; then
-              exit 0
-            fi
-            if [ "$attempt" -lt 3 ]; then
-              echo "Nova tentativa em 30s..."
-              sleep 30
-            fi
-          done
-
-          echo "Deploy falhou apos 3 tentativas"
-          exit 1
+      - name: Smoke test production domain
+        run: curl --fail --show-error --silent https://eventos.escsistemas.com/api/v1/health
 
   deploy-preview:
     if: github.event_name == 'pull_request'
@@ -145,9 +117,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.19'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pull Vercel settings
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: npx vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
+
+      - name: Build Vercel output (preview)
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_API_BASE_URL: /api
+          VITE_APP_URL: https://eventos.escsistemas.com
+        run: npx vercel build --yes --token="$VERCEL_TOKEN"
+
       - name: Deploy to Vercel (preview)
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-        run: npx vercel deploy --prod --yes --token="$VERCEL_TOKEN"
+        run: npx vercel deploy --prebuilt --yes --token="$VERCEL_TOKEN"

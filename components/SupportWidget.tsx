@@ -353,7 +353,7 @@ _Ticket gerado via EventsCar AI_
     return (
       <button 
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-[#075E54] hover:bg-[#128C7E] text-white rounded-full shadow-2xl flex items-center justify-center transition-all hover:scale-110 z-[90] animate-in zoom-in"
+        className="fixed bottom-6 right-6 w-14 h-14 bg-[#075E54] hover:bg-[#128C7E] text-white rounded-full shadow-2xl flex items-center justify-center transition-all hover:scale-110 z-40 animate-in zoom-in"
       >
         <LifeBuoy size={28} />
         <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 rounded-full border-2 border-white"></span>
@@ -364,7 +364,7 @@ _Ticket gerado via EventsCar AI_
   return (
     <>
       <div 
-        className={`fixed bottom-6 right-6 w-[380px] bg-white rounded-2xl shadow-2xl border border-slate-200 z-[90] overflow-hidden flex flex-col transition-all duration-300 ${isMinimized ? 'h-16' : 'h-[650px] max-h-[85vh]'}`}
+        className={`fixed bottom-6 right-6 w-[380px] bg-white rounded-2xl shadow-2xl border border-slate-200 z-40 overflow-hidden flex flex-col transition-all duration-300 ${isMinimized ? 'h-16' : 'h-[650px] max-h-[85vh]'}`}
       >
         {/* Header */}
         <div className="bg-[#075E54] p-4 flex justify-between items-center text-white shrink-0">

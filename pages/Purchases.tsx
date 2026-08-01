@@ -57,13 +57,14 @@ const Purchases: React.FC = () => {
     };
   }, []);
 
-  const deriveQuotationStatus = (statuses: string[], fallback?: string | null) => {
+  const deriveQuotationStatus = (statuses: string[], fallback?: string | null, hasReleasedItems = false) => {
     if (statuses.length === 0) return fallback || 'Aguardando Aprovação';
     const allCanceled = statuses.every(status => status === 'Cancelada');
     const hasPendingApproval = statuses.some(status => status === 'Gerada');
     const allReceived = statuses.every(status => status === 'Recebida');
     const allApprovedOrReceived = statuses.every(status => status === 'Aprovada' || status === 'Recebida');
 
+    if (allCanceled && hasReleasedItems) return 'Compra Autorizada';
     if (allCanceled) return 'Cancelada';
     if (hasPendingApproval) return 'Aguardando Aprovação';
     if (allReceived) return 'Compra Realizada';
@@ -146,6 +147,11 @@ const Purchases: React.FC = () => {
         const releaseByQuoteItem = new Map(
           (quoteReleaseRows.data || []).map((row: any) => [`${row.quotation_id}:${row.quotation_item_id}`, row])
         );
+        const releasedQuotationIds = new Set(
+          (quoteReleaseRows.data || [])
+            .filter((row: any) => row.status === 'released')
+            .map((row: any) => row.quotation_id)
+        );
         const creatorById = new Map((creatorRows || []).map((profile: any) => [profile.id, profile]));
         const deliveryByPo = new Map((deliveryRows || []).map((delivery: any) => [delivery.po, delivery.status]));
         const statusesByQuoteId = new Map<string, string[]>();
@@ -163,7 +169,7 @@ const Purchases: React.FC = () => {
             const vehicle = event?.vehicleId ? vehicleById.get(event.vehicleId) : null;
             const creator = o.created_by ? creatorById.get(o.created_by) : null;
             const derivedQuotationStatus = o.quotation_id
-              ? deriveQuotationStatus(statusesByQuoteId.get(o.quotation_id) || [], quote?.status)
+              ? deriveQuotationStatus(statusesByQuoteId.get(o.quotation_id) || [], quote?.status, releasedQuotationIds.has(o.quotation_id))
               : quote?.status || null;
 
             return {
@@ -351,9 +357,22 @@ const Purchases: React.FC = () => {
         });
         setToast({ show: true, title: 'Sucesso', message: `Ordem ${confirmModal.orderCode} aprovada.`, type: 'success' });
       } else if (confirmModal.type === 'cancel') {
-        const order = orders.find(o => o.id === confirmModal.orderId);
-        await updateOrderStatus(confirmModal.orderId, 'Cancelada', order);
-        setToast({ show: true, title: 'Cancelado', message: `Ordem ${confirmModal.orderCode} foi cancelada.`, type: 'info' });
+        setToast({ show: true, title: 'Cancelando OC', message: 'Liberando itens para nova cotacao e compra.', type: 'loading' });
+        try {
+          const result = await purchaseOrderService.cancelAndReleaseForRepurchase({
+            purchaseOrderId: confirmModal.orderId,
+          });
+          await loadOrders();
+          setToast({
+            show: true,
+            title: 'Compra cancelada',
+            message: `${confirmModal.orderCode} foi cancelada e ${result.releasedItems} item(ns) voltaram para compra.`,
+            type: 'success'
+          });
+        } catch (error: any) {
+          setToast({ show: true, title: 'Erro ao cancelar', message: error?.message || 'Nao foi possivel liberar a recompra.', type: 'info' });
+          return;
+        }
       } else if (confirmModal.type === 'delete') {
         if (!canDelete) {
           setToast({ show: true, title: 'Acesso negado', message: 'Você não possui permissão para excluir OCs.', type: 'info' });
@@ -443,7 +462,7 @@ const Purchases: React.FC = () => {
   if (loading) return <div className="text-center py-20"><Loader2 className="animate-spin mx-auto text-blue-600" size={32}/></div>;
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
+    <div className="space-y-6 animate-in fade-in duration-500">
       
       {/* Toast Overlay */}
       {toast && toast.show && (
@@ -456,7 +475,7 @@ const Purchases: React.FC = () => {
       )}
 
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center sr-only">
         <div>
           <h2 className="text-3xl font-black text-slate-800">Ordens de Compra</h2>
           <p className="text-sm text-slate-500">Organizadas por associado e sinistro, com as OCs e cotações dentro de cada caso.</p>
@@ -464,7 +483,7 @@ const Purchases: React.FC = () => {
       </div>
 
       {/* Filtros */}
-      <div className="bg-white p-6 rounded-[32px] shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4">
+      <div className="app-toolbar flex-col md:flex-row">
         <div className="relative flex-1">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
           <input 
@@ -484,21 +503,21 @@ const Purchases: React.FC = () => {
       {/* Lista */}
       <div className="space-y-4">
         {groupedOrders.length === 0 ? (
-            <div className="py-20 text-center bg-slate-50 rounded-[40px] border-2 border-dashed border-slate-200">
+            <div className="app-panel py-16 text-center border-dashed">
                 <ShoppingCart className="mx-auto text-slate-300 mb-2" size={40}/>
                 <p className="text-slate-400 font-bold uppercase tracking-widest">Nenhuma compra encontrada</p>
             </div>
         ) : (
             groupedOrders.map(group => (
-                <div key={group.id} className="bg-white rounded-[32px] border border-slate-100 shadow-sm hover:border-blue-200 transition-all overflow-hidden">
-                    <button type="button" onClick={() => toggleGroup(group.id)} className="w-full p-6 text-left">
+                <div key={group.id} className="app-panel hover:border-blue-200 transition-all overflow-hidden">
+                    <button type="button" onClick={() => toggleGroup(group.id)} className="w-full px-5 py-4 text-left">
                         <div className="flex flex-col xl:flex-row items-start xl:items-center gap-5">
-                            <div className="w-16 h-16 rounded-2xl flex-shrink-0 flex items-center justify-center text-2xl font-black bg-blue-50 text-blue-600">
-                                <User size={28} />
+                            <div className="w-10 h-10 rounded-lg flex-shrink-0 flex items-center justify-center bg-blue-50 text-blue-600">
+                                <User size={20} />
                             </div>
                             <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-3 mb-2">
-                                    <h3 className="text-xl font-black text-slate-800">{group.customerName}</h3>
+                                    <h3 className="text-base font-bold text-slate-800">{group.customerName}</h3>
                                     <span className="px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest bg-slate-100 text-slate-500">{group.orders.length} OC(s)</span>
                                     <span className="px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest bg-blue-50 text-blue-600">{group.quotations.size || 1} cotacao(oes)</span>
                                 </div>
@@ -522,13 +541,13 @@ const Purchases: React.FC = () => {
                             <div className="w-full xl:w-auto flex items-center justify-between xl:justify-end gap-5">
                                 <div className="text-left xl:text-right">
                                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Total do caso</p>
-                                    <p className="text-2xl font-black text-slate-800 leading-none">R$ {group.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                                    <p className="text-lg font-bold text-slate-800 leading-none">R$ {group.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
                                 </div>
                                 <div className="text-left xl:text-right">
                                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Itens</p>
                                     <p className="text-lg font-black text-slate-700">{group.itemCount}</p>
                                 </div>
-                                <div className="px-4 py-3 rounded-2xl bg-slate-50 text-xs font-black uppercase tracking-widest text-blue-600">
+                                <div className="px-3 py-2 rounded-md border border-slate-200 bg-white text-xs font-bold text-blue-600">
                                     {expandedGroups[group.id] ? 'Fechar' : 'Abrir'}
                                 </div>
                             </div>
@@ -538,7 +557,7 @@ const Purchases: React.FC = () => {
                     {expandedGroups[group.id] && (
                         <div className="px-6 pb-6 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
                             {group.orders.map((order: any) => (
-                                <div key={order.id} className="rounded-3xl border border-slate-100 bg-slate-50/60 p-5">
+                                <div key={order.id} className="rounded-md border border-slate-200 bg-slate-50/60 p-4">
                                     <div className="flex flex-col lg:flex-row lg:items-center gap-4">
                                         <div className="flex items-start gap-4 flex-1 min-w-0">
                                             <div className="w-12 h-12 rounded-2xl flex-shrink-0 flex items-center justify-center bg-white text-blue-600 border border-slate-100">
@@ -756,6 +775,13 @@ const Purchases: React.FC = () => {
                   value={confirmModal.approvalNote || ''}
                   onChange={(e) => setConfirmModal({ ...confirmModal, approvalNote: e.target.value })}
                 />
+              </div>
+            )}
+            {confirmModal.type === 'cancel' && (
+              <div className="mt-4 p-4 rounded-2xl border border-amber-100 bg-amber-50 text-left">
+                <p className="text-xs font-bold text-amber-800 leading-relaxed">
+                  Ao cancelar, os itens desta OC voltam automaticamente para a matriz da cotacao como liberados para nova compra, mantendo o historico da compra cancelada.
+                </p>
               </div>
             )}
             <div className="grid grid-cols-2 gap-4 mt-6">

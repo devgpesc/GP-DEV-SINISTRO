@@ -56,7 +56,7 @@ const Deliveries: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards');
+  const [viewMode] = useState<'cards' | 'list'>('list');
   const [deliverModal, setDeliverModal] = useState<DeliveryItem | null>(null);
   const [deliverForm, setDeliverForm] = useState({ responsible: '', observation: '' });
   const [editModal, setEditModal] = useState<DeliveryItem | null>(null);
@@ -456,43 +456,38 @@ const Deliveries: React.FC = () => {
           <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Gestao de Entregas</h2>
           <p className="text-sm text-slate-500 font-medium">Registre entregas com responsável e acompanhe o histórico completo.</p>
         </div>
-        <div className="flex bg-white p-1 rounded-xl border border-slate-200 self-start">
+        <div className="app-segmented self-start">
           <button onClick={() => setActiveTab('operacao')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'operacao' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-400 hover:text-slate-600'}`}>Operacao ({activeDeliveries.length})</button>
           <button onClick={() => setActiveTab('gestao')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'gestao' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-400 hover:text-slate-600'}`}>Gestao</button>
           <button onClick={() => setActiveTab('historico')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'historico' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-400 hover:text-slate-600'}`}>Historico ({historyDeliveries.length})</button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white border border-slate-200 rounded-3xl p-5">
+      <div className="app-kpi-grid">
+        <div className="app-kpi">
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fila ativa</p>
           <p className="text-3xl font-black text-slate-800 mt-2">{activeDeliveries.length}</p>
         </div>
-        <div className="bg-white border border-slate-200 rounded-3xl p-5">
+        <div className="app-kpi">
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Valor em aberto</p>
           <p className="text-2xl font-black text-slate-800 mt-2">R$ {totalPendingValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
         </div>
-        <div className="bg-white border border-slate-200 rounded-3xl p-5">
+        <div className="app-kpi">
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Movimentações</p>
           <p className="text-3xl font-black text-blue-600 mt-2">{allMovements.length}</p>
         </div>
-        <div className="bg-white border border-slate-200 rounded-3xl p-5">
+        <div className="app-kpi">
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Entregues</p>
           <p className="text-3xl font-black text-green-600 mt-2">{historyDeliveries.length}</p>
         </div>
       </div>
 
-      <div className="bg-white p-5 rounded-3xl border border-slate-200 flex flex-col lg:flex-row gap-4">
+      <div className="app-toolbar flex-col lg:flex-row">
         <div className="flex items-center gap-3 flex-1">
           <Search className="text-slate-400" size={20} />
           <input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} className="w-full outline-none bg-transparent text-sm font-bold text-slate-700" placeholder="Buscar por OC, fornecedor, sinistro ou cliente..." />
         </div>
-        {activeTab !== 'gestao' && (
-          <div className="flex bg-slate-100 p-1 rounded-2xl self-start">
-            <button onClick={() => setViewMode('cards')} className={`p-3 rounded-xl transition-all ${viewMode === 'cards' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`} title="Ver em cards"><LayoutGrid size={18} /></button>
-            <button onClick={() => setViewMode('list')} className={`p-3 rounded-xl transition-all ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`} title="Ver em lista"><List size={18} /></button>
-          </div>
-        )}
+        {activeTab !== 'gestao' && <span className="text-xs font-bold text-slate-500 whitespace-nowrap">Visualização em lista</span>}
       </div>
 
       {activeTab === 'gestao' && (
@@ -533,7 +528,7 @@ const Deliveries: React.FC = () => {
 
       {activeTab !== 'gestao' && (
         viewMode === 'list' && visibleDeliveries.length > 0 ? (
-          <div className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm animate-in fade-in duration-300">
+          <div className="app-table-wrap animate-in fade-in duration-300">
             <table className="w-full text-left">
               <thead className="bg-slate-50 border-b border-slate-100">
                 <tr>

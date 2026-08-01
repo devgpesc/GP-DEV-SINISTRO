@@ -22,6 +22,11 @@ export const eventService = {
   },
 
   async getEvents(): Promise<Event[]> {
+    const { error: escalationError } = await supabase.rpc('escalate_event_priorities');
+    if (escalationError) {
+      console.warn('[eventService] Falha ao escalar prioridades automaticamente:', escalationError);
+    }
+
     const { data, error } = await supabase
       .from('events')
       .select(`
@@ -106,6 +111,11 @@ export const eventService = {
 
   async updateEvent(id: string, eventData: Partial<Event>) {
     const { attachments, history, id: _id, ...cleanEventData } = eventData;
+    const { data: before } = await supabase
+      .from('events')
+      .select('priority, priority_score')
+      .eq('id', id)
+      .maybeSingle();
 
     const { error } = await supabase
       .from('events')
@@ -113,6 +123,22 @@ export const eventService = {
       .eq('id', id);
 
     if (error) throw error;
+
+    if (
+      before &&
+      ((cleanEventData as any).priority && (cleanEventData as any).priority !== before.priority ||
+        (cleanEventData as any).priority_score && (cleanEventData as any).priority_score !== before.priority_score)
+    ) {
+      const { data: { user } } = await (supabase.auth as any).getUser();
+      await supabase.from('event_history').insert([{
+        event_id: id,
+        from_status: `${before.priority || 'Sem prioridade'} (${before.priority_score || '-'})`,
+        to_status: `${(cleanEventData as any).priority || before.priority} (${(cleanEventData as any).priority_score || before.priority_score || '-'})`,
+        comment: 'Prioridade alterada manualmente.',
+        user_id: user?.id || null,
+        created_at: new Date().toISOString()
+      }]);
+    }
 
     if (attachments) {
       const incoming = attachments as EventAttachment[];

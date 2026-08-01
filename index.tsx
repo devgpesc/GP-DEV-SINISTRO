@@ -1,5 +1,6 @@
 import React, { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
+import './styles/app.css';
 
 // SHIM GLOBAL ABSOLUTO - DEVE SER O PRIMEIRO CÓDIGO A EXECUTAR
 console.log('[EventsCar] Inicializando shims...');

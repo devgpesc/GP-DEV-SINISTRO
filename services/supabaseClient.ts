@@ -12,27 +12,33 @@ const getEnv = (key: string) => {
 };
 
 const envUrl = getEnv('VITE_SUPABASE_URL');
+const cleanEnv = (value?: string) =>
+  typeof value === 'string'
+    ? value.trim().replace(/^["']|["']$/g, '').replace(/\\r|\\n/g, '')
+    : '';
+
 // Preferir JWT anon (eyJ...) — chave sb_publishable_ pode travar auth no browser.
 const pickAnonKey = (...candidates: Array<string | undefined>) => {
-  const values = candidates.filter((v): v is string => typeof v === 'string' && v.trim().length > 0);
+  const values = candidates.map(cleanEnv).filter((v): v is string => v.length > 0);
   return values.find((v) => v.startsWith('eyJ')) || values[0];
 };
 const envKey = pickAnonKey(
   getEnv('VITE_SUPABASE_ANON_KEY'),
   getEnv('VITE_SUPABASE_PUBLISHABLE_KEY'),
 );
+const cleanSupabaseUrl = cleanEnv(envUrl).replace(/\/$/, '');
 
 if (!envUrl || !envKey) {
   console.warn('[EventsCar] Variáveis de ambiente Supabase não detectadas.');
 }
 
-export const isSupabaseConfigured = !!(envUrl && envKey);
+export const isSupabaseConfigured = !!(cleanSupabaseUrl && envKey);
 
-const supabaseUrl = (envUrl && typeof envUrl === 'string' && envUrl.trim().length > 0) 
-  ? envUrl 
+const supabaseUrl = cleanSupabaseUrl
+  ? cleanSupabaseUrl
   : 'https://demo.supabase.co';
 
-const supabaseAnonKey = (envKey && typeof envKey === 'string' && envKey.trim().length > 0) 
+const supabaseAnonKey = (envKey && typeof envKey === 'string' && envKey.length > 0)
   ? envKey 
   : 'demo-key';
 
@@ -69,7 +75,7 @@ export const checkSupabaseConnection = async () => {
     }
     return true;
   } catch (e: any) {
-    if (e.message === 'Timeout') return true; 
+    if (e.message === 'Timeout') return false;
     return false;
   }
 };

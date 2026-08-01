@@ -18,6 +18,14 @@ import { quickCreateAssociate, quickCreateVehicle } from '../services/quickRegis
 import { lookupService } from '../services/lookupService';
 import FileViewerModal from '../components/FileViewerModal';
 import { formatDateTimeBr, formatVehicleModelShort } from '../utils/vehicleLabel';
+import {
+  classifyPriorityScore,
+  getDeadlineInfo,
+  getDeadlineTone,
+  getPriorityLabel,
+  getPriorityTone,
+  normalizePriorityScore,
+} from '../utils/eventSla';
 
 const StatusBadge = ({ status }: { status: EventStatus }) => {
   const styles: any = {
@@ -43,6 +51,25 @@ const prioritySelectClass = (priority: Priority) => {
   return map[priority] || map[Priority.MEDIUM];
 };
 
+const priorityOptions = [Priority.LOW, Priority.MEDIUM, Priority.URGENT];
+const defaultScoreForPriority = (priority: Priority) => {
+  if (priority === Priority.LOW) return 2;
+  if (priority === Priority.URGENT) return 9;
+  return 5;
+};
+const toDateInput = (value?: string | null) => value ? String(value).slice(0, 10) : '';
+const deadlineRequiredTypes = new Set<string>([EventType.COLLISION, EventType.PERIPHERAL, EventType.AGREEMENT]);
+const vehicleStageOptions = [
+  'Ainda não entrou',
+  'Aguardando entrada',
+  'Em análise',
+  'Em reparo',
+  'Aguardando peças',
+  'Pronto',
+  'Liberado',
+  'Entregue',
+];
+
 const Events: React.FC = () => {
   const { addToast } = useToast();
   const { currentTenant } = useAuth();
@@ -54,6 +81,13 @@ const Events: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [eventToEdit, setEventToEdit] = useState<Event | null>(null);
+  const [eventDetail, setEventDetail] = useState<Event | null>(null);
+  const [detailTab, setDetailTab] = useState<'resumo' | 'veiculo' | 'fluxo' | 'historico' | 'anexos'>('resumo');
+  const [detailFlow, setDetailFlow] = useState<{ quotations: any[]; purchases: any[]; loading: boolean }>({
+    quotations: [],
+    purchases: [],
+    loading: false,
+  });
   const [eventToDelete, setEventToDelete] = useState<Event | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -78,9 +112,16 @@ const Events: React.FC = () => {
     manualProtocol: '',
     type: EventType.COLLISION,
     priority: Priority.MEDIUM,
+    priorityScore: 5,
     vehicleId: '',
     associateId: '',
+    openedAt: toDateInput(new Date().toISOString()),
+    deadlineAt: '',
+    responsibleName: '',
+    responsibleCompany: '',
+    vehicleStage: 'Ainda não entrou',
     description: '',
+    notes: '',
     participationQuota: '',
     attachments: [] as any[]
   });
@@ -129,19 +170,67 @@ const Events: React.FC = () => {
   const isFormLocked = !formData.associateId || !formData.vehicleId;
 
   const handleEdit = (evt: Event) => {
+    setEventDetail(null);
     setEventToEdit(evt);
     setFormData({
       protocolMode: evt.protocol.startsWith('EVT') ? 'auto' : 'manual',
       manualProtocol: evt.protocol,
       type: evt.type,
-      priority: evt.priority,
+      priority: getPriorityLabel((evt as any).priority_score, evt.priority),
+      priorityScore: normalizePriorityScore((evt as any).priority_score, evt.priority),
       vehicleId: evt.vehicleId,
       associateId: evt.associateId,
+      openedAt: toDateInput((evt as any).opened_at || evt.createdAt || (evt as any).created_at),
+      deadlineAt: toDateInput((evt as any).deadline_at),
+      responsibleName: (evt as any).responsible_name || '',
+      responsibleCompany: (evt as any).responsible_company || '',
+      vehicleStage: (evt as any).vehicle_stage || 'Ainda não entrou',
       description: evt.description,
+      notes: (evt as any).notes || '',
       participationQuota: evt.participation_quota != null ? String(evt.participation_quota) : '',
       attachments: evt.attachments || []
     });
     setIsModalOpen(true);
+  };
+
+  const openEventDetail = async (evt: Event) => {
+    setEventDetail(evt);
+    setDetailTab('resumo');
+    setDetailFlow({ quotations: [], purchases: [], loading: true });
+    try {
+      const { data: quotations } = await supabase
+        .from('quotations')
+        .select('id, code, status, created_at, deadline, participation_quota')
+        .or(`eventId.eq.${evt.id},eventRef.eq.${evt.protocol}`)
+        .order('created_at', { ascending: false });
+
+      const quotationIds = (quotations || []).map((quote: any) => quote.id).filter(Boolean);
+      const directPurchases = supabase
+        .from('purchase_orders')
+        .select('id, code, status, total, created_at, supplier_id, quotation_id, suppliers(name)')
+        .eq('event_id', evt.id)
+        .order('created_at', { ascending: false });
+
+      const quotePurchases = quotationIds.length
+        ? supabase
+            .from('purchase_orders')
+            .select('id, code, status, total, created_at, supplier_id, quotation_id, suppliers(name)')
+            .in('quotation_id', quotationIds)
+            .order('created_at', { ascending: false })
+        : Promise.resolve({ data: [] as any[] });
+
+      const [{ data: purchasesByEvent }, { data: purchasesByQuote }] = await Promise.all([directPurchases, quotePurchases]);
+      const purchaseMap = new Map<string, any>();
+      [...(purchasesByEvent || []), ...(purchasesByQuote || [])].forEach((purchase: any) => purchaseMap.set(purchase.id, purchase));
+      setDetailFlow({
+        quotations: quotations || [],
+        purchases: Array.from(purchaseMap.values()),
+        loading: false,
+      });
+    } catch (error) {
+      console.warn('[Events] Falha ao carregar fluxo do sinistro:', error);
+      setDetailFlow({ quotations: [], purchases: [], loading: false });
+    }
   };
 
   const handleOpenNew = async () => {
@@ -152,9 +241,16 @@ const Events: React.FC = () => {
         manualProtocol: '',
         type: EventType.COLLISION,
         priority: Priority.MEDIUM,
+        priorityScore: 5,
         vehicleId: '',
         associateId: '',
+        openedAt: toDateInput(new Date().toISOString()),
+        deadlineAt: '',
+        responsibleName: '',
+        responsibleCompany: '',
+        vehicleStage: 'Ainda não entrou',
         description: '',
+        notes: '',
         participationQuota: '',
         attachments: []
     });
@@ -254,14 +350,15 @@ const Events: React.FC = () => {
   const handlePriorityChange = async (eventId: string, nextPriority: Priority) => {
     const previous = events.find((e) => e.id === eventId)?.priority;
     if (!previous || previous === nextPriority) return;
+    const nextScore = defaultScoreForPriority(nextPriority);
 
     setUpdatingPriorityId(eventId);
     setEvents((prev) =>
-      prev.map((e) => (e.id === eventId ? { ...e, priority: nextPriority } : e)),
+      prev.map((e) => (e.id === eventId ? { ...e, priority: nextPriority, priority_score: nextScore } : e)),
     );
 
     try {
-      await eventService.updateEvent(eventId, { priority: nextPriority });
+      await eventService.updateEvent(eventId, { priority: nextPriority, priority_score: nextScore });
       addToast('success', 'Prioridade', `Atualizada para ${nextPriority}.`);
     } catch (err: any) {
       setEvents((prev) =>
@@ -295,20 +392,33 @@ const Events: React.FC = () => {
         addToast('warning', 'Campos Incompletos', 'Selecione um Associado e um Veículo.');
         return;
     }
+    if (deadlineRequiredTypes.has(formData.type) && !formData.deadlineAt) {
+        addToast('warning', 'Prazo obrigatório', 'Informe a data limite para este tipo de sinistro.');
+        return;
+    }
 
     setIsSaving(true);
     try {
         const protocol = formData.protocolMode === 'auto' ? (eventToEdit ? eventToEdit.protocol : nextAutoProtocol) : formData.manualProtocol;
+        const normalizedScore = normalizePriorityScore(formData.priorityScore, formData.priority);
+        const priority = classifyPriorityScore(normalizedScore);
         
         const eventData: Partial<Event> = {
             id: eventToEdit ? eventToEdit.id : undefined,
             protocol,
             type: formData.type,
-            priority: formData.priority,
+            priority,
+            priority_score: normalizedScore,
             category: formData.type,
             vehicleId: formData.vehicleId,
             associateId: formData.associateId,
+            opened_at: formData.openedAt ? new Date(`${formData.openedAt}T00:00:00`).toISOString() : undefined,
+            deadline_at: formData.deadlineAt || null,
+            responsible_name: formData.responsibleName || null,
+            responsible_company: formData.responsibleCompany || null,
+            vehicle_stage: formData.vehicleStage || null,
             description: formData.description,
+            notes: formData.notes || null,
             participation_quota: formData.participationQuota ? Number(formData.participationQuota) : null,
             attachments: formData.attachments,
             status: eventToEdit ? eventToEdit.status : EventStatus.WAITING,
@@ -380,7 +490,7 @@ const Events: React.FC = () => {
 
     // Filtros Específicos
     if (filters.status && e.status !== filters.status) return false;
-    if (filters.priority && e.priority !== filters.priority) return false;
+    if (filters.priority && getPriorityLabel((e as any).priority_score, e.priority) !== filters.priority) return false;
     if (filters.type && e.type !== filters.type) return false;
     
     // Filtro de Datas
@@ -401,25 +511,41 @@ const Events: React.FC = () => {
 
   const selectedAssociateObj = associates.find(a => a.id === formData.associateId);
   const selectedVehicleObj = vehicles.find(v => v.id === formData.vehicleId);
+  const detailAssociate = eventDetail ? associates.find(a => a.id === eventDetail.associateId) : null;
+  const detailVehicle = eventDetail ? vehicles.find(v => v.id === eventDetail.vehicleId) : null;
+  const detailDeadline = eventDetail ? getDeadlineInfo({
+    openedAt: (eventDetail as any).opened_at || eventDetail.createdAt || (eventDetail as any).created_at,
+    deadlineAt: (eventDetail as any).deadline_at,
+    status: eventDetail.status,
+  }) : null;
+  const detailPriority = eventDetail ? getPriorityLabel((eventDetail as any).priority_score, eventDetail.priority) : Priority.MEDIUM;
+  const detailPriorityScore = eventDetail ? normalizePriorityScore((eventDetail as any).priority_score, eventDetail.priority) : 5;
+  const detailTabs = [
+    { id: 'resumo', label: 'Resumo' },
+    { id: 'veiculo', label: 'Veiculo' },
+    { id: 'fluxo', label: 'Cotacoes e compras' },
+    { id: 'historico', label: 'Historico' },
+    { id: 'anexos', label: 'Anexos' },
+  ] as const;
 
   return (
     <div className="space-y-6">
       {/* Search & Action Bar */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+      <div className="app-toolbar flex-col md:flex-row justify-between items-start md:items-center">
         <div className="flex items-center gap-2 flex-1 w-full">
           <div className="relative flex-1">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
             <input 
               type="text" 
               placeholder="Buscar por Protocolo, Nome do Cliente ou Placa..."
-              className="w-full pl-12 pr-4 py-3 bg-slate-50 rounded-2xl outline-none border border-slate-100 text-sm font-medium focus:ring-2 focus:ring-blue-500/20"
+              className="w-full pl-11 pr-4 py-3 bg-white outline-none border border-slate-200 text-sm font-medium"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
           <button 
             onClick={() => setShowFilters(!showFilters)}
-            className={`p-3 rounded-2xl border transition-all ${showFilters ? 'bg-slate-100 border-slate-300 text-blue-600' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+            className={`app-icon-button ${showFilters ? 'bg-blue-50 border-blue-200 text-blue-600' : ''}`}
             title="Filtros Avançados"
           >
             <Filter size={20} />
@@ -427,7 +553,7 @@ const Events: React.FC = () => {
         </div>
         <button 
           onClick={handleOpenNew}
-          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 shadow-xl shadow-blue-600/20 whitespace-nowrap"
+          className="app-btn-primary flex items-center gap-2 whitespace-nowrap"
         >
           <Plus size={18} /> Novo Sinistro
         </button>
@@ -435,7 +561,7 @@ const Events: React.FC = () => {
 
       {/* Advanced Filters Panel */}
       {showFilters && (
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm animate-in slide-in-from-top-2">
+        <div className="app-panel p-5 animate-in slide-in-from-top-2">
           <div className="flex justify-between items-center mb-4">
              <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Filter size={14}/> Filtros Avançados</h4>
              <button onClick={clearFilters} className="text-[10px] font-bold text-red-500 hover:text-red-700 uppercase tracking-widest">Limpar Filtros</button>
@@ -452,7 +578,7 @@ const Events: React.FC = () => {
                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Prioridade</label>
                <select className="w-full p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm outline-none" value={filters.priority} onChange={e => setFilters({...filters, priority: e.target.value})}>
                  <option value="">Todas</option>
-                 {Object.values(Priority).map(p => <option key={p} value={p}>{p}</option>)}
+                 {priorityOptions.map(p => <option key={p} value={p}>{p}</option>)}
                </select>
              </div>
              <div>
@@ -475,7 +601,7 @@ const Events: React.FC = () => {
       )}
 
       {/* Events Table */}
-      <div className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm">
+      <div className="app-table-wrap">
         <table className="w-full text-left">
           <thead className="bg-slate-50 border-b border-slate-100">
             <tr>
@@ -483,6 +609,7 @@ const Events: React.FC = () => {
               <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Placa / Veículo</th>
               <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Prioridade</th>
               <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
+              <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Prazo</th>
               <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Abertura</th>
               <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
             </tr>
@@ -490,13 +617,20 @@ const Events: React.FC = () => {
           <tbody className="divide-y divide-slate-50">
             {filteredEvents.length === 0 ? (
                <tr>
-                 <td colSpan={6} className="px-8 py-12 text-center text-slate-400">
-                    <p className="text-sm font-bold">Nenhum sinistro encontrado com os filtros atuais.</p>
+                 <td colSpan={7} className="app-empty-cell px-8 py-12 text-center text-slate-400">
+                    <p className="app-empty-message text-sm font-bold">Nenhum sinistro encontrado com os filtros atuais.</p>
                  </td>
                </tr>
             ) : filteredEvents.map(evt => {
                const associate = associates.find(a => a.id === evt.associateId);
                const vehicle = vehicles.find(v => v.id === evt.vehicleId);
+               const priority = getPriorityLabel((evt as any).priority_score, evt.priority);
+               const priorityScore = normalizePriorityScore((evt as any).priority_score, evt.priority);
+               const deadline = getDeadlineInfo({
+                 openedAt: (evt as any).opened_at || evt.createdAt || (evt as any).created_at,
+                 deadlineAt: (evt as any).deadline_at,
+                 status: evt.status,
+               });
                return (
                 <tr key={evt.id} className="hover:bg-slate-50/50 transition-colors group">
                   <td className="px-6 py-5">
@@ -510,12 +644,12 @@ const Events: React.FC = () => {
                   <td className="px-6 py-5">
                     <div className="flex justify-center">
                       <select
-                        value={evt.priority || Priority.MEDIUM}
+                        value={priority}
                         disabled={updatingPriorityId === evt.id}
                         onChange={(e) => handlePriorityChange(evt.id, e.target.value as Priority)}
                         title="Alterar prioridade"
                         aria-label="Alterar prioridade"
-                        className={`min-w-[118px] appearance-none rounded-xl border px-3 py-2 pr-8 text-[11px] font-bold outline-none shadow-sm transition focus:ring-2 disabled:opacity-60 cursor-pointer ${prioritySelectClass(evt.priority || Priority.MEDIUM)}`}
+                        className={`min-w-[130px] appearance-none rounded-xl border px-3 py-2 pr-8 text-[11px] font-bold outline-none shadow-sm transition focus:ring-2 disabled:opacity-60 cursor-pointer ${prioritySelectClass(priority)}`}
                         style={{
                           backgroundImage:
                             "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%9464748b' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")",
@@ -523,18 +657,31 @@ const Events: React.FC = () => {
                           backgroundPosition: 'right 10px center',
                         }}
                       >
-                        {Object.values(Priority).map((p) => (
-                          <option key={p} value={p}>{p}</option>
+                        {priorityOptions.map((p) => (
+                          <option key={p} value={p}>{p} ({defaultScoreForPriority(p)})</option>
                         ))}
                       </select>
+                      <span className={`ml-2 px-2 py-1 rounded-lg border text-[10px] font-black ${getPriorityTone(priority)}`}>
+                        {priorityScore}/10
+                      </span>
                     </div>
                   </td>
                   <td className="px-6 py-5 text-center"><StatusBadge status={evt.status} /></td>
                   <td className="px-6 py-5">
-                    <p className="text-xs font-bold text-slate-700">{formatDateTimeBr((evt as any).createdAt || (evt as any).created_at)}</p>
+                    <span className={`inline-flex px-2.5 py-1 rounded-lg border text-[10px] font-black uppercase tracking-wider ${getDeadlineTone(deadline.state)}`}>
+                      {deadline.state}
+                    </span>
+                    <p className="mt-1 text-[10px] font-bold text-slate-400">
+                      {deadline.daysRemaining === null ? 'Sem data limite' : `${deadline.daysRemaining} dia(s) restantes`}
+                    </p>
+                  </td>
+                  <td className="px-6 py-5">
+                    <p className="text-xs font-bold text-slate-700">{formatDateTimeBr((evt as any).opened_at || (evt as any).createdAt || (evt as any).created_at)}</p>
+                    {(evt as any).responsible_name && <p className="text-[10px] font-bold text-slate-400 mt-1">{(evt as any).responsible_name}</p>}
                   </td>
                   <td className="px-6 py-5 text-right flex items-center justify-end gap-1">
-                     <button onClick={() => handleEdit(evt)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Eye size={18}/></button>
+                     <button onClick={() => openEventDetail(evt)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all" title="Ver detalhes"><Eye size={18}/></button>
+                     <button onClick={() => handleEdit(evt)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title="Editar"><Edit3 size={18}/></button>
                      <button onClick={() => setEventToDelete(evt)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18}/></button>
                   </td>
                 </tr>
@@ -558,6 +705,178 @@ const Events: React.FC = () => {
                 {isDeleting ? <Loader2 className="animate-spin" size={14} /> : null}
                 {isDeleting ? 'Excluindo...' : 'Confirmar'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {eventDetail && (
+        <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center p-0 md:p-6">
+          <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-md" onClick={() => setEventDetail(null)}></div>
+          <div className="relative bg-white w-full max-w-6xl rounded-t-[28px] md:rounded-2xl shadow-2xl overflow-hidden max-h-[94vh] flex flex-col animate-in slide-in-from-bottom-4 md:zoom-in-95 duration-200">
+            <div className="px-6 md:px-8 py-5 border-b border-slate-100 bg-white">
+              <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <span className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-bold uppercase">{eventDetail.protocol}</span>
+                    <span className={`px-2.5 py-1 rounded-lg border text-[10px] font-bold uppercase ${getPriorityTone(detailPriority)}`}>{detailPriority} · {detailPriorityScore}/10</span>
+                    {detailDeadline && (
+                      <span className={`px-2.5 py-1 rounded-lg border text-[10px] font-bold uppercase ${getDeadlineTone(detailDeadline.state)}`}>{detailDeadline.state}</span>
+                    )}
+                  </div>
+                  <h3 className="text-2xl md:text-3xl font-extrabold text-slate-950 tracking-tight">Detalhe do sinistro</h3>
+                  <p className="text-sm font-medium text-slate-500 mt-1 truncate">
+                    {detailAssociate?.name || 'Cliente nao vinculado'} · {detailVehicle?.plate || 'Placa nao vinculada'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => handleEdit(eventDetail)} className="px-4 py-2.5 rounded-xl bg-indigo-50 text-indigo-700 text-xs font-bold flex items-center gap-2 hover:bg-indigo-100">
+                    <Edit3 size={15} /> Editar
+                  </button>
+                  <button onClick={() => setEventDetail(null)} className="p-2.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100">
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
+              <div className="mt-5 flex gap-2 overflow-x-auto pb-1">
+                {detailTabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setDetailTab(tab.id)}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${detailTab === tab.id ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-slate-50/70 custom-scrollbar">
+              {detailTab === 'resumo' && detailDeadline && (
+                <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6">
+                  <div className="space-y-4">
+                    <div className="rounded-2xl bg-white border border-slate-200 p-5">
+                      <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">Descricao do ocorrido</p>
+                      <p className="text-sm font-semibold text-slate-700 leading-relaxed whitespace-pre-wrap">{eventDetail.description || 'Sem descricao registrada.'}</p>
+                    </div>
+                    <div className="rounded-2xl bg-white border border-slate-200 p-5">
+                      <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-3">Observacoes</p>
+                      <p className="text-sm font-semibold text-slate-700 leading-relaxed whitespace-pre-wrap">{(eventDetail as any).notes || 'Sem observacoes operacionais.'}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="rounded-2xl bg-white border border-slate-200 p-5">
+                      <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-4">Controle de prazo</p>
+                      <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                        <div className={`h-full ${detailDeadline.isOverdue ? 'bg-red-500' : detailDeadline.isNear ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${detailDeadline.usedPercent}%` }} />
+                      </div>
+                      <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                        <div className="rounded-xl bg-slate-50 p-3"><p className="text-lg font-extrabold text-slate-900">{detailDeadline.daysElapsed}</p><p className="text-[10px] font-bold text-slate-400">usados</p></div>
+                        <div className="rounded-xl bg-slate-50 p-3"><p className="text-lg font-extrabold text-slate-900">{detailDeadline.daysRemaining ?? '-'}</p><p className="text-[10px] font-bold text-slate-400">restantes</p></div>
+                        <div className="rounded-xl bg-slate-50 p-3"><p className="text-lg font-extrabold text-slate-900">{detailDeadline.usedPercent}%</p><p className="text-[10px] font-bold text-slate-400">consumido</p></div>
+                      </div>
+                    </div>
+                    <div className="rounded-2xl bg-white border border-slate-200 p-5 space-y-3">
+                      {[
+                        ['Tipo', eventDetail.type],
+                        ['Responsavel', (eventDetail as any).responsible_name || 'Nao informado'],
+                        ['Empresa', (eventDetail as any).responsible_company || 'Nao informada'],
+                        ['Abertura', formatDateTimeBr((eventDetail as any).opened_at || (eventDetail as any).created_at)],
+                        ['Data limite', (eventDetail as any).deadline_at ? new Date(`${(eventDetail as any).deadline_at}T00:00:00`).toLocaleDateString('pt-BR') : 'Sem prazo'],
+                      ].map(([label, value]) => (
+                        <div key={label} className="flex justify-between gap-4 text-sm">
+                          <span className="font-bold text-slate-400">{label}</span>
+                          <span className="font-bold text-slate-800 text-right">{value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {detailTab === 'veiculo' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-2xl bg-white border border-slate-200 p-5">
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-4">Veiculo vinculado</p>
+                    <h4 className="text-xl font-extrabold text-slate-900">{detailVehicle?.plate || 'Sem placa'}</h4>
+                    <p className="text-sm font-semibold text-slate-500 mt-1">{formatVehicleModelShort(detailVehicle)}</p>
+                    <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
+                      <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-bold text-slate-400">Marca</p><p className="font-bold text-slate-800">{detailVehicle?.brand || '-'}</p></div>
+                      <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-bold text-slate-400">Modelo</p><p className="font-bold text-slate-800">{detailVehicle?.model || '-'}</p></div>
+                      <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-bold text-slate-400">KM</p><p className="font-bold text-slate-800">{detailVehicle?.km || '-'}</p></div>
+                      <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-bold text-slate-400">Status</p><p className="font-bold text-slate-800">{detailVehicle?.status || '-'}</p></div>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl bg-white border border-slate-200 p-5">
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-4">Acompanhamento</p>
+                    <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+                      <p className="text-xs font-bold text-blue-500 uppercase">Etapa atual</p>
+                      <p className="text-lg font-extrabold text-blue-900 mt-1">{(eventDetail as any).vehicle_stage || 'Ainda nao entrou'}</p>
+                    </div>
+                    <p className="text-sm font-semibold text-slate-500 leading-relaxed mt-4">
+                      A proxima fase vai transformar esta area em linha do tempo de entrada, reparo, liberacao e entrega do veiculo.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {detailTab === 'fluxo' && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div className="rounded-2xl bg-white border border-slate-200 p-5">
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-4">Cotacoes</p>
+                    {detailFlow.loading ? <Loader2 className="animate-spin text-blue-600" /> : detailFlow.quotations.length === 0 ? (
+                      <p className="text-sm font-semibold text-slate-400">Nenhuma cotacao vinculada.</p>
+                    ) : detailFlow.quotations.map((quote) => (
+                      <div key={quote.id} className="py-3 border-b border-slate-100 last:border-0 flex justify-between gap-4">
+                        <div><p className="font-bold text-slate-800">{quote.code}</p><p className="text-xs font-semibold text-slate-400">{formatDateTimeBr(quote.created_at)}</p></div>
+                        <span className="text-xs font-bold text-blue-700">{quote.status}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="rounded-2xl bg-white border border-slate-200 p-5">
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-4">Compras</p>
+                    {detailFlow.loading ? <Loader2 className="animate-spin text-blue-600" /> : detailFlow.purchases.length === 0 ? (
+                      <p className="text-sm font-semibold text-slate-400">Nenhuma compra vinculada.</p>
+                    ) : detailFlow.purchases.map((purchase) => (
+                      <div key={purchase.id} className="py-3 border-b border-slate-100 last:border-0 flex justify-between gap-4">
+                        <div><p className="font-bold text-slate-800">{purchase.code}</p><p className="text-xs font-semibold text-slate-400">{purchase.suppliers?.name || 'Fornecedor nao informado'}</p></div>
+                        <div className="text-right"><p className="text-xs font-bold text-slate-600">{purchase.status}</p><p className="text-sm font-extrabold text-slate-900">R$ {Number(purchase.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {detailTab === 'historico' && (
+                <div className="rounded-2xl bg-white border border-slate-200 p-5">
+                  {eventDetail.history?.length ? (
+                    <div className="space-y-4">
+                      {eventDetail.history.map((entry: any) => (
+                        <div key={entry.id || `${entry.created_at}-${entry.comment}`} className="pl-4 border-l-2 border-blue-100">
+                          <p className="text-xs font-bold uppercase text-blue-700">{entry.from_status || 'Evento'} → {entry.to_status || 'Atualizacao'}</p>
+                          <p className="text-sm font-semibold text-slate-700 mt-1">{entry.comment || 'Sem comentario.'}</p>
+                          <p className="text-[11px] font-semibold text-slate-400 mt-1">{formatDateTimeBr(entry.created_at)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : <p className="text-sm font-semibold text-slate-400">Nenhum historico registrado.</p>}
+                </div>
+              )}
+
+              {detailTab === 'anexos' && (
+                <div className="rounded-2xl bg-white border border-slate-200 p-5">
+                  {eventDetail.attachments?.length ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {eventDetail.attachments.map((att: any) => (
+                        <button key={att.id || att.url} onClick={() => openAttachment(att)} className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-left flex items-center gap-3 hover:border-blue-200 hover:bg-blue-50">
+                          <Paperclip size={18} className="text-blue-600" />
+                          <div className="min-w-0"><p className="text-sm font-bold text-slate-800 truncate">{att.name || att.file_name || 'Anexo'}</p><p className="text-xs font-semibold text-slate-400">{att.size || att.type || 'Documento'}</p></div>
+                        </button>
+                      ))}
+                    </div>
+                  ) : <p className="text-sm font-semibold text-slate-400">Nenhum anexo registrado.</p>}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -739,6 +1058,95 @@ const Events: React.FC = () => {
                   ))}
                 </select>
               </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <FieldLabel required>Data de abertura</FieldLabel>
+                  <input
+                    type="date"
+                    className={fieldClassName}
+                    value={formData.openedAt}
+                    onChange={(e) => setFormData({ ...formData, openedAt: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <FieldLabel required={deadlineRequiredTypes.has(formData.type)}>Data limite</FieldLabel>
+                  <input
+                    type="date"
+                    className={fieldClassName}
+                    value={formData.deadlineAt}
+                    onChange={(e) => setFormData({ ...formData, deadlineAt: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Status do veículo</FieldLabel>
+                  <select
+                    className={fieldClassName}
+                    value={formData.vehicleStage}
+                    onChange={(e) => setFormData({ ...formData, vehicleStage: e.target.value })}
+                  >
+                    {vehicleStageOptions.map((stage) => (
+                      <option key={stage} value={stage}>{stage}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <FieldLabel>Classificação</FieldLabel>
+                  <select
+                    className={fieldClassName}
+                    value={formData.priority}
+                    onChange={(e) => {
+                      const priority = e.target.value as Priority;
+                      setFormData({ ...formData, priority, priorityScore: defaultScoreForPriority(priority) });
+                    }}
+                  >
+                    {priorityOptions.map((p) => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <FieldLabel>Nota de prioridade</FieldLabel>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    className={fieldClassName}
+                    value={formData.priorityScore}
+                    onChange={(e) => {
+                      const score = normalizePriorityScore(Number(e.target.value), formData.priority);
+                      setFormData({ ...formData, priorityScore: score, priority: classifyPriorityScore(score) });
+                    }}
+                  />
+                </div>
+                <div className="flex items-end">
+                  <div className={`w-full rounded-2xl border px-4 py-3 ${getPriorityTone(formData.priority)}`}>
+                    <p className="text-[10px] font-black uppercase tracking-widest">Prioridade calculada</p>
+                    <p className="text-sm font-black">{formData.priority} · {formData.priorityScore}/10</p>
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <FieldLabel>Responsável pelo atendimento</FieldLabel>
+                  <input
+                    className={fieldClassName}
+                    value={formData.responsibleName}
+                    onChange={(e) => setFormData({ ...formData, responsibleName: e.target.value })}
+                    placeholder="Nome do colaborador responsável"
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Empresa responsável</FieldLabel>
+                  <input
+                    className={fieldClassName}
+                    value={formData.responsibleCompany}
+                    onChange={(e) => setFormData({ ...formData, responsibleCompany: e.target.value })}
+                    placeholder="Oficina, filial ou empresa responsável"
+                  />
+                </div>
+              </div>
               <div>
                 <FieldLabel>Cota de participação do veículo</FieldLabel>
                 <input
@@ -758,6 +1166,15 @@ const Events: React.FC = () => {
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   placeholder="Descreva o que aconteceu, local, danos visíveis..."
+                />
+              </div>
+              <div>
+                <FieldLabel>Observações operacionais</FieldLabel>
+                <textarea
+                  className={`${fieldClassName} min-h-[90px] resize-none`}
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  placeholder="Pontos de atenção, contatos, restrições ou próximos passos..."
                 />
               </div>
             </div>
