@@ -140,20 +140,14 @@ serve(async (req) => {
 
     // 7. Retorno de Sucesso
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        tenant, 
-        user: { 
-          id: createdUser.user.id, 
-          email: createdUser.user.email 
-        } 
-      }),
+      JSON.stringify({ success: true }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
 
   } catch (error: any) {
+    console.error('[create-tenant]', error)
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: 'Nao foi possivel criar a empresa.' }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
     )
   }
