@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Search, ChevronRight, ArrowLeft, BarChart3, Trash2, Rocket, List, Package, Users, Edit3, Box, Zap, Save, Loader2, Check, CheckSquare, LayoutGrid, Wrench, UserPlus, Paperclip, Eye } from 'lucide-react';
+import { Plus, Search, ChevronRight, ArrowLeft, BarChart3, Trash2, Rocket, List, Package, Users, Edit3, Box, Zap, Save, Loader2, Check, CheckSquare, Wrench, UserPlus, Paperclip, Eye } from 'lucide-react';
 import MatrixTable from '../components/MatrixTable';
 import { supabase } from '../services/supabaseClient';
 import { eventService } from '../services/eventService';
@@ -12,12 +12,16 @@ import { ATTACHMENT_ACCEPT } from '../utils/defaults';
 import { lookupService } from '../services/lookupService';
 import { formatDateTimeBr, formatVehicleLabel, formatVehicleModelShort } from '../utils/vehicleLabel';
 import { quotationService } from '../services/quotationService';
+import ViewModeSwitch, { ViewMode } from '../components/ViewModeSwitch';
 
 const Quotations: React.FC = () => {
   const { addToast } = useToast();
   const { eventTypes } = useEventTypes();
   const [step, setStep] = useState(1); // 1: List, 2: Wizard, 3: Matrix
-  const [viewMode] = useState<'grid' | 'list'>('list');
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const saved = window.localStorage.getItem('eventscar:quotations-view');
+    return saved === 'cards' ? 'cards' : 'list';
+  });
   const [wizardStep, setWizardStep] = useState(1);
   const [realEvents, setRealEvents] = useState<Event[]>([]);
   const [realSuppliers, setRealSuppliers] = useState<Supplier[]>([]);
@@ -526,6 +530,11 @@ const Quotations: React.FC = () => {
       setStep(3);
   };
 
+  const changeViewMode = (mode: ViewMode) => {
+    setViewMode(mode);
+    window.localStorage.setItem('eventscar:quotations-view', mode);
+  };
+
   const renderList = () => (
     <div className="space-y-6 animate-in fade-in duration-300">
       <div className="app-toolbar flex-col md:flex-row justify-between">
@@ -540,13 +549,14 @@ const Quotations: React.FC = () => {
           />
         </div>
         <div className="flex items-center gap-3">
+          <ViewModeSwitch value={viewMode} onChange={changeViewMode} />
           <button onClick={() => { setStep(2); setWizardStep(1); setEditingQuoteId(null); setNewQuote({eventId: '', eventProtocol: '', items: [], selectedSuppliers: [], participationQuota: '', attachments: []}); }} className="app-btn-primary flex items-center gap-2 whitespace-nowrap">
             <Plus size={20} /> Nova Cotação
           </button>
         </div>
       </div>
 
-      {viewMode === 'grid' ? (
+      {viewMode === 'cards' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-2 duration-300">
           {filteredQuotes.map(quote => (
             <div key={quote.id} className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200 hover:border-blue-200 transition-all group relative overflow-hidden">

@@ -11,6 +11,7 @@ import { openPurchaseOrderPreview, PrintOrientation } from '../utils/purchaseOrd
 import { purchaseOrderService, getActionLabel, PurchaseOrderHistoryEntry } from '../services/purchaseOrderService';
 import { auditService } from '../services/auditService';
 import { formatVehicleLabel } from '../utils/vehicleLabel';
+import ViewModeSwitch, { ViewMode } from '../components/ViewModeSwitch';
 
 const Purchases: React.FC = () => {
   const { access } = useAuth();
@@ -23,6 +24,10 @@ const Purchases: React.FC = () => {
   const [orders, setOrders] = useState<any[]>([]); 
   const [loading, setLoading] = useState(true);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const saved = window.localStorage.getItem('eventscar:purchases-view');
+    return saved === 'cards' ? 'cards' : 'list';
+  });
   
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [viewOrder, setViewOrder] = useState<any | null>(null);
@@ -459,6 +464,11 @@ const Purchases: React.FC = () => {
     setExpandedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
   };
 
+  const changeViewMode = (mode: ViewMode) => {
+    setViewMode(mode);
+    window.localStorage.setItem('eventscar:purchases-view', mode);
+  };
+
   if (loading) return <div className="text-center py-20"><Loader2 className="animate-spin mx-auto text-blue-600" size={32}/></div>;
 
   return (
@@ -498,10 +508,11 @@ const Purchases: React.FC = () => {
                 <button key={st} onClick={() => setFilterStatus(st)} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${filterStatus === st ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>{st}</button>
             ))}
         </div>
+        <ViewModeSwitch value={viewMode} onChange={changeViewMode} />
       </div>
 
       {/* Lista */}
-      <div className="space-y-4">
+      <div className={viewMode === 'cards' ? 'grid grid-cols-1 2xl:grid-cols-2 gap-4' : 'space-y-4'}>
         {groupedOrders.length === 0 ? (
             <div className="app-panel py-16 text-center border-dashed">
                 <ShoppingCart className="mx-auto text-slate-300 mb-2" size={40}/>
@@ -615,7 +626,7 @@ const Purchases: React.FC = () => {
                                                 )}
                                                 <button onClick={() => openHistory(order)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-indigo-600 rounded-xl hover:border-indigo-200 transition-all shadow-sm" title="Histórico / Auditoria"><History size={18}/></button>
                                                 <button onClick={() => setViewOrder(order)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-blue-600 rounded-xl hover:border-blue-200 transition-all shadow-sm" title="Ver Detalhes"><Eye size={18}/></button>
-                                                <button onClick={() => handlePrintEnhanced(order)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-blue-600 rounded-xl hover:border-blue-200 transition-all shadow-sm hidden sm:block" title="Visualizar no navegador"><Printer size={18}/></button>
+                                                <button onClick={() => handlePrintEnhanced(order)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-blue-600 rounded-xl hover:border-blue-200 transition-all shadow-sm hidden sm:block" title="Imprimir OC em lista"><Printer size={18}/></button>
                                                 <div className="relative">
                                                     <button onClick={() => setOpenMenuId(openMenuId === order.id ? null : order.id)} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-50 transition-all shadow-sm"><MoreVertical size={18}/></button>
                                                     {openMenuId === order.id && (
@@ -699,7 +710,7 @@ const Purchases: React.FC = () => {
                 </div>
                 <div className="p-4 border-t border-slate-100 bg-white flex flex-col sm:flex-row justify-end gap-2">
                     <button onClick={() => handlePrintEnhanced(viewOrder)} className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-blue-700">
-                        <Printer size={14}/> Visualizar retrato
+                        <Printer size={14}/> Imprimir lista
                     </button>
                     <button onClick={() => handlePrintEnhanced(viewOrder, 'landscape')} className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-slate-800">
                         <Printer size={14}/> Visualizar paisagem

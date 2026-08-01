@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Truck, CheckCircle, Clock, Archive, BarChart3, PackageCheck, Search, UserCheck, BriefcaseBusiness, LayoutGrid, List, History, Edit3, Trash2 } from 'lucide-react';
+import { Truck, CheckCircle, Clock, Archive, BarChart3, PackageCheck, Search, UserCheck, BriefcaseBusiness, History, Edit3, Trash2 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import ActionModal from '../components/ActionModal';
+import ViewModeSwitch, { ViewMode } from '../components/ViewModeSwitch';
 
 type DeliveryStatus = 'Pendente' | 'Entregue';
 
@@ -56,7 +57,10 @@ const Deliveries: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [viewMode] = useState<'cards' | 'list'>('list');
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const saved = window.localStorage.getItem('eventscar:deliveries-view');
+    return saved === 'cards' ? 'cards' : 'list';
+  });
   const [deliverModal, setDeliverModal] = useState<DeliveryItem | null>(null);
   const [deliverForm, setDeliverForm] = useState({ responsible: '', observation: '' });
   const [editModal, setEditModal] = useState<DeliveryItem | null>(null);
@@ -447,6 +451,11 @@ const Deliveries: React.FC = () => {
     setDeliverForm({ responsible: profile?.full_name || '', observation: '' });
   };
 
+  const changeViewMode = (mode: ViewMode) => {
+    setViewMode(mode);
+    window.localStorage.setItem('eventscar:deliveries-view', mode);
+  };
+
   if (loading) return <div className="text-center py-20 text-slate-400">Carregando entregas...</div>;
 
   return (
@@ -487,7 +496,7 @@ const Deliveries: React.FC = () => {
           <Search className="text-slate-400" size={20} />
           <input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} className="w-full outline-none bg-transparent text-sm font-bold text-slate-700" placeholder="Buscar por OC, fornecedor, sinistro ou cliente..." />
         </div>
-        {activeTab !== 'gestao' && <span className="text-xs font-bold text-slate-500 whitespace-nowrap">Visualização em lista</span>}
+        {activeTab !== 'gestao' && <ViewModeSwitch value={viewMode} onChange={changeViewMode} />}
       </div>
 
       {activeTab === 'gestao' && (

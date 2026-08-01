@@ -24,6 +24,7 @@ import { useToast } from '../context/ToastContext';
 import { supabase } from '../services/supabaseClient';
 import { openMatrixPrintPreview } from '../utils/matrixPrint';
 import { formatDateTimeBr, formatVehicleLabel } from '../utils/vehicleLabel';
+import ViewModeSwitch, { ViewMode } from './ViewModeSwitch';
 
 interface MatrixProps {
   quotationId?: string;
@@ -81,7 +82,10 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
     eventOpenedAt?: string;
     eventStatus?: string;
   } | null>(null);
-  const [printMenuOpen, setPrintMenuOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const saved = window.localStorage.getItem('eventscar:quotation-matrix-view');
+    return saved === 'matrix' ? 'matrix' : 'list';
+  });
 
   useEffect(() => {
     if (quotationId) loadData();
@@ -432,7 +436,6 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
       })),
       layout,
     });
-    setPrintMenuOpen(false);
   };
 
   const exportCsv = () => {
@@ -507,6 +510,78 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
   const toggleSupplierDetails = (supplierId: string) => {
     setExpandedSupplierIds((prev) => prev.includes(supplierId) ? prev.filter((id) => id !== supplierId) : [...prev, supplierId]);
   };
+
+  const changeViewMode = (mode: ViewMode) => {
+    setViewMode(mode);
+    window.localStorage.setItem('eventscar:quotation-matrix-view', mode);
+  };
+
+  const renderListView = () => (
+    <div className="app-table-wrap divide-y divide-slate-200">
+      {paginatedItems.map((item) => {
+        const isProcessed = processedItemIds.includes(item.id);
+        return (
+          <section key={item.id} className={isProcessed ? 'bg-slate-50/80' : 'bg-white'}>
+            <div className="flex flex-col gap-3 border-b border-slate-100 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-sm font-black text-slate-900">{item.name}</h3>
+                  <span className="rounded border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-black uppercase text-slate-500">{item.quantity} {item.unit}</span>
+                  {isProcessed && <span className="rounded bg-slate-200 px-2 py-0.5 text-[9px] font-black uppercase text-slate-600">Processado</span>}
+                  {(item as any).item_type === 'Serviço' && <span className="rounded border border-purple-100 bg-purple-50 px-2 py-0.5 text-[9px] font-black uppercase text-purple-600">Serviço</span>}
+                </div>
+                <p className="mt-1 text-xs font-medium text-slate-500">Compare os fornecedores e selecione uma proposta.</p>
+              </div>
+              {isProcessed && (
+                <button type="button" onClick={() => openReleaseModal(item)} disabled={releasingItemId === item.id} className="self-start rounded-lg bg-amber-100 px-3 py-2 text-[10px] font-black uppercase text-amber-700 disabled:opacity-50">
+                  {releasingItemId === item.id ? 'Liberando...' : 'Liberar recompra'}
+                </button>
+              )}
+            </div>
+
+            <div className="divide-y divide-slate-100">
+              {filteredSuppliers.map((supplier) => {
+                const price = prices.find((candidate) => candidate.quotation_item_id === item.id && candidate.supplier_id === supplier.id);
+                const selected = activeSelections[item.id]?.supplierId === supplier.id;
+                const isBest = !!price && bestPriceByItem[item.id] === price.price;
+                const isEditing = editingCell?.itemId === item.id && editingCell?.supplierId === supplier.id;
+
+                if (isEditing) {
+                  return (
+                    <div key={supplier.id} className="grid gap-3 bg-blue-50/50 px-5 py-4 lg:grid-cols-[minmax(180px,1fr)_minmax(360px,2fr)] lg:items-center">
+                      <div><p className="text-sm font-black text-slate-800">{supplier.name}</p><p className="text-xs font-medium text-slate-500">{supplier.city || 'Local não informado'}</p></div>
+                      <div className="grid gap-2 rounded-lg border border-blue-300 bg-white p-3 sm:grid-cols-[1fr_110px_110px_auto]">
+                        <label className="flex items-center gap-2 text-xs font-bold text-slate-500">R$ <input autoFocus type="number" className="min-w-0 flex-1 border-b border-slate-200 py-1 font-black text-slate-800 outline-none" value={editPrice} onChange={(event) => setEditPrice(event.target.value)} placeholder="0,00" /></label>
+                        <input className="rounded-lg bg-slate-50 p-2 text-xs font-medium outline-none" placeholder="Prazo (dias)" value={editDeliveryDays} onChange={(event) => setEditDeliveryDays(event.target.value)} />
+                        <label className="flex items-center gap-2 rounded-lg bg-slate-50 p-2 text-xs font-bold text-slate-600"><input type="checkbox" checked={editAvailability} onChange={(event) => setEditAvailability(event.target.checked)} /> Disponível</label>
+                        <div className="flex justify-end gap-1"><button type="button" onClick={cancelEditing} className="app-icon-button" title="Cancelar"><X size={14} /></button><button type="button" onClick={saveManualPrice} disabled={isSavingPrice} className="app-icon-button bg-blue-600 text-white" title="Salvar">{isSavingPrice ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}</button></div>
+                        <input className="rounded-lg bg-slate-50 p-2 text-xs font-medium outline-none sm:col-span-full" placeholder="Observação" value={editObs} onChange={(event) => setEditObs(event.target.value)} />
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div key={supplier.id} className={`grid gap-3 px-5 py-4 transition-colors lg:grid-cols-[minmax(180px,1fr)_110px_140px_150px] lg:items-center ${selected ? 'bg-blue-50' : isBest ? 'bg-emerald-50/60' : 'hover:bg-slate-50'}`}>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-black text-slate-800">{supplier.name}</p>{isBest && <span className="rounded bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase text-emerald-700">Menor preço</span>}{selected && <CheckCircle2 size={16} className="text-blue-600" />}</div>
+                      <p className="mt-1 text-xs font-medium text-slate-500">{supplier.city || 'Local não informado'}</p>
+                    </div>
+                    <div><p className="text-[9px] font-black uppercase text-slate-400">Prazo</p><p className="mt-1 text-xs font-bold text-slate-700">{price ? (price.availability === false ? 'Indisponível' : price.delivery_days ? `${price.delivery_days} dia(s)` : 'Não informado') : 'Sem cotação'}</p></div>
+                    <div><p className="text-[9px] font-black uppercase text-slate-400">Valor unitário</p><p className={`mt-1 text-base font-black ${isBest ? 'text-emerald-700' : 'text-slate-800'}`}>{price ? `R$ ${money(price.price)}` : '—'}</p></div>
+                    <div className="flex items-center justify-end gap-2">
+                      <button type="button" onClick={() => startEditing(item.id, supplier.id, price)} className="app-icon-button" title={price ? 'Editar cotação' : 'Lançar valor'}><Edit2 size={15} /></button>
+                      {price && <button type="button" onClick={() => selectForPurchase(item, supplier, price)} disabled={isProcessed || price.availability === false} className={`min-w-[96px] rounded-lg px-3 py-2 text-[10px] font-black uppercase transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${selected ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:text-blue-700'}`}>{selected ? 'Selecionado' : 'Selecionar'}</button>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
 
   if (loading) {
     return <div className="py-20 text-center flex flex-col items-center"><Loader2 className="animate-spin mb-4 text-blue-600" size={32} /><p className="text-xs font-bold uppercase tracking-widest text-slate-400">Montando matriz de cotacao...</p></div>;
@@ -609,19 +684,16 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
             {[10, 15, 20, 30, 50].map((qty) => <option key={qty} value={qty}>{qty} itens/página</option>)}
           </select>
         </div>
-        <div className="flex gap-2 relative">
-          <button onClick={() => setPrintMenuOpen(v => !v)} className="app-icon-button" title="Visualizar impressão"><FileText size={18} /></button>
-          {printMenuOpen && (
-            <div className="absolute right-0 top-full mt-2 z-30 bg-white border border-slate-200 rounded-2xl shadow-xl p-2 min-w-[180px]">
-              <button onClick={() => openPrintPreview('landscape')} className="w-full text-left px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider text-slate-700 hover:bg-blue-50 hover:text-blue-700">Paisagem</button>
-              <button onClick={() => openPrintPreview('list')} className="w-full text-left px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider text-slate-700 hover:bg-blue-50 hover:text-blue-700">Lista</button>
-            </div>
-          )}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <ViewModeSwitch value={viewMode} onChange={changeViewMode} modes={['list', 'matrix']} />
+          <button onClick={() => openPrintPreview('list')} className="app-icon-button" title="Imprimir em lista"><FileText size={18} /></button>
+          <button onClick={() => openPrintPreview('landscape')} className="px-3 py-2 bg-white text-slate-600 hover:text-blue-700 rounded-xl transition-all shadow-sm text-xs font-black uppercase tracking-wider" title="Imprimir matriz em paisagem">Matriz A4</button>
           <button onClick={exportCsv} className="app-icon-button hover:text-green-600" title="Exportar CSV/Excel"><Download size={18} /></button>
           <button onClick={exportExcel} className="px-3 py-2 bg-white text-slate-600 hover:text-emerald-700 rounded-xl transition-all shadow-sm text-xs font-black uppercase tracking-wider" title="Exportar para Excel">Excel</button>
         </div>
       </div>
 
+      {viewMode === 'matrix' ? (
       <div className="app-table-wrap">
         <table className="w-full text-left border-collapse">
           <thead>
@@ -710,6 +782,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
           </tbody>
         </table>
       </div>
+      ) : renderListView()}
 
       <div className="flex items-center justify-between text-xs font-bold text-slate-500 print:hidden">
         <span>Mostrando {paginatedItems.length} de {filteredItems.length} item(ns)</span>
