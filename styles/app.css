@@ -15,8 +15,12 @@
   --app-success: #16835d;
   --app-warning: #b96816;
   --app-danger: #c53a3a;
-  --app-radius: 8px;
-  --app-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --app-radius: 14px;
+  --app-control-radius: 11px;
+  --app-modal-radius: 20px;
+  --app-control-height: 42px;
+  --app-shadow: 0 2px 8px rgba(15, 23, 42, 0.055);
+  --app-shadow-raised: 0 18px 55px -24px rgba(15, 23, 42, 0.38);
 }
 
 html {
@@ -45,13 +49,30 @@ textarea {
 
 button {
   letter-spacing: 0 !important;
+  cursor: pointer;
+  transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+:where(button, input, select, textarea, a):focus-visible {
+  outline: 3px solid rgba(36, 99, 235, 0.2);
+  outline-offset: 2px;
 }
 
 .app-shell main :where(input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']), select, textarea) {
-  border-radius: 6px !important;
+  min-height: var(--app-control-height);
+  border-radius: var(--app-control-radius) !important;
   border-color: var(--app-line) !important;
   font-weight: 600;
-  box-shadow: none !important;
+  color: var(--app-ink);
+  box-shadow: inset 0 1px 1px rgba(15, 23, 42, 0.02) !important;
+}
+
+.app-shell main :where(input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']), select, textarea):hover:not(:disabled) {
+  border-color: var(--app-line-strong) !important;
 }
 
 .app-shell main :where(input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']), select, textarea):focus {
@@ -59,8 +80,21 @@ button {
   box-shadow: 0 0 0 3px rgba(36, 99, 235, 0.1) !important;
 }
 
-.app-shell main button {
-  border-radius: 6px !important;
+.app-shell main button:not(.rounded-full) {
+  border-radius: var(--app-control-radius) !important;
+}
+
+.app-shell main button.rounded-full {
+  border-radius: 9999px !important;
+}
+
+.app-shell main button:not(:disabled):active {
+  opacity: 0.86;
+}
+
+.app-shell main button:has(> svg:only-child) {
+  min-width: 38px;
+  min-height: 38px;
 }
 
 .app-shell main :where(.rounded-3xl, .rounded-\[24px\], .rounded-\[28px\], .rounded-\[32px\], .rounded-\[36px\], .rounded-\[40px\], .rounded-\[48px\]) {
@@ -89,6 +123,7 @@ button {
 
 .app-shell main tbody td {
   border-color: #edf0f4;
+  vertical-align: middle;
 }
 
 .app-shell main tbody tr {
@@ -96,7 +131,7 @@ button {
 }
 
 .app-shell main tbody tr:hover {
-  background: #f8fafc;
+  background: #f6f9fc;
 }
 
 .app-shell main :where(h1, h2, h3, h4, p, span, label) {
@@ -104,7 +139,39 @@ button {
 }
 
 .app-shell main :where(.uppercase) {
-  letter-spacing: 0.035em !important;
+  letter-spacing: 0.025em !important;
+}
+
+.app-shell main :where(input[type='checkbox'], input[type='radio']) {
+  accent-color: var(--app-brand);
+}
+
+.app-shell main input[type='checkbox'] {
+  border-radius: 5px !important;
+}
+
+.app-shell main :where(input, select, textarea)::placeholder {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.app-shell :where(.fixed.inset-0) > .absolute.inset-0 {
+  background-color: rgba(15, 23, 42, 0.58) !important;
+  backdrop-filter: blur(3px);
+}
+
+.app-shell :where(.fixed.inset-0) > .relative.bg-white {
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-radius: var(--app-modal-radius) !important;
+  box-shadow: var(--app-shadow-raised) !important;
+}
+
+.app-shell :where(.fixed.inset-0) > .relative.bg-white :where(input:not([type='checkbox']):not([type='radio']):not([type='file']), select, textarea) {
+  border-radius: var(--app-control-radius) !important;
+}
+
+.app-shell :where(.fixed.inset-0) > .relative.bg-white button:not(.rounded-full) {
+  border-radius: var(--app-control-radius) !important;
 }
 
 .app-panel {
@@ -146,19 +213,31 @@ button {
 }
 
 .app-btn-primary {
-  min-height: 42px;
+  display: inline-flex;
+  min-height: 44px;
   padding: 0 18px;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--app-brand);
-  border-radius: 6px;
+  border-radius: var(--app-control-radius);
   background: var(--app-brand);
   color: #fff;
   font-size: 13px;
   font-weight: 700;
-  box-shadow: 0 2px 5px rgba(36, 99, 235, 0.18);
+  box-shadow: 0 5px 14px rgba(36, 99, 235, 0.2);
 }
 
 .app-btn-primary:hover {
   background: var(--app-brand-hover);
+  border-color: var(--app-brand-hover);
+  box-shadow: 0 7px 18px rgba(36, 99, 235, 0.24);
+}
+
+.app-btn-primary:disabled {
+  border-color: #cbd5e1;
+  background: #e2e8f0;
+  color: #94a3b8;
+  box-shadow: none;
 }
 
 .app-icon-button {
@@ -168,7 +247,7 @@ button {
   align-items: center;
   justify-content: center;
   border: 1px solid var(--app-line);
-  border-radius: 6px;
+  border-radius: var(--app-control-radius);
   background: #fff;
   color: #64748b;
 }
@@ -184,14 +263,14 @@ button {
   gap: 2px;
   padding: 3px;
   border: 1px solid var(--app-line);
-  border-radius: 7px;
+  border-radius: 12px;
   background: #f3f5f8;
 }
 
 .app-segmented button {
   min-height: 34px;
   padding: 0 12px;
-  border-radius: 5px !important;
+  border-radius: 9px !important;
   font-size: 12px;
   font-weight: 700;
 }
@@ -213,6 +292,33 @@ button {
 
 .app-kpi:last-child {
   border-right: 0;
+}
+
+.app-form-surface {
+  border: 1px solid var(--app-line);
+  border-radius: var(--app-radius);
+  background: #fff;
+  box-shadow: var(--app-shadow);
+}
+
+.app-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  border-top: 1px solid var(--app-line);
+  background: var(--app-panel-muted);
+}
+
+.app-status-pill {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0 10px;
+  font-size: 10px;
+  font-weight: 800;
 }
 
 @media (max-width: 900px) {
@@ -239,6 +345,28 @@ button {
 }
 
 @media (max-width: 560px) {
+  :root {
+    --app-modal-radius: 18px;
+  }
+
+  .app-shell main {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .app-shell :where(.fixed.inset-0) > .relative.bg-white {
+    max-height: 94vh;
+  }
+
+  .app-shell main button:not(.rounded-full) {
+    min-height: 40px;
+  }
+
+  .app-segmented {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
   .app-kpi-grid {
     grid-template-columns: 1fr;
   }

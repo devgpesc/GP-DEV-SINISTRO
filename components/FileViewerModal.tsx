@@ -15,20 +15,20 @@ const FileViewerModal: React.FC<FileViewerModalProps> = ({ file, onClose }) => {
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white w-full max-w-5xl max-h-[92vh] rounded-[32px] shadow-2xl overflow-hidden flex flex-col">
+      <div className="relative flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-2xl" role="dialog" aria-modal="true" aria-label={file.name}>
         <div className="p-5 border-b border-slate-100 flex items-center justify-between gap-4">
           <div className="min-w-0">
             <p className="text-sm font-black text-slate-800 truncate">{file.name}</p>
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-1">{kind}</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <a href={file.url} download={file.name} className="p-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200" title="Baixar">
+            <a href={file.url} download={file.name} className="app-icon-button" title="Baixar">
               <Download size={18} />
             </a>
-            <a href={file.url} target="_blank" rel="noopener noreferrer" className="p-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200" title="Abrir em nova aba">
+            <a href={file.url} target="_blank" rel="noopener noreferrer" className="app-icon-button" title="Abrir em nova aba">
               <ExternalLink size={18} />
             </a>
-            <button onClick={onClose} className="p-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200">
+            <button onClick={onClose} className="app-icon-button" aria-label="Fechar">
               <X size={18} />
             </button>
           </div>

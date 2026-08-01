@@ -284,7 +284,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
 
   return (
-    <div className="flex min-h-screen bg-[#F4F7FB] print:bg-white overflow-x-hidden">
+    <div className="app-shell flex min-h-screen bg-[#F4F7FB] print:bg-white overflow-x-hidden">
       <style>{`
         @keyframes bell-ring {
           0%, 100% { transform: rotate(0deg); }

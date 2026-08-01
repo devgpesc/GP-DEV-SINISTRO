@@ -36,13 +36,13 @@ const StatusChangeModal: React.FC<StatusChangeModalProps> = ({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose}></div>
-      <div className="relative bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+      <div className="relative w-full max-w-md overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-2xl animate-in fade-in zoom-in duration-200" role="dialog" aria-modal="true" aria-label="Confirmar alteração de status">
         <div className="p-6 border-b border-slate-100 flex justify-between items-center">
           <h3 className="font-bold text-slate-800 flex items-center gap-2">
             <MessageSquare size={18} className="text-blue-600" />
             Confirmar Alteração de Status
           </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+          <button onClick={onClose} className="app-icon-button text-slate-400 hover:text-slate-600" aria-label="Fechar">
             <X size={20} />
           </button>
         </div>
@@ -81,9 +81,9 @@ const StatusChangeModal: React.FC<StatusChangeModalProps> = ({
           </div>
         </div>
 
-        <div className="p-4 bg-slate-50 flex justify-end gap-3 border-t border-slate-100">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">Cancelar</button>
-          <button onClick={handleConfirm} className="px-6 py-2 bg-blue-600 text-white text-sm font-bold rounded-xl shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-all">
+        <div className="app-form-actions p-4">
+          <button onClick={onClose} className="min-h-10 px-4 text-sm font-bold text-slate-600 hover:bg-slate-200">Cancelar</button>
+          <button onClick={handleConfirm} className="app-btn-primary px-6">
             Confirmar Mudança
           </button>
         </div>

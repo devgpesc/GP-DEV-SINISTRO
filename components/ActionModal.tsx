@@ -33,10 +33,10 @@ const ActionModal: React.FC<ActionModalProps> = ({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
-      <div className="relative bg-white w-full max-w-sm rounded-[32px] shadow-2xl p-8 animate-in zoom-in duration-200 text-center border border-slate-100">
+      <div className="relative w-full max-w-sm rounded-[20px] border border-slate-200 bg-white p-6 text-center shadow-2xl animate-in zoom-in duration-200" role="alertdialog" aria-modal="true" aria-label={title}>
         
-        <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ${currentStyle.bg} ${currentStyle.icon}`}>
-          <IconComponent size={40} />
+        <div className={`mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl ${currentStyle.bg} ${currentStyle.icon}`}>
+          <IconComponent size={28} />
         </div>
 
         <h3 className="text-xl font-black text-slate-800 mb-2">{title}</h3>
@@ -44,11 +44,11 @@ const ActionModal: React.FC<ActionModalProps> = ({
           {description}
         </p>
 
-        <div className={`grid ${showCancel ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
+        <div className={`grid ${showCancel ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
           {showCancel && (
             <button 
               onClick={onClose} 
-              className="py-3.5 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-slate-200 transition-all"
+              className="min-h-11 rounded-xl bg-slate-100 px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-200"
             >
               {cancelText}
             </button>
@@ -58,7 +58,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
               if (onConfirm) await onConfirm();
               onClose();
             }} 
-            className={`py-3.5 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all shadow-xl ${currentStyle.btn}`}
+            className={`min-h-11 rounded-xl px-4 py-3 text-xs font-bold text-white shadow-sm ${currentStyle.btn}`}
           >
             {confirmText}
           </button>

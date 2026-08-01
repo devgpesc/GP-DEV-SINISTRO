@@ -35,7 +35,10 @@ const PremiumModal: React.FC<PremiumModalProps> = ({
         onClick={() => !busy && onClose()}
       />
       <div
-        className={`relative w-full ${maxWidthClass} bg-white md:rounded-lg rounded-t-lg shadow-[0_24px_70px_-24px_rgba(15,23,42,0.5)] overflow-hidden animate-in slide-in-from-bottom-6 md:zoom-in-95 duration-200 flex flex-col max-h-[96vh] md:max-h-[92vh] border border-slate-300`}
+        className={`relative w-full ${maxWidthClass} bg-white rounded-t-[20px] md:rounded-[20px] shadow-[0_24px_70px_-24px_rgba(15,23,42,0.5)] overflow-hidden animate-in slide-in-from-bottom-6 md:zoom-in-95 duration-200 flex flex-col max-h-[96vh] md:max-h-[92vh] border border-slate-300`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
       >
         <div className="relative px-5 md:px-7 py-5 border-b border-slate-200 bg-white">
           <div className="flex items-start justify-between gap-4">
@@ -58,7 +61,7 @@ const PremiumModal: React.FC<PremiumModalProps> = ({
               type="button"
               onClick={onClose}
               disabled={busy}
-              className="shrink-0 p-2.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-40"
+              className="app-icon-button shrink-0 text-slate-400 hover:text-slate-700 disabled:opacity-40"
               aria-label="Fechar"
             >
               <X size={22} />
@@ -71,7 +74,7 @@ const PremiumModal: React.FC<PremiumModalProps> = ({
         </div>
 
         {footer && (
-          <div className="px-5 md:px-7 py-4 border-t border-slate-200 bg-slate-50 sticky bottom-0">
+          <div className="app-form-actions sticky bottom-0 px-5 py-4 md:px-7">
             {footer}
           </div>
         )}
@@ -95,7 +98,7 @@ export const FormSection: React.FC<{
   children: React.ReactNode;
 }> = ({ step, title, description, locked, complete, children }) => (
   <section
-    className={`relative border transition-all duration-200 ${
+    className={`relative overflow-hidden rounded-xl border transition-all duration-200 ${
       locked
         ? 'border-slate-200 bg-slate-50 opacity-75'
         : complete
@@ -135,6 +138,6 @@ export const FieldLabel: React.FC<{ children: React.ReactNode; required?: boolea
 );
 
 export const fieldClassName =
-  'w-full px-3.5 py-3 bg-white border border-slate-300 rounded-md font-semibold text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 placeholder:text-slate-400 disabled:bg-slate-50 disabled:text-slate-400';
+  'w-full min-h-11 px-3.5 py-3 bg-white border border-slate-300 rounded-xl font-semibold text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 placeholder:text-slate-400 disabled:bg-slate-50 disabled:text-slate-400';
 
 export default PremiumModal;
