@@ -1,7 +1,7 @@
 import { applyCors, sendJson, methodNotAllowed } from '../_lib/http.js';
 
 export default async function handler(req, res) {
-  applyCors(res);
+  if (!applyCors(req, res)) return sendJson(res, 403, { error: 'Origem nao autorizada.' });
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'GET') return methodNotAllowed(res, 'GET');
 

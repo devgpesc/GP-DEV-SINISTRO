@@ -138,17 +138,12 @@ export const activateInviteViaApi = async (params: {
   }
   return payload as {
     ok: boolean;
-    userId?: string;
     message?: string;
-    membershipLinked?: boolean;
-    membershipCount?: number;
   };
 };
 
 type SessionAccessResult = {
   ok: boolean;
-  userId: string;
-  email?: string;
   membershipCount: number;
   memberships: Array<{
     id: string;
@@ -261,25 +256,12 @@ export const ensureInviteAccess = async (token?: string | null, emailHint?: stri
     }
   }
 
-  try {
-    const synced = await withTimeoutReject(
-      syncInviteMembership(),
-      8000,
-      'Tempo esgotado ao vincular convite. Tente novamente.',
-    );
-    if (synced?.status === 'linked' || synced?.status === 'already_member' || synced?.status === 'accepted') {
-      return synced;
-    }
-  } catch (error: any) {
-    lastError = error instanceof Error ? error : new Error(String(error?.message || error));
-  }
-
   const { data: userData } = await (supabase.auth as any).getUser();
   const email =
     String(emailHint || '').trim().toLowerCase() ||
     String(userData?.user?.email || '').trim().toLowerCase();
 
-  if (email) {
+  if (email && trimmed) {
     try {
       await activateInviteViaApi({ email, inviteToken: trimmed || null });
       const repairedAgain = await repairSessionAccess();
@@ -407,10 +389,7 @@ export const createMemberViaApi = async (params: {
   return payload as {
     ok: boolean;
     created?: boolean;
-    userId?: string;
-    email?: string;
     loginUrl?: string;
-    tenantName?: string;
     message?: string;
   };
 };

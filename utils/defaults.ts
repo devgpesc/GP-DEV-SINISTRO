@@ -1,4 +1,4 @@
 export const DEFAULT_EVENT_TYPES = ['Colisão', 'Furto', 'Roubo', 'Periférico', 'Acordo'];
 
 export const ATTACHMENT_ACCEPT =
-  'image/*,video/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar,.mp4,.mov,.avi,.webm,.mkv';
+  '.jpg,.jpeg,.png,.webp,.pdf,.mp4,.mov,.doc,.docx';

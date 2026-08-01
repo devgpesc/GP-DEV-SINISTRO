@@ -21,12 +21,14 @@ async function findUserByEmail(admin, email) {
     if (response.ok) {
       const payload = await response.json();
       const users = payload?.users || payload || [];
-      const match = (Array.isArray(users) ? users : []).find(
+      const matches = (Array.isArray(users) ? users : []).filter(
         (u) => String(u.email || '').toLowerCase() === normalized,
       );
-      if (match) return match;
+      if (matches.length > 1) throw new Error('MULTIPLE_AUTH_ACCOUNTS');
+      if (matches[0]) return matches[0];
     }
   } catch (err) {
+    if (err?.message === 'MULTIPLE_AUTH_ACCOUNTS') throw err;
     console.warn('[create-member] email lookup:', err.message);
   }
 
@@ -44,7 +46,7 @@ async function findUserByEmail(admin, email) {
  * Header: Authorization Bearer <access_token do admin>
  */
 export default async function handler(req, res) {
-  applyCors(res);
+  if (!applyCors(req, res)) return sendJson(res, 403, { error: 'Origem nao autorizada.' });
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return sendJson(res, 405, { error: 'Method not allowed' });
 
@@ -115,13 +117,16 @@ export default async function handler(req, res) {
     if (!isOwner && !isAdmin && !isPlatform) {
       return sendJson(res, 403, { error: 'Apenas administradores podem adicionar membros.' });
     }
+    if (role === 'owner' && !isOwner && !isPlatform) {
+      return sendJson(res, 403, { error: 'Apenas o proprietario atual ou a plataforma podem transferir a empresa.' });
+    }
 
     let user = null;
     if (userId) {
       const { data } = await admin.auth.admin.getUserById(userId);
       user = data?.user || null;
       if (user && String(user.email || '').toLowerCase() !== email) {
-        // Permite reset pelo id da equipe mesmo se e-mail no form divergir levemente.
+        return sendJson(res, 400, { error: 'O usuario selecionado nao corresponde ao e-mail informado.' });
       }
     }
     if (!user) {
@@ -157,88 +162,54 @@ export default async function handler(req, res) {
       return sendJson(res, 500, { error: 'Falha ao criar usuario.' });
     }
 
-    // Propaga senha/confirmacao e membership para outras contas do mesmo e-mail (Google).
-    const siblings = [];
-    try {
-      const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-      const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-      const response = await fetch(`${url}/auth/v1/admin/users?email=${encodeURIComponent(email)}`, {
-        headers: { Authorization: `Bearer ${key}`, apikey: key },
-      });
-      if (response.ok) {
-        const payload = await response.json();
-        const users = payload?.users || payload || [];
-        for (const u of Array.isArray(users) ? users : []) {
-          if (String(u.email || '').toLowerCase() === email) siblings.push(u);
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-    if (!siblings.some((u) => u.id === user.id)) siblings.push(user);
-
-    for (const sibling of siblings) {
-      if (sibling.id !== user.id) {
-        await admin.auth.admin
-          .updateUserById(sibling.id, {
-            password,
-            email_confirm: true,
-            user_metadata: {
-              ...(sibling.user_metadata || {}),
-              full_name: name,
-              name,
-            },
-          })
-          .catch(() => null);
-      }
-
-      const { error: memberError } = await admin.from('organization_members').upsert(
-        {
-          tenant_id: tenantId,
-          user_id: sibling.id,
-          role: role === 'owner' ? 'admin' : role,
-          permissions: {
-            manage_users: role === 'owner' || role === 'admin',
-            view_reports: role === 'owner' || role === 'admin',
-            delete_records: role === 'owner' || role === 'admin',
-            financial_view: role === 'owner' || role === 'admin',
-            approve_purchases: role === 'owner' || role === 'admin',
-          },
-          module_permissions: {
-            dashboard: true,
-            eventos: true,
-            cotacoes: true,
-            compras: true,
-            entregas: true,
-            associados: true,
-            fornecedores: true,
-            veiculos: true,
-            catalogo: true,
-            relatorios: true,
-            notificacoes: true,
-            configuracoes: role === 'owner' || role === 'admin',
-          },
+    const { error: memberError } = await admin.from('organization_members').upsert(
+      {
+        tenant_id: tenantId,
+        user_id: user.id,
+        role: role === 'owner' ? 'admin' : role,
+        permissions: {
+          manage_users: role === 'owner' || role === 'admin',
+          view_reports: role === 'owner' || role === 'admin',
+          delete_records: role === 'owner' || role === 'admin',
+          financial_view: role === 'owner' || role === 'admin',
+          approve_purchases: role === 'owner' || role === 'admin',
         },
-        { onConflict: 'tenant_id,user_id' },
-      );
-      if (memberError) throw memberError;
-
-      await admin.from('profiles').upsert(
-        {
-          id: sibling.id,
-          email,
-          full_name: name,
-          role: 'Usuário',
-          updated_at: new Date().toISOString(),
+        module_permissions: {
+          dashboard: true,
+          eventos: true,
+          cotacoes: true,
+          compras: true,
+          entregas: true,
+          associados: true,
+          fornecedores: true,
+          veiculos: true,
+          catalogo: true,
+          relatorios: true,
+          notificacoes: true,
+          configuracoes: role === 'owner' || role === 'admin',
         },
-        { onConflict: 'id' },
-      );
-    }
+      },
+      { onConflict: 'tenant_id,user_id' },
+    );
+    if (memberError) throw memberError;
 
-    // Nunca transferir owner_id automaticamente ao criar membro —
-    // evita "roubar" a empresa e o novo usuario ficar sem ver o contexto certo.
-    if (role === 'owner' && !tenant.owner_id) {
-      await admin.from('saas_tenants').update({ owner_id: user.id }).eq('id', tenantId);
+    await admin.from('profiles').upsert(
+      {
+        id: user.id,
+        email,
+        full_name: name,
+        role: 'Usuário',
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' },
+    );
+
+    if (role === 'owner') {
+      const { error: ownerError } = await admin
+        .from('saas_tenants')
+        .update({ owner_id: user.id })
+        .eq('id', tenantId);
+      if (ownerError) throw ownerError;
     }
 
     // Cancela convites pendentes do mesmo e-mail nesta empresa (modelo antigo).
@@ -267,18 +238,10 @@ export default async function handler(req, res) {
     return sendJson(res, 200, {
       ok: true,
       created,
-      userId: user.id,
-      email,
-      name,
-      role,
-      tenantId,
-      tenantName: tenant.name,
       loginUrl,
-      linkedAccounts: siblings.length,
-      membershipCount: confirmedMembers.length,
       message: created
         ? 'Membro criado. Ja pode entrar com e-mail e senha (sem confirmacao).'
-        : 'Senha atualizada e acesso liberado (incluindo conta Google do mesmo e-mail).',
+        : 'Senha atualizada e acesso liberado para a conta selecionada.',
     });
   } catch (error) {
     console.error('[create-member]', error);
@@ -286,6 +249,9 @@ export default async function handler(req, res) {
     if (String(message).toLowerCase().includes('already') || String(message).toLowerCase().includes('registered')) {
       return sendJson(res, 409, { error: 'Este e-mail ja possui conta. Use Editar usuario para redefinir a senha.' });
     }
-    return sendJson(res, 500, { error: message });
+    if (message === 'MULTIPLE_AUTH_ACCOUNTS') {
+      return sendJson(res, 409, { error: 'Existem contas duplicadas para este e-mail. Selecione o usuario exato na equipe antes de alterar o acesso.' });
+    }
+    return sendJson(res, 500, { error: 'Nao foi possivel criar ou atualizar o membro.' });
   }
 }

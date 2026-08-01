@@ -1,9 +1,12 @@
 import { fetchAPIBrasil, fetchDetran, fetchMock } from '../_vehicle.js';
+import { applyCors } from '../_lib/http.js';
 
 const cache = new Map();
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 export default async function handler(req, res) {
+  if (!applyCors(req, res)) return res.status(403).json({ error: 'Origem nao autorizada.' });
+  if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
     return res.status(405).json({ error: 'Metodo nao permitido.' });
@@ -47,13 +50,14 @@ export default async function handler(req, res) {
     }
 
     if (!result) {
-      return res.status(404).json({ error: 'Veiculo nao encontrado em nenhuma base.', details: errors });
+      return res.status(404).json({ error: 'Veiculo nao encontrado em nenhuma base.' });
     }
 
     if (!customToken) cache.set(cleanPlate, { data: result, timestamp: Date.now() });
     return res.json(result);
   } catch (error) {
+    console.error('[vehicle-lookup]', error);
     const status = error.message?.includes('invalido') ? 401 : 500;
-    return res.status(status).json({ error: error.message, details: errors });
+    return res.status(status).json({ error: status === 401 ? 'Credencial de consulta invalida.' : 'Nao foi possivel consultar o veiculo.' });
   }
 }

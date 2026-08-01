@@ -3,7 +3,7 @@ import { authenticateApiRequest } from '../_lib/auth.js';
 import { getSupabaseAdmin } from '../_lib/supabase.js';
 
 export default async function handler(req, res) {
-  applyCors(res);
+  if (!applyCors(req, res)) return sendJson(res, 403, { error: 'Origem nao autorizada.' });
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'GET') return methodNotAllowed(res, 'GET');
 

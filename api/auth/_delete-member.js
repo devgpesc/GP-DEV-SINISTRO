@@ -16,7 +16,7 @@ async function getCallerUser(admin, req) {
  * Body: { userId, tenantId, deleteAuthAccount?: boolean }
  */
 export default async function handler(req, res) {
-  applyCors(res);
+  if (!applyCors(req, res)) return sendJson(res, 403, { error: 'Origem nao autorizada.' });
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return sendJson(res, 405, { error: 'Method not allowed' });
 
@@ -151,6 +151,6 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error('[delete-member]', error);
-    return sendJson(res, 500, { error: error.message || 'Falha ao excluir membro.' });
+    return sendJson(res, 500, { error: 'Nao foi possivel excluir o membro.' });
   }
 }

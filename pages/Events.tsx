@@ -13,7 +13,7 @@ import { useAuth } from '../context/AuthContext';
 import PremiumModal, { FormSection, FieldLabel, fieldClassName } from '../components/PremiumModal';
 import { useEventTypes } from '../hooks/useEventTypes';
 import { ATTACHMENT_ACCEPT } from '../utils/defaults';
-import { getAttachmentKind } from '../services/attachmentService';
+import { getAttachmentKind, MAX_EVENT_ATTACHMENTS, validateEventAttachmentFile } from '../services/attachmentService';
 import { quickCreateAssociate, quickCreateVehicle } from '../services/quickRegisterService';
 import { lookupService } from '../services/lookupService';
 import FileViewerModal from '../components/FileViewerModal';
@@ -258,9 +258,23 @@ const Events: React.FC = () => {
   };
 
   // --- Lógica de Anexos ---
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
+      if (formData.attachments.length + files.length > MAX_EVENT_ATTACHMENTS) {
+        addToast('warning', 'Limite de anexos', `Cada sinistro pode ter no máximo ${MAX_EVENT_ATTACHMENTS} anexos.`);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
+
+      try {
+        await Promise.all(Array.from(files).map(validateEventAttachmentFile));
+      } catch (error: any) {
+        addToast('error', 'Arquivo não permitido', error?.message || 'Verifique o formato e o tamanho do arquivo.');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
+
       const newAttachments = Array.from(files).map((file: File) => ({
         id: Math.random().toString(36).substr(2, 9),
         name: file.name,
@@ -280,6 +294,10 @@ const Events: React.FC = () => {
   };
 
   const openAttachment = (att: any) => {
+    if (!att.url) {
+      addToast('warning', 'Anexo indisponível', 'Atualize a tela para gerar um novo acesso temporário ao arquivo.');
+      return;
+    }
     setViewerFile({ name: att.name, type: att.type, url: att.url });
   };
 
@@ -373,7 +391,7 @@ const Events: React.FC = () => {
   const removeAttachment = async (att: any) => {
     if (att.id && !att.isNew && eventToEdit) {
       try {
-        await eventService.removeAttachment(att.id, att.url);
+        await eventService.removeAttachment(att.id);
       } catch {
         addToast('error', 'Erro', 'Não foi possível remover o anexo.');
         return;

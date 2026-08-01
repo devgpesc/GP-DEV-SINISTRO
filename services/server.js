@@ -11,7 +11,19 @@ import axios from 'axios';
 import { GoogleGenAI } from "@google/genai";
 
 const app = express();
-app.use(cors());
+const allowedOrigins = new Set([
+  'https://eventos.escsistemas.com',
+  'https://gp-dev-sinistro.vercel.app',
+  ...String(process.env.CORS_ALLOWED_ORIGINS || '').split(',').map((value) => value.trim()).filter(Boolean),
+]);
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+    return callback(new Error('Origem nao autorizada.'));
+  },
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Authorization', 'Content-Type', 'X-Api-Key'],
+}));
 app.use(express.json());
 
 // --- CONFIGURAÇÃO ---

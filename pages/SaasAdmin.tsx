@@ -300,19 +300,13 @@ const SaasAdmin: React.FC = () => {
               if (adminEmail && adminName) {
                   // Com senha: cria/atualiza Auth + membership owner (persiste de verdade).
                   if (adminPassword.length >= 8) {
-                      const result = await createMemberViaApi({
+                      await createMemberViaApi({
                           email: adminEmail,
                           password: adminPassword,
                           name: adminName,
                           role: 'owner',
                           tenantId: editingTenant.id,
                       });
-                      if (result.userId) {
-                          await supabase
-                              .from('saas_tenants')
-                              .update({ owner_id: result.userId })
-                              .eq('id', editingTenant.id);
-                      }
                       addToast(
                           'success',
                           'Empresa e admin salvos',

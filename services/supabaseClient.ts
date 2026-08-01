@@ -28,19 +28,13 @@ const envKey = pickAnonKey(
 );
 const cleanSupabaseUrl = cleanEnv(envUrl).replace(/\/$/, '');
 
-if (!envUrl || !envKey) {
-  console.warn('[EventsCar] Variáveis de ambiente Supabase não detectadas.');
+if (!cleanSupabaseUrl || !envKey) {
+  throw new Error('Configuração obrigatória do Supabase ausente.');
 }
 
-export const isSupabaseConfigured = !!(cleanSupabaseUrl && envKey);
-
-const supabaseUrl = cleanSupabaseUrl
-  ? cleanSupabaseUrl
-  : 'https://demo.supabase.co';
-
-const supabaseAnonKey = (envKey && typeof envKey === 'string' && envKey.length > 0)
-  ? envKey 
-  : 'demo-key';
+export const isSupabaseConfigured = true;
+const supabaseUrl = cleanSupabaseUrl;
+const supabaseAnonKey = envKey;
 
 const authConfig = {
   flowType: 'pkce' as const,

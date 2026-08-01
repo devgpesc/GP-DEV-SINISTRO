@@ -8,12 +8,27 @@ declare const Deno: {
   };
 };
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+const allowedOrigins = new Set([
+  'https://eventos.escsistemas.com',
+  'https://gp-dev-sinistro.vercel.app',
+  ...(Deno.env.get('CORS_ALLOWED_ORIGINS') || '').split(',').map((value) => value.trim()).filter(Boolean),
+]);
 
 serve(async (req) => {
+  const origin = req.headers.get('origin') || '';
+  if (origin && !allowedOrigins.has(origin)) {
+    return new Response(JSON.stringify({ error: 'Origem nao autorizada.' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json', 'Vary': 'Origin' },
+    });
+  }
+  const corsHeaders = {
+    ...(origin ? { 'Access-Control-Allow-Origin': origin } : {}),
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin',
+  };
+
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })

@@ -1,7 +1,7 @@
 
 import { supabase } from './supabaseClient';
 import { Event } from '../types';
-import { uploadEventAttachments, deleteEventAttachment, EventAttachment, normalizeAttachmentRow } from './attachmentService';
+import { uploadEventAttachments, deleteEventAttachment, EventAttachment, resolveAttachmentUrls } from './attachmentService';
 
 const BUCKET = 'event-attachments';
 
@@ -40,10 +40,10 @@ export const eventService = {
       console.error("Erro ao buscar eventos no Supabase:", error);
       return [];
     }
-    return (data || []).map((event: any) => ({
+    return Promise.all((data || []).map(async (event: any) => ({
       ...event,
-      attachments: (event.attachments || []).map(normalizeAttachmentRow),
-    }));
+      attachments: await resolveAttachmentUrls(event.attachments || []),
+    })));
   },
 
   async createEvent(eventData: Partial<Event>, options?: { tenantId?: string | null }) {
@@ -149,8 +149,8 @@ export const eventService = {
     }
   },
 
-  async removeAttachment(id: string, url?: string) {
-    await deleteEventAttachment(id, url);
+  async removeAttachment(id: string) {
+    await deleteEventAttachment(id);
   },
 
   async deleteEvent(id: string) {

@@ -29,7 +29,7 @@ function resolvePath(req) {
  * Exemplos: /api/auth/create-member, /api/auth/session-access
  */
 export default async function handler(req, res) {
-  applyCors(res);
+  if (!applyCors(req, res)) return sendJson(res, 403, { error: 'Origem nao autorizada.' });
   if (req.method === 'OPTIONS') return res.status(204).end();
 
   const path = resolvePath(req);

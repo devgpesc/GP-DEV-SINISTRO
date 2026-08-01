@@ -32,7 +32,7 @@ function resolvePath(req) {
  * Router unico para /api/v1/* (Hobby plan: max 12 serverless functions).
  */
 export default async function handler(req, res) {
-  applyCors(res);
+  if (!applyCors(req, res)) return sendJson(res, 403, { error: 'Origem nao autorizada.' });
   if (req.method === 'OPTIONS') return res.status(204).end();
 
   const path = resolvePath(req);

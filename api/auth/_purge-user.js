@@ -45,7 +45,7 @@ async function findUsersByEmail(admin, email) {
  * Body: { email, tenantId }
  */
 export default async function handler(req, res) {
-  applyCors(res);
+  if (!applyCors(req, res)) return sendJson(res, 403, { error: 'Origem nao autorizada.' });
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return sendJson(res, 405, { error: 'Method not allowed' });
 
@@ -141,6 +141,6 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error('[purge-user]', error);
-    return sendJson(res, 500, { error: error.message || 'Falha ao limpar conta Auth.' });
+    return sendJson(res, 500, { error: 'Nao foi possivel concluir a limpeza da conta.' });
   }
 }

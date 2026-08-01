@@ -1,15 +1,11 @@
 import React, { ReactNode } from 'react';
-import { createRoot } from 'react-dom/client';
+import { createRoot, Root } from 'react-dom/client';
+import '@fontsource/source-sans-3/400.css';
+import '@fontsource/source-sans-3/600.css';
+import '@fontsource/source-sans-3/700.css';
+import '@fontsource/source-sans-3/800.css';
+import '@fontsource/jetbrains-mono/400.css';
 import './styles/app.css';
-
-// SHIM GLOBAL ABSOLUTO - DEVE SER O PRIMEIRO CÓDIGO A EXECUTAR
-console.log('[EventsCar] Inicializando shims...');
-if (typeof window !== 'undefined') {
-  (window as any).process = (window as any).process || {};
-  (window as any).process.env = (window as any).process.env || {};
-}
-
-import App from './App.tsx';
 
 interface ErrorBoundaryProps {
   children?: ReactNode;
@@ -17,54 +13,71 @@ interface ErrorBoundaryProps {
 
 interface ErrorBoundaryState {
   hasError: boolean;
-  error?: Error;
 }
 
-// Explicitly inheriting from React.Component
+const StartupMessage = ({ configuration = false }: { configuration?: boolean }) => (
+  <main className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+    <section className="w-full max-w-md bg-white border border-slate-200 rounded-lg p-8 text-center shadow-sm">
+      <h1 className="text-xl font-bold text-slate-900">
+        {configuration ? 'Configuração indisponível' : 'Não foi possível carregar esta tela'}
+      </h1>
+      <p className="mt-3 text-sm text-slate-600 leading-relaxed">
+        {configuration
+          ? 'O ambiente não está configurado corretamente. Contate o administrador.'
+          : 'Tente novamente. Se o problema continuar, contate o administrador.'}
+      </p>
+      {!configuration && (
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="mt-6 px-5 py-2.5 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+        >
+          Tentar novamente
+        </button>
+      )}
+    </section>
+  </main>
+);
+
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Explicitly defining state to resolve TypeScript errors and initializing directly
   public state: ErrorBoundaryState = { hasError: false };
 
-  static getDerivedStateFromError(error: Error) { 
-    return { hasError: true, error }; 
+  static getDerivedStateFromError() {
+    return { hasError: true };
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('[EventsCar] Erro capturado pelo ErrorBoundary:', error, errorInfo);
+    if (import.meta.env.DEV) console.error('[ErrorBoundary]', error, errorInfo);
   }
 
   render() {
-    if (this.state.hasError) {
-      return (
-        <div style={{height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif', textAlign: 'center', background: '#f8fafc', padding: '20px'}}>
-          <h2 style={{color: '#1e293b'}}>Ops! Algo deu errado ao carregar o sistema.</h2>
-          <pre style={{background: '#fee2e2', padding: '10px', borderRadius: '8px', fontSize: '12px', color: '#b91c1c'}}>{this.state.error?.message}</pre>
-          <button onClick={() => window.location.reload()} style={{marginTop: '20px', padding: '10px 20px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold'}}>Atualizar Sistema</button>
-        </div>
-      );
-    }
-    // Cast this to any to access props if TypeScript fails to infer it from React.Component
-    return (this as any).props.children;
+    if (this.state.hasError) return <StartupMessage />;
+    return this.props.children;
   }
 }
 
-console.log('[EventsCar] Localizando elemento root...');
 const rootElement = document.getElementById('root');
+if (!rootElement) throw new Error('Elemento raiz indisponível.');
 
-if (rootElement) {
-  console.log('[EventsCar] Elemento root encontrado. Criando raiz do React...');
-  try {
-    const root = createRoot(rootElement);
-    root.render(
-      <ErrorBoundary>
-        <App />
-      </ErrorBoundary>
-    );
-    console.log('[EventsCar] Renderização inicial disparada.');
-  } catch (err) {
-    console.error('[EventsCar] Erro fatal durante createRoot:', err);
-  }
+const root: Root = createRoot(rootElement);
+const supabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || '').trim();
+const supabaseKey = String(
+  import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '',
+).trim();
+
+if (!supabaseUrl || !supabaseKey) {
+  root.render(<StartupMessage configuration />);
 } else {
-  console.error('[EventsCar] ERRO CRÍTICO: Não foi possível encontrar o elemento <div id="root"> no HTML.');
-  document.body.innerHTML = '<div style="color: red; padding: 20px; font-weight: bold;">Erro de Inicialização: Elemento #root não encontrado.</div>';
+  import('./App.tsx')
+    .then(({ default: App }) => {
+      root.render(
+        <ErrorBoundary>
+          <App />
+        </ErrorBoundary>,
+      );
+    })
+    .catch((error) => {
+      if (import.meta.env.DEV) console.error('[Startup]', error);
+      root.render(<StartupMessage />);
+    });
 }

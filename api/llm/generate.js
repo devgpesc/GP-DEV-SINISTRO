@@ -1,6 +1,9 @@
 import { GoogleGenAI } from '@google/genai';
+import { applyCors } from '../_lib/http.js';
 
 export default async function handler(req, res) {
+  if (!applyCors(req, res)) return res.status(403).json({ error: 'Origem nao autorizada.' });
+  if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ error: 'Metodo nao permitido.' });
@@ -15,7 +18,7 @@ export default async function handler(req, res) {
     }
 
     if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: 'Chave Gemini nao configurada no servidor.' });
+      return res.status(503).json({ error: 'Servico de IA temporariamente indisponivel.' });
     }
 
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -31,6 +34,7 @@ export default async function handler(req, res) {
 
     return res.json({ text: response.text, provider, model });
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'Erro ao processar IA.' });
+    console.error('[llm]', error);
+    return res.status(500).json({ error: 'Nao foi possivel processar a solicitacao.' });
   }
 }
