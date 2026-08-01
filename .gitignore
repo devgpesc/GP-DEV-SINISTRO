@@ -35,6 +35,7 @@ supabase/.temp/
 
 # Local operational diagnostics and one-off account recovery scripts
 scripts/diag-*.mjs
+scripts/check-deploy.mjs
 scripts/reset-*-password.mjs
 supabase/scripts/diag_*.sql
 supabase/scripts/inspect_*.sql
