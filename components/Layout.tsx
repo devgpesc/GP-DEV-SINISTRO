@@ -348,9 +348,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             )}
             {canAccessEvents && (
               <NavItem to="/eventos" icon={FileText} label="Sinistros" active={location.pathname === '/eventos'} onClick={closeMobileMenu} />
+            )}
             {canAccessEvents && (
               <NavItem to="/posicionamento" icon={Wrench} label="Posicionamento" active={location.pathname.startsWith('/posicionamento')} onClick={closeMobileMenu} />
-            )}
             )}
 
             {hasFlowModules && (
