@@ -5,7 +5,7 @@ import {
   LayoutDashboard, FileText, ShoppingCart, Users, Truck, 
   BarChart3, Package, Car, Bell, Search, UserCircle, X, ShoppingBag, Clock, Trash2, CheckCheck,
   Globe, ShieldCheck, Wifi, WifiOff, AlertTriangle, CheckCircle2, UserCheck, Mail, Phone, MapPin, Key,
-  Camera, Save, Loader2, Edit3, AlertCircle, LogOut, ChevronDown, Zap, Sparkles, Info, Menu, Hexagon
+  Camera, Save, Loader2, Edit3, AlertCircle, LogOut, ChevronDown, Zap, Sparkles, Info, Menu, Hexagon, Wrench
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { isSupabaseConfigured, supabase } from '../services/supabaseClient';
@@ -282,67 +282,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   };
 
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
-  const pageMeta: Record<string, { title: string; description: string }> = {
-    '/': {
-      title: isSuperAdmin ? 'Painel Mestre' : 'Central operacional',
-      description: isSuperAdmin ? 'Controle das instâncias e empresas cadastradas.' : 'Sinistros, cotações, compras e entregas em uma visão de trabalho.',
-    },
-    '/eventos': {
-      title: 'Sinistros',
-      description: 'Abertura, prioridade, prazo e acompanhamento operacional dos casos.',
-    },
-    '/cotacoes': {
-      title: 'Cotações',
-      description: 'Comparação de fornecedores, itens pendentes e decisão de compra.',
-    },
-    '/compras': {
-      title: 'Compras',
-      description: 'Ordens, aprovações, cancelamentos e recompra sem perder histórico.',
-    },
-    '/entregas': {
-      title: 'Entregas',
-      description: 'Recebimento, divergências e liberação dos itens comprados.',
-    },
-    '/associados': {
-      title: 'Associados',
-      description: 'Clientes, terceiros e vinculos operacionais.',
-    },
-    '/fornecedores': {
-      title: 'Fornecedores',
-      description: 'Rede de empresas, contatos e desempenho de atendimento.',
-    },
-    '/veiculos': {
-      title: 'Veículos',
-      description: 'Frota, placas, proprietários e dados de acompanhamento.',
-    },
-    '/catalogo': {
-      title: 'Catálogo',
-      description: 'Peças, serviços e itens reutilizáveis nas cotações.',
-    },
-    '/relatorios': {
-      title: 'Relatórios',
-      description: 'Indicadores gerenciais, recompra, economia e desempenho.',
-    },
-    '/configuracoes': {
-      title: 'Configurações',
-      description: 'Usuários, permissões, convites e preferências da plataforma.',
-    },
-    '/notificacoes': {
-      title: 'Notificações',
-      description: 'Alertas operacionais e histórico de eventos importantes.',
-    },
-    '/saas-admin': {
-      title: 'Gestão SaaS',
-      description: 'Empresas, planos e administração da plataforma.',
-    },
-  };
-  const currentPageMeta = pageMeta[location.pathname] || {
-    title: 'Operacao',
-    description: 'Acompanhe e execute o fluxo do sistema.',
-  };
 
   return (
-    <div className="app-shell flex min-h-screen bg-[var(--app-bg)] print:bg-white overflow-x-hidden">
+    <div className="flex min-h-screen bg-[#F4F7FB] print:bg-white overflow-x-hidden">
       <style>{`
         @keyframes bell-ring {
           0%, 100% { transform: rotate(0deg); }
@@ -384,7 +326,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
       {/* Sidebar - Responsive */}
       <aside className={`
-        fixed top-0 left-0 h-full w-[252px] bg-[#111827] text-white flex flex-col z-40 transition-transform duration-300 ease-in-out border-r border-white/[0.04]
+        fixed top-0 left-0 h-full w-[270px] bg-[#111827] text-white flex flex-col z-40 transition-transform duration-300 ease-in-out border-r border-white/[0.04]
         ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 print:hidden
       `}>
         {/* ... (Sidebar Content remains the same) ... */}
@@ -406,6 +348,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             )}
             {canAccessEvents && (
               <NavItem to="/eventos" icon={FileText} label="Sinistros" active={location.pathname === '/eventos'} onClick={closeMobileMenu} />
+            {canAccessEvents && (
+              <NavItem to="/posicionamento" icon={Wrench} label="Posicionamento" active={location.pathname.startsWith('/posicionamento')} onClick={closeMobileMenu} />
+            )}
             )}
 
             {hasFlowModules && (
@@ -496,8 +441,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 md:ml-[252px] p-4 md:px-7 md:py-6 relative print:ml-0 print:p-0 print:w-full min-w-0 w-full">
-        <div className="mx-auto w-full max-w-[1600px]">
+      <main className="flex-1 md:ml-[270px] p-4 md:p-8 relative print:ml-0 print:p-0 print:w-full min-w-0 w-full">
         {/* ... (Main Content Header remains the same) ... */}
         <div className="md:hidden flex justify-between items-center mb-6 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
             <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-slate-600 hover:bg-slate-50 rounded-xl">
@@ -515,25 +459,21 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 {unreadCount > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full"></span>}
             </button>
         </div>
-        <div className="md:hidden mb-5 print:hidden">
-          <h2 className="text-2xl font-bold text-slate-900">{currentPageMeta.title}</h2>
-          <p className="mt-1 text-sm font-medium text-slate-500">{currentPageMeta.description}</p>
-        </div>
 
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 print:hidden">
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 print:hidden">
           <div className="hidden md:block">
-            <h2 className="text-[26px] font-bold text-slate-900">
-                {currentPageMeta.title}
+            <h2 className="text-2xl font-bold text-slate-800">
+                {isSuperAdmin ? 'Painel Mestre' : 'Visão Operacional'}
             </h2>
-            <p className="text-sm font-medium text-slate-500 mt-1">
-                {currentPageMeta.description}
+            <p className="text-slate-500">
+                {isSuperAdmin ? 'Controle total de todas as instâncias do sistema.' : 'Operações e Inteligência em tempo real.'}
             </p>
           </div>
           
           <div className="hidden md:flex items-center gap-4 relative">
             <button 
                 onClick={() => setIsAiChatOpen(true)}
-                className="bg-white hover:bg-slate-50 text-slate-700 px-3.5 py-2.5 border border-slate-200 rounded-lg font-bold text-xs flex items-center gap-2 transition-colors"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-600/30 flex items-center gap-2 transition-all hover:scale-105 active:scale-95"
             >
                 <Sparkles size={16} /> IA Visionária
             </button>
@@ -639,16 +579,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           
           <button 
               onClick={() => setIsAiChatOpen(true)}
-              className="md:hidden fixed bottom-24 right-5 z-40 bg-indigo-600 text-white w-12 h-12 rounded-full shadow-xl flex items-center justify-center animate-in zoom-in"
+              className="md:hidden fixed bottom-6 right-6 z-[90] bg-indigo-600 text-white w-12 h-12 rounded-full shadow-xl flex items-center justify-center animate-in zoom-in"
           >
               <Sparkles size={20} />
           </button>
         </header>
         
-        <div className="pb-8">
-          {children}
-        </div>
-        </div>
+        {children}
       </main>
 
       <AIChatWindow isOpen={isAiChatOpen} onClose={() => setIsAiChatOpen(false)} />
