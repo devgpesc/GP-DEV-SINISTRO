@@ -1,7 +1,7 @@
 import { supabase } from './supabaseClient';
 
-const BUCKET = 'event-attachments';
-const SIGNED_URL_TTL_SECONDS = 10 * 60;
+export const ATTACHMENT_BUCKET = 'event-attachments';
+export const SIGNED_URL_TTL_SECONDS = 10 * 60;
 export const MAX_EVENT_ATTACHMENTS = 20;
 
 type AllowedFileRule = {
@@ -131,7 +131,7 @@ export async function resolveAttachmentUrls(rows: any[]): Promise<EventAttachmen
   if (!paths.length) return attachments;
 
   const { data, error } = await supabase.storage
-    .from(BUCKET)
+    .from(ATTACHMENT_BUCKET)
     .createSignedUrls(paths, SIGNED_URL_TTL_SECONDS);
   if (error || !data) return attachments;
 
@@ -159,7 +159,7 @@ export async function uploadEventAttachments(eventId: string, attachments: Event
       const { mimeType, extension } = await validateEventAttachmentFile(attachment.file);
       const path = `${eventId}/${crypto.randomUUID()}.${extension}`;
       const { error: uploadError } = await supabase.storage
-        .from(BUCKET)
+        .from(ATTACHMENT_BUCKET)
         .upload(path, attachment.file, { upsert: false, contentType: mimeType, cacheControl: '3600' });
       if (uploadError) throw uploadError;
       uploadedPaths.push(path);
@@ -182,7 +182,7 @@ export async function uploadEventAttachments(eventId: string, attachments: Event
       if (error) throw error;
 
       const { data: signed } = await supabase.storage
-        .from(BUCKET)
+        .from(ATTACHMENT_BUCKET)
         .createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
       saved.push({
         ...normalizeAttachmentRow(data),
@@ -193,7 +193,7 @@ export async function uploadEventAttachments(eventId: string, attachments: Event
   } catch (error) {
     if (uploadedPaths.length) {
       await supabase.from('event_attachments').delete().eq('event_id', eventId).in('file_path', uploadedPaths);
-      await supabase.storage.from(BUCKET).remove(uploadedPaths);
+      await supabase.storage.from(ATTACHMENT_BUCKET).remove(uploadedPaths);
     }
     throw error;
   }
@@ -213,7 +213,7 @@ export async function deleteEventAttachment(id: string) {
   if (deleteError) throw deleteError;
 
   if (row?.file_path) {
-    const { error: storageError } = await supabase.storage.from(BUCKET).remove([row.file_path]);
+    const { error: storageError } = await supabase.storage.from(ATTACHMENT_BUCKET).remove([row.file_path]);
     if (storageError) throw storageError;
   }
 }
