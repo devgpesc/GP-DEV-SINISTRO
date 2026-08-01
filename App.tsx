@@ -24,6 +24,7 @@ import PendingAccess from './pages/PendingAccess.tsx';
 import SaasAdmin from './pages/SaasAdmin.tsx';
 import Associates from './pages/Associates.tsx';
 import Notifications from './pages/Notifications.tsx';
+import VehiclePositioning from './pages/VehiclePositioning.tsx';
 
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isSuperAdmin } = useAuth();
@@ -60,6 +61,9 @@ const App: React.FC = () => {
                       } />
                       <Route path="/entregas" element={
                         <PermissionRoute require="canAccessDeliveries"><Deliveries /></PermissionRoute>
+                      } />
+                      <Route path="/posicionamento" element={
+                        <PermissionRoute require="canAccessEvents"><VehiclePositioning /></PermissionRoute>
                       } />
                       <Route path="/fornecedores" element={
                         <PermissionRoute require="canAccessSuppliers"><Suppliers /></PermissionRoute>
