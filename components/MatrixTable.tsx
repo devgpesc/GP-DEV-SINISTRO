@@ -734,12 +734,15 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
                   <td className={`sticky left-0 z-10 border-l-4 border-r border-slate-100 bg-white px-3 py-2 font-bold text-slate-700 ${isService ? 'border-l-violet-500' : 'border-l-blue-500'}`}>
                     <div className="flex items-center gap-2">
                       <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${isService ? 'bg-violet-50 text-violet-700' : 'bg-blue-50 text-blue-700'}`}>{isService ? <Wrench size={14} /> : <Package size={14} />}</span>
-                      <div className="min-w-0"><span className="block truncate text-sm font-black text-slate-950">{item.name}</span><span className={`text-[8px] font-black uppercase ${isService ? 'text-violet-700' : 'text-blue-700'}`}>{isService ? 'Serviço' : 'Peça'}</span></div>
-                    </div>
-                    <div className="mt-1.5 flex items-center gap-2 pl-9">
-                      <span className="text-[10px] text-slate-400 font-black uppercase bg-slate-50 px-2 py-0.5 rounded border border-slate-100">{item.quantity} {item.unit}</span>
-                      {isProcessed && <span className="text-[9px] font-black uppercase text-slate-500 bg-slate-200 px-2 py-0.5 rounded">Processado</span>}
-                      {activeSelections[item.id] && !isProcessed && <CheckCircle2 size={16} className="text-blue-600" />}
+                      <div className="min-w-0">
+                        <span className="block truncate text-sm font-black text-slate-950">{item.name}</span>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[8px] font-black uppercase ${isService ? 'text-violet-700' : 'text-blue-700'}`}>{isService ? 'Serviço' : 'Peça'}</span>
+                          <span className="rounded border border-slate-100 bg-slate-50 px-1.5 text-[9px] font-black uppercase text-slate-400">{item.quantity} {item.unit}</span>
+                          {isProcessed && <span className="rounded bg-slate-200 px-1.5 text-[8px] font-black uppercase text-slate-500">Processado</span>}
+                          {activeSelections[item.id] && !isProcessed && <CheckCircle2 size={14} className="text-blue-600" />}
+                        </div>
+                      </div>
                     </div>
                     {isProcessed && (
                       <button
@@ -787,12 +790,15 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
                     return (
                       <td key={supplier.id} className="p-2 text-center relative group/cell">
                         <button onClick={(event) => { event.stopPropagation(); startEditing(item.id, supplier.id, price); }} className="absolute top-2 right-2 p-1.5 bg-white text-slate-400 hover:text-blue-600 rounded-full shadow-sm border border-slate-100 opacity-0 group-hover/cell:opacity-100 transition-opacity z-20"><Edit2 size={12} /></button>
-                        <button onClick={() => selectForPurchase(item, supplier, price)} disabled={isProcessed || price.availability === false} className={`relative flex min-h-[50px] w-full flex-col items-center justify-center rounded-md border px-2 py-1.5 transition-all ${selected ? 'bg-blue-50 border-blue-500 text-blue-900 ring-1 ring-blue-200' : isBest ? 'bg-emerald-50 border-emerald-300 text-slate-800 hover:border-blue-500' : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'} disabled:opacity-50 disabled:cursor-not-allowed`}>
+                        <button onClick={() => selectForPurchase(item, supplier, price)} disabled={isProcessed || price.availability === false} className={`relative flex min-h-[46px] w-full flex-col items-center justify-center rounded-md border px-2 py-1 transition-all ${selected ? 'bg-blue-50 border-blue-500 text-blue-900 ring-1 ring-blue-200' : isBest ? 'bg-emerald-50 border-emerald-300 text-slate-800 hover:border-blue-500' : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'} disabled:opacity-50 disabled:cursor-not-allowed`}>
                           {isBest && !selected && <span className="absolute top-1 right-1 bg-emerald-100 text-emerald-700 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase">Menor preço</span>}
                           <span className="text-sm font-black"><span className="opacity-50 text-[10px]">R$</span> {money(price.price)}</span>
-                          <span className="text-[9px] font-bold uppercase text-slate-500">Total R$ {money(price.price * (activeSelections[item.id]?.quantity || item.quantity || 1))}</span>
-                          <span className={`text-[9px] font-bold ${price.availability === false ? 'text-red-500' : 'text-slate-500'}`}>{price.availability === false ? 'Indisponível' : price.delivery_days ? `${price.delivery_days} dia(s)` : 'Prazo não informado'}</span>
-                          {price.obs && <MessageSquare size={10} className="text-slate-400 mt-1" />}
+                          <span className="flex items-center gap-1 text-[8px] font-bold uppercase text-slate-500">
+                            Total R$ {money(price.price * (activeSelections[item.id]?.quantity || item.quantity || 1))}
+                            <span className="text-slate-300">•</span>
+                            <span className={price.availability === false ? 'text-red-500' : ''}>{price.availability === false ? 'Indisponível' : price.delivery_days ? `${price.delivery_days} dia(s)` : 'Sem prazo'}</span>
+                          </span>
+                          {price.obs && <MessageSquare size={9} className="absolute bottom-1 right-1 text-slate-400" />}
                         </button>
                       </td>
                     );
