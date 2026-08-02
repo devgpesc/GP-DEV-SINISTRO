@@ -152,38 +152,44 @@ export const quotationService = {
     obs?: string;
     availability?: boolean;
     delivery_days?: number | null;
-  }) {
-    const { error } = await supabase
+  }): Promise<SupplierPrice> {
+    const createdAt = new Date().toISOString();
+    const { data, error } = await supabase
       .from('quotation_supplier_prices')
       .upsert(
         {
           ...payload,
           availability: payload.availability ?? true,
           is_winner: false,
-          created_at: new Date().toISOString(),
+          created_at: createdAt,
         },
         { onConflict: 'quotation_item_id, supplier_id' }
-      );
+      )
+      .select('*')
+      .single();
 
     if (error && payload.delivery_days !== undefined) {
       const { delivery_days, ...legacyPayload } = payload;
-      const { error: fallbackError } = await supabase
+      const { data: fallbackData, error: fallbackError } = await supabase
         .from('quotation_supplier_prices')
         .upsert(
           {
             ...legacyPayload,
             availability: legacyPayload.availability ?? true,
             is_winner: false,
-            created_at: new Date().toISOString(),
+            created_at: createdAt,
           },
           { onConflict: 'quotation_item_id, supplier_id' }
-        );
+        )
+        .select('*')
+        .single();
 
       if (fallbackError) throw fallbackError;
-      return;
+      return fallbackData as SupplierPrice;
     }
 
     if (error) throw error;
+    return data as SupplierPrice;
   },
 
   async simulateSupplierResponses(quotationId: string) {

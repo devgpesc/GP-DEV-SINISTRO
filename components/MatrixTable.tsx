@@ -10,11 +10,13 @@ import {
   FileText,
   Loader2,
   MessageSquare,
+  Package,
   RefreshCw,
   Save,
   Search,
   ShoppingCart,
   Trash2,
+  Wrench,
   X,
   XCircle,
 } from 'lucide-react';
@@ -217,7 +219,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
 
     setIsSavingPrice(true);
     try {
-      await quotationService.savePrice({
+      const savedPrice = await quotationService.savePrice({
         quotation_item_id: editingCell.itemId,
         supplier_id: editingCell.supplierId,
         price: priceValue,
@@ -225,9 +227,20 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
         availability: editAvailability,
         delivery_days: deliveryDays,
       });
-      await loadData();
+      setPrices((currentPrices) => {
+        const savedIndex = currentPrices.findIndex((price) =>
+          price.quotation_item_id === savedPrice.quotation_item_id
+          && price.supplier_id === savedPrice.supplier_id
+        );
+
+        if (savedIndex < 0) return [...currentPrices, savedPrice];
+
+        const nextPrices = [...currentPrices];
+        nextPrices[savedIndex] = savedPrice;
+        return nextPrices;
+      });
       cancelEditing();
-      addToast('success', 'Preco lancado', 'Valor atualizado na matriz.');
+      addToast('success', 'Preco lancado', 'Valor atualizado sem recarregar a pagina.');
     } catch (error: any) {
       addToast('error', 'Erro ao salvar', error.message);
     } finally {
@@ -520,17 +533,22 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
     <div className="app-table-wrap divide-y divide-slate-200">
       {paginatedItems.map((item) => {
         const isProcessed = processedItemIds.includes(item.id);
+        const isService = (item as any).item_type === 'Serviço';
         return (
           <section key={item.id} className={isProcessed ? 'bg-slate-50/80' : 'bg-white'}>
-            <div className="flex flex-col gap-3 border-b border-slate-100 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-sm font-black text-slate-900">{item.name}</h3>
+            <div className={`flex flex-col gap-2 border-b border-slate-200 border-l-4 px-3 py-2 sm:flex-row sm:items-center sm:justify-between ${isService ? 'border-l-violet-500 bg-violet-50/70' : 'border-l-blue-500 bg-blue-50/70'}`}>
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${isService ? 'bg-violet-100 text-violet-700' : 'bg-blue-100 text-blue-700'}`}>
+                  {isService ? <Wrench size={16} /> : <Package size={16} />}
+                </span>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`text-[9px] font-black uppercase ${isService ? 'text-violet-700' : 'text-blue-700'}`}>{isService ? 'Serviço' : 'Peça'}</span>
+                    <h3 className="truncate text-sm font-black text-slate-950">{item.name}</h3>
                   <span className="rounded border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-black uppercase text-slate-500">{item.quantity} {item.unit}</span>
                   {isProcessed && <span className="rounded bg-slate-200 px-2 py-0.5 text-[9px] font-black uppercase text-slate-600">Processado</span>}
-                  {(item as any).item_type === 'Serviço' && <span className="rounded border border-purple-100 bg-purple-50 px-2 py-0.5 text-[9px] font-black uppercase text-purple-600">Serviço</span>}
+                  </div>
                 </div>
-                <p className="mt-1 text-xs font-medium text-slate-500">Compare os fornecedores e selecione uma proposta.</p>
               </div>
               {isProcessed && (
                 <button type="button" onClick={() => openReleaseModal(item)} disabled={releasingItemId === item.id} className="self-start rounded-lg bg-amber-100 px-3 py-2 text-[10px] font-black uppercase text-amber-700 disabled:opacity-50">
@@ -548,27 +566,27 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
 
                 if (isEditing) {
                   return (
-                    <div key={supplier.id} className="grid gap-3 bg-blue-50/50 px-5 py-4 lg:grid-cols-[minmax(180px,1fr)_minmax(360px,2fr)] lg:items-center">
-                      <div><p className="text-sm font-black text-slate-800">{supplier.name}</p><p className="text-xs font-medium text-slate-500">{supplier.city || 'Local não informado'}</p></div>
-                      <div className="grid gap-2 rounded-lg border border-blue-300 bg-white p-3 sm:grid-cols-[1fr_110px_110px_auto]">
-                        <label className="flex items-center gap-2 text-xs font-bold text-slate-500">R$ <input autoFocus type="number" className="min-w-0 flex-1 border-b border-slate-200 py-1 font-black text-slate-800 outline-none" value={editPrice} onChange={(event) => setEditPrice(event.target.value)} placeholder="0,00" /></label>
-                        <input className="rounded-lg bg-slate-50 p-2 text-xs font-medium outline-none" placeholder="Prazo (dias)" value={editDeliveryDays} onChange={(event) => setEditDeliveryDays(event.target.value)} />
-                        <label className="flex items-center gap-2 rounded-lg bg-slate-50 p-2 text-xs font-bold text-slate-600"><input type="checkbox" checked={editAvailability} onChange={(event) => setEditAvailability(event.target.checked)} /> Disponível</label>
+                    <div key={supplier.id} className="grid gap-2 bg-blue-50/50 px-4 py-2 xl:grid-cols-[minmax(220px,1fr)_minmax(620px,2.4fr)] xl:items-center">
+                      <div className="flex min-w-0 items-center gap-2"><p className="truncate text-xs font-black text-slate-800">{supplier.name}</p><span className="shrink-0 text-[10px] font-medium text-slate-400">{supplier.city || 'Local não informado'}</span></div>
+                      <div className="grid gap-1.5 rounded-lg border border-blue-300 bg-white p-1.5 sm:grid-cols-[minmax(130px,1fr)_96px_105px_minmax(150px,1.2fr)_auto] sm:items-center">
+                        <label className="flex min-h-9 items-center gap-2 rounded-md bg-slate-50 px-2 text-xs font-bold text-slate-500">R$ <input autoFocus type="number" className="min-w-0 flex-1 bg-transparent font-black text-slate-800 outline-none" value={editPrice} onChange={(event) => setEditPrice(event.target.value)} placeholder="0,00" /></label>
+                        <input className="min-h-9 rounded-md bg-slate-50 px-2 text-xs font-medium outline-none" placeholder="Prazo (dias)" value={editDeliveryDays} onChange={(event) => setEditDeliveryDays(event.target.value)} />
+                        <label className="flex min-h-9 items-center gap-2 rounded-md bg-slate-50 px-2 text-xs font-bold text-slate-600"><input type="checkbox" checked={editAvailability} onChange={(event) => setEditAvailability(event.target.checked)} /> Disponível</label>
+                        <input className="min-h-9 rounded-md bg-slate-50 px-2 text-xs font-medium outline-none" placeholder="Observação" value={editObs} onChange={(event) => setEditObs(event.target.value)} />
                         <div className="flex justify-end gap-1"><button type="button" onClick={cancelEditing} className="app-icon-button" title="Cancelar"><X size={14} /></button><button type="button" onClick={saveManualPrice} disabled={isSavingPrice} className="app-icon-button bg-blue-600 text-white" title="Salvar">{isSavingPrice ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}</button></div>
-                        <input className="rounded-lg bg-slate-50 p-2 text-xs font-medium outline-none sm:col-span-full" placeholder="Observação" value={editObs} onChange={(event) => setEditObs(event.target.value)} />
                       </div>
                     </div>
                   );
                 }
 
                 return (
-                  <div key={supplier.id} className={`grid gap-3 px-5 py-4 transition-colors lg:grid-cols-[minmax(180px,1fr)_110px_140px_150px] lg:items-center ${selected ? 'bg-blue-50' : isBest ? 'bg-emerald-50/60' : 'hover:bg-slate-50'}`}>
+                  <div key={supplier.id} className={`grid gap-2 px-4 py-2 transition-colors lg:grid-cols-[minmax(220px,1fr)_90px_125px_145px] lg:items-center ${selected ? 'bg-blue-50' : isBest ? 'bg-emerald-50/60' : 'hover:bg-slate-50'}`}>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-black text-slate-800">{supplier.name}</p>{isBest && <span className="rounded bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase text-emerald-700">Menor preço</span>}{selected && <CheckCircle2 size={16} className="text-blue-600" />}</div>
-                      <p className="mt-1 text-xs font-medium text-slate-500">{supplier.city || 'Local não informado'}</p>
+                      <p className="text-[10px] font-medium text-slate-500">{supplier.city || 'Local não informado'}</p>
                     </div>
-                    <div><p className="text-[9px] font-black uppercase text-slate-400">Prazo</p><p className="mt-1 text-xs font-bold text-slate-700">{price ? (price.availability === false ? 'Indisponível' : price.delivery_days ? `${price.delivery_days} dia(s)` : 'Não informado') : 'Sem cotação'}</p></div>
-                    <div><p className="text-[9px] font-black uppercase text-slate-400">Valor unitário</p><p className={`mt-1 text-base font-black ${isBest ? 'text-emerald-700' : 'text-slate-800'}`}>{price ? `R$ ${money(price.price)}` : '—'}</p></div>
+                    <div><p className="text-[9px] font-black uppercase text-slate-400">Prazo</p><p className="text-xs font-bold text-slate-700">{price ? (price.availability === false ? 'Indisponível' : price.delivery_days ? `${price.delivery_days} dia(s)` : 'Não informado') : 'Sem cotação'}</p></div>
+                    <div><p className="text-[9px] font-black uppercase text-slate-400">Valor unitário</p><p className={`text-sm font-black ${isBest ? 'text-emerald-700' : 'text-slate-800'}`}>{price ? `R$ ${money(price.price)}` : '—'}</p></div>
                     <div className="flex items-center justify-end gap-2">
                       <button type="button" onClick={() => startEditing(item.id, supplier.id, price)} className="app-icon-button" title={price ? 'Editar cotação' : 'Lançar valor'}><Edit2 size={15} /></button>
                       {price && <button type="button" onClick={() => selectForPurchase(item, supplier, price)} disabled={isProcessed || price.availability === false} className={`min-w-[96px] rounded-lg px-3 py-2 text-[10px] font-black uppercase transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${selected ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:text-blue-700'}`}>{selected ? 'Selecionado' : 'Selecionar'}</button>}
@@ -592,62 +610,62 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
   }
 
   return (
-    <div className="space-y-5 animate-in fade-in duration-500 pb-20 print:p-0">
-      <div className="border-l-4 border-amber-500 bg-amber-50 px-4 py-3 text-amber-900 print:hidden">
-        <div className="flex items-start gap-3">
-          <AlertTriangle size={22} className="mt-0.5" />
+    <div className="space-y-3 animate-in fade-in duration-500 pb-12 print:p-0">
+      <div className="border-l-4 border-amber-500 bg-amber-50 px-3 py-2 text-amber-900 print:hidden">
+        <div className="flex items-start gap-2">
+          <AlertTriangle size={18} className="mt-0.5 shrink-0" />
           <div>
-            <p className="font-bold text-sm">Decisão de compra manual</p>
-            <p className="text-sm font-medium">O menor preço é apenas destacado. Selecione o fornecedor desejado em cada linha.</p>
+            <p className="text-xs font-bold">Decisão de compra manual</p>
+            <p className="text-xs font-medium">O menor preço é apenas destacado. Selecione o fornecedor desejado em cada linha.</p>
           </div>
         </div>
       </div>
 
-      <div className="app-panel px-5 py-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-x-5 gap-y-4 text-sm">
+      <div className="app-panel px-4 py-2.5">
+        <div className="grid grid-cols-1 gap-x-4 gap-y-2 text-xs md:grid-cols-3 xl:grid-cols-6">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Pré-Orçamento</p>
+            <p className="mb-0.5 text-[9px] font-black uppercase text-slate-400">Pré-Orçamento</p>
             <p className="font-black text-slate-800">{headerMeta?.quotationCode || quotationId}</p>
           </div>
           <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Protocolo</p>
+            <p className="mb-0.5 text-[9px] font-black uppercase text-slate-400">Protocolo</p>
             <p className="font-black text-slate-800">{headerMeta?.eventProtocol || 'Não vinculado'}</p>
           </div>
           <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Associado</p>
+            <p className="mb-0.5 text-[9px] font-black uppercase text-slate-400">Associado</p>
             <p className="font-black text-slate-800">{headerMeta?.associateName || 'Não identificado'}</p>
           </div>
           <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Veículo / Placa</p>
+            <p className="mb-0.5 text-[9px] font-black uppercase text-slate-400">Veículo / Placa</p>
             <p className="font-black text-slate-800">{headerMeta?.vehicleLabel || 'Não identificado'}</p>
           </div>
           <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Abertura sinistro</p>
+            <p className="mb-0.5 text-[9px] font-black uppercase text-slate-400">Abertura sinistro</p>
             <p className="font-black text-slate-800">{headerMeta?.eventOpenedAt || '—'}</p>
           </div>
           <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Data da cotação</p>
+            <p className="mb-0.5 text-[9px] font-black uppercase text-slate-400">Data da cotação</p>
             <p className="font-black text-slate-800">{formatDateTimeBr(headerMeta?.createdAt)}</p>
           </div>
         </div>
       </div>
 
-      <div className="app-kpi-grid print:hidden">
+      <div className="app-kpi-grid app-kpi-grid--compact print:hidden">
         <div className="app-kpi">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Itens / Cotados</p>
-          <span className="text-2xl font-black text-slate-800">{stats.quotedItems}/{stats.totalItems}</span>
+          <p className="mb-1 text-[9px] font-black uppercase text-slate-400">Itens / Cotados</p>
+          <span className="text-xl font-black text-slate-800">{stats.quotedItems}/{stats.totalItems}</span>
         </div>
         <div className="app-kpi">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Orcamentos recebidos</p>
-          <span className="text-2xl font-black text-slate-800">{stats.responsesCount}</span>
+          <p className="mb-1 text-[9px] font-black uppercase text-slate-400">Orcamentos recebidos</p>
+          <span className="text-xl font-black text-slate-800">{stats.responsesCount}</span>
         </div>
         <div className="app-kpi">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Cobertura</p>
+          <p className="mb-1 text-[9px] font-black uppercase text-slate-400">Cobertura</p>
           <div className="flex items-center gap-2"><div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-blue-500" style={{ width: `${stats.coverage}%` }} /></div><span className="text-xs font-bold text-blue-600">{stats.coverage.toFixed(0)}%</span></div>
         </div>
         <div className="app-kpi">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Total selecionado</p>
-          <span className="text-2xl font-black text-slate-800">R$ {money(stats.selectedTotal)}</span>
+          <p className="mb-1 text-[9px] font-black uppercase text-slate-400">Total selecionado</p>
+          <span className="text-xl font-black text-slate-800">R$ {money(stats.selectedTotal)}</span>
         </div>
       </div>
 
@@ -660,27 +678,27 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
         </div>
       )}
 
-      <div className="app-toolbar flex-col md:flex-row justify-between print:hidden">
+      <div className="app-toolbar matrix-toolbar flex-col justify-between md:flex-row print:hidden">
         <div className="flex items-center gap-2 flex-1 flex-wrap">
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input placeholder="Filtrar itens..." className="pl-9 pr-4 py-2 bg-white border border-slate-200 text-sm font-medium outline-none w-48" value={filterText} onChange={(event) => setFilterText(event.target.value)} />
+            <input placeholder="Filtrar itens..." className="min-h-9 w-48 border border-slate-200 bg-white py-1.5 pl-9 pr-3 text-xs font-medium outline-none" value={filterText} onChange={(event) => setFilterText(event.target.value)} />
           </div>
-          <select className="px-4 py-2 bg-white rounded-xl text-sm font-bold text-slate-600 outline-none" value={filterSupplier} onChange={(event) => setFilterSupplier(event.target.value)}>
+          <select className="min-h-9 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 outline-none" value={filterSupplier} onChange={(event) => setFilterSupplier(event.target.value)}>
             <option value="">Todos fornecedores</option>
             {suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
           </select>
-          <select className="px-4 py-2 bg-white rounded-xl text-sm font-bold text-slate-600 outline-none" value={filterStatus} onChange={(event) => setFilterStatus(event.target.value)}>
+          <select className="min-h-9 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 outline-none" value={filterStatus} onChange={(event) => setFilterStatus(event.target.value)}>
             <option>Todos</option>
             <option>Cotado</option>
             <option>Sem Cotacao</option>
             <option>Selecionado</option>
             <option>Processado</option>
           </select>
-          <select className="px-4 py-2 bg-white rounded-xl text-sm font-bold text-slate-600 outline-none" value={filterVersion} onChange={(event) => setFilterVersion(event.target.value)}>
+          <select className="min-h-9 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 outline-none" value={filterVersion} onChange={(event) => setFilterVersion(event.target.value)}>
             {versionOptions.map((version) => <option key={version} value={version}>{version}</option>)}
           </select>
-          <select className="px-4 py-2 bg-white rounded-xl text-sm font-bold text-slate-600 outline-none" value={itemsPerPage} onChange={(event) => setItemsPerPage(Number(event.target.value))}>
+          <select className="min-h-9 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 outline-none" value={itemsPerPage} onChange={(event) => setItemsPerPage(Number(event.target.value))}>
             {[10, 15, 20, 30, 50].map((qty) => <option key={qty} value={qty}>{qty} itens/página</option>)}
           </select>
         </div>
@@ -698,11 +716,11 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
-              <th className="px-4 py-3 text-xs font-bold text-slate-500 uppercase min-w-[250px] sticky left-0 bg-slate-50 z-20 border-r border-slate-200">Item / Qtd</th>
+              <th className="sticky left-0 z-20 min-w-[220px] border-r border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold uppercase text-slate-500">Item / Qtd</th>
               {filteredSuppliers.map((supplier) => (
-                <th key={supplier.id} className="px-4 py-3 text-center min-w-[210px]">
-                  <span className="font-bold text-slate-800 text-sm">{supplier.name}</span>
-                  <p className="text-[10px] text-slate-400 font-bold">{supplier.city || 'Local'}</p>
+                <th key={supplier.id} className="min-w-[190px] px-3 py-2 text-center">
+                  <span className="text-xs font-bold text-slate-800">{supplier.name}</span>
+                  <p className="text-[9px] font-bold text-slate-400">{supplier.city || 'Local'}</p>
                 </th>
               ))}
             </tr>
@@ -710,15 +728,18 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
           <tbody className="divide-y divide-slate-100">
             {paginatedItems.map((item) => {
               const isProcessed = processedItemIds.includes(item.id);
+              const isService = (item as any).item_type === 'Serviço';
               return (
                 <tr key={item.id} className={isProcessed ? 'bg-slate-50/80' : 'hover:bg-slate-50/50'}>
-                  <td className="px-4 py-3 sticky left-0 bg-white border-r border-slate-100 z-10 font-bold text-slate-700">
-                    <span className="block text-sm">{item.name}</span>
-                    <div className="flex gap-2 mt-2 items-center">
+                  <td className={`sticky left-0 z-10 border-l-4 border-r border-slate-100 bg-white px-3 py-2 font-bold text-slate-700 ${isService ? 'border-l-violet-500' : 'border-l-blue-500'}`}>
+                    <div className="flex items-center gap-2">
+                      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${isService ? 'bg-violet-50 text-violet-700' : 'bg-blue-50 text-blue-700'}`}>{isService ? <Wrench size={14} /> : <Package size={14} />}</span>
+                      <div className="min-w-0"><span className="block truncate text-sm font-black text-slate-950">{item.name}</span><span className={`text-[8px] font-black uppercase ${isService ? 'text-violet-700' : 'text-blue-700'}`}>{isService ? 'Serviço' : 'Peça'}</span></div>
+                    </div>
+                    <div className="mt-1.5 flex items-center gap-2 pl-9">
                       <span className="text-[10px] text-slate-400 font-black uppercase bg-slate-50 px-2 py-0.5 rounded border border-slate-100">{item.quantity} {item.unit}</span>
                       {isProcessed && <span className="text-[9px] font-black uppercase text-slate-500 bg-slate-200 px-2 py-0.5 rounded">Processado</span>}
                       {activeSelections[item.id] && !isProcessed && <CheckCircle2 size={16} className="text-blue-600" />}
-                      {(item as any).item_type === 'Serviço' && <span className="text-[9px] font-black uppercase text-purple-600 bg-purple-50 px-2 py-0.5 rounded border border-purple-100">Servico</span>}
                     </div>
                     {isProcessed && (
                       <button
@@ -739,14 +760,14 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
 
                     if (isEditing) {
                       return (
-                        <td key={supplier.id} className="p-2 min-w-[210px]">
-                          <div className="bg-white border border-blue-500 rounded-md p-3 shadow-sm">
-                            <div className="flex items-center gap-2 mb-2"><span className="text-xs font-bold text-slate-500">R$</span><input autoFocus type="number" className="w-full font-black text-slate-800 outline-none border-b border-slate-200" value={editPrice} onChange={(event) => setEditPrice(event.target.value)} placeholder="0.00" /></div>
-                            <div className="grid grid-cols-2 gap-2 mb-2">
-                              <input className="text-[10px] font-medium text-slate-500 outline-none bg-slate-50 p-1.5 rounded" placeholder="Prazo dias" value={editDeliveryDays} onChange={(event) => setEditDeliveryDays(event.target.value)} />
-                              <label className="text-[10px] font-bold text-slate-500 bg-slate-50 p-1.5 rounded flex items-center gap-1"><input type="checkbox" checked={editAvailability} onChange={(event) => setEditAvailability(event.target.checked)} /> Disp.</label>
+                        <td key={supplier.id} className="min-w-[190px] p-1.5">
+                          <div className="rounded-md border border-blue-500 bg-white p-2 shadow-sm">
+                            <div className="mb-1.5 flex items-center gap-2"><span className="text-xs font-bold text-slate-500">R$</span><input autoFocus type="number" className="w-full border-b border-slate-200 text-sm font-black text-slate-800 outline-none" value={editPrice} onChange={(event) => setEditPrice(event.target.value)} placeholder="0.00" /></div>
+                            <div className="mb-1.5 grid grid-cols-2 gap-1.5">
+                              <input className="rounded bg-slate-50 p-1 text-[10px] font-medium text-slate-500 outline-none" placeholder="Prazo dias" value={editDeliveryDays} onChange={(event) => setEditDeliveryDays(event.target.value)} />
+                              <label className="flex items-center gap-1 rounded bg-slate-50 p-1 text-[10px] font-bold text-slate-500"><input type="checkbox" checked={editAvailability} onChange={(event) => setEditAvailability(event.target.checked)} /> Disp.</label>
                             </div>
-                            <input className="w-full text-[10px] font-medium text-slate-500 outline-none bg-slate-50 p-1.5 rounded mb-2" placeholder="Observacao" value={editObs} onChange={(event) => setEditObs(event.target.value)} />
+                            <input className="mb-1.5 w-full rounded bg-slate-50 p-1 text-[10px] font-medium text-slate-500 outline-none" placeholder="Observacao" value={editObs} onChange={(event) => setEditObs(event.target.value)} />
                             <div className="flex justify-end gap-1"><button onClick={cancelEditing} className="p-1.5 rounded-lg bg-slate-100 text-slate-500"><X size={14} /></button><button onClick={saveManualPrice} disabled={isSavingPrice} className="p-1.5 rounded-lg bg-blue-600 text-white">{isSavingPrice ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}</button></div>
                           </div>
                         </td>
@@ -756,7 +777,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
                     if (!price) {
                       return (
                         <td key={supplier.id} className="p-2 text-center">
-                          <button onClick={() => startEditing(item.id, supplier.id)} className="w-full min-h-[64px] px-3 py-2 rounded-md bg-white border border-dashed border-slate-300 text-xs text-slate-500 font-bold flex items-center justify-center gap-2 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300">
+                          <button onClick={() => startEditing(item.id, supplier.id)} className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 bg-white px-2 py-1.5 text-xs font-bold text-slate-500 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600">
                             <Edit2 size={14} /> Lancar valor
                           </button>
                         </td>
@@ -766,11 +787,11 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
                     return (
                       <td key={supplier.id} className="p-2 text-center relative group/cell">
                         <button onClick={(event) => { event.stopPropagation(); startEditing(item.id, supplier.id, price); }} className="absolute top-2 right-2 p-1.5 bg-white text-slate-400 hover:text-blue-600 rounded-full shadow-sm border border-slate-100 opacity-0 group-hover/cell:opacity-100 transition-opacity z-20"><Edit2 size={12} /></button>
-                        <button onClick={() => selectForPurchase(item, supplier, price)} disabled={isProcessed || price.availability === false} className={`w-full min-h-[70px] px-3 py-2 rounded-md border transition-all flex flex-col items-center justify-center relative ${selected ? 'bg-blue-50 border-blue-500 text-blue-900 ring-1 ring-blue-200' : isBest ? 'bg-emerald-50 border-emerald-300 text-slate-800 hover:border-blue-500' : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'} disabled:opacity-50 disabled:cursor-not-allowed`}>
+                        <button onClick={() => selectForPurchase(item, supplier, price)} disabled={isProcessed || price.availability === false} className={`relative flex min-h-[50px] w-full flex-col items-center justify-center rounded-md border px-2 py-1.5 transition-all ${selected ? 'bg-blue-50 border-blue-500 text-blue-900 ring-1 ring-blue-200' : isBest ? 'bg-emerald-50 border-emerald-300 text-slate-800 hover:border-blue-500' : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'} disabled:opacity-50 disabled:cursor-not-allowed`}>
                           {isBest && !selected && <span className="absolute top-1 right-1 bg-emerald-100 text-emerald-700 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase">Menor preço</span>}
                           <span className="text-sm font-black"><span className="opacity-50 text-[10px]">R$</span> {money(price.price)}</span>
-                          <span className="text-[9px] font-bold mt-1 uppercase text-slate-500">Total R$ {money(price.price * (activeSelections[item.id]?.quantity || item.quantity || 1))}</span>
-                          <span className={`text-[9px] font-bold mt-1 ${price.availability === false ? 'text-red-500' : 'text-slate-500'}`}>{price.availability === false ? 'Indisponível' : price.delivery_days ? `${price.delivery_days} dia(s)` : 'Prazo não informado'}</span>
+                          <span className="text-[9px] font-bold uppercase text-slate-500">Total R$ {money(price.price * (activeSelections[item.id]?.quantity || item.quantity || 1))}</span>
+                          <span className={`text-[9px] font-bold ${price.availability === false ? 'text-red-500' : 'text-slate-500'}`}>{price.availability === false ? 'Indisponível' : price.delivery_days ? `${price.delivery_days} dia(s)` : 'Prazo não informado'}</span>
                           {price.obs && <MessageSquare size={10} className="text-slate-400 mt-1" />}
                         </button>
                       </td>

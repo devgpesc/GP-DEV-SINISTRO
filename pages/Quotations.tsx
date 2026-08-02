@@ -984,12 +984,12 @@ const Quotations: React.FC = () => {
       {step === 1 && renderList()}
       {step === 2 && renderWizard()}
       {step === 3 && (
-        <div className="space-y-8 animate-in fade-in duration-500">
-           <div className="flex items-center gap-6">
-              <button onClick={() => setStep(1)} className="p-4 bg-white border border-slate-200 rounded-3xl hover:bg-slate-50 text-slate-600 shadow-sm transition-all"><ArrowLeft size={24}/></button>
+        <div className="space-y-3 animate-in fade-in duration-500">
+           <div className="flex items-center gap-3">
+              <button onClick={() => setStep(1)} className="app-icon-button bg-white text-slate-600" title="Voltar para cotações"><ArrowLeft size={20}/></button>
               <div>
-                  <h2 className="text-3xl font-black text-slate-800 tracking-tight">Análise Comparativa</h2>
-                  <p className="text-sm text-slate-500">Compare preços e aprove as melhores ofertas.</p>
+                  <h2 className="text-2xl font-black text-slate-800">Análise Comparativa</h2>
+                  <p className="text-xs text-slate-500">Compare preços e aprove as melhores ofertas.</p>
               </div>
            </div>
            <MatrixTable quotationId={activeQuoteId || undefined} eventId={activeEventId || undefined} />

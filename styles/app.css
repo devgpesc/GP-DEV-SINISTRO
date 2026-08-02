@@ -303,6 +303,15 @@ button:disabled {
   border-right: 0;
 }
 
+.app-kpi-grid--compact .app-kpi {
+  padding: 10px 14px;
+}
+
+.matrix-toolbar {
+  gap: 8px;
+  padding: 9px;
+}
+
 .app-form-surface {
   border: 1px solid var(--app-line);
   border-radius: var(--app-radius);
