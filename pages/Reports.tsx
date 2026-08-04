@@ -28,6 +28,9 @@ const Reports: React.FC = () => {
   // Filtros
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [categoryFilter, setCategoryFilter] = useState('Todas Categorias');
+  const [filterDraft, setFilterDraft] = useState({ start: '', end: '', category: 'Todas Categorias' });
+  const [filterError, setFilterError] = useState('');
+  const todayIso = new Date().toISOString().slice(0, 10);
 
   // Dados Reais
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
@@ -51,10 +54,14 @@ const Reports: React.FC = () => {
         const { data: rels } = await supabase.from('quotation_item_releases').select('*');
         const { data: poi } = await supabase
           .from('purchase_order_items')
-          .select('quotation_item_id, purchase_orders!inner(id, supplier_id, created_at)');
+          .select('quotation_item_id, name, unit, quantity, total_price, purchase_orders!inner(id, supplier_id, quotation_id, status, total, created_at)');
         const { data: sups } = await supabase.from('suppliers').select('id, name');
         
-        setOrders(pos || []);
+        setOrders((pos || []).map((order: any) => ({
+          ...order,
+          createdAt: order.createdAt || order.created_at,
+          total: Number(order.total) || 0,
+        })));
         setDeliveries(dels || []);
         setEvents(evts || []);
         setReleases(rels || []);
@@ -97,10 +104,63 @@ const Reports: React.FC = () => {
     window.print();
   };
 
+  const updateStartDate = (value: string) => {
+    if (value && value > todayIso) {
+      setFilterError('A data inicial não pode estar no futuro.');
+      return;
+    }
+
+    setFilterError('');
+    setFilterDraft(current => ({
+      ...current,
+      start: value,
+      end: current.end && value && current.end < value ? '' : current.end,
+    }));
+  };
+
+  const updateEndDate = (value: string) => {
+    if (value && value > todayIso) {
+      setFilterError('A data final não pode estar no futuro.');
+      return;
+    }
+
+    if (value && filterDraft.start && value < filterDraft.start) {
+      setFilterError('A data final deve ser igual ou posterior à data inicial.');
+      setFilterDraft(current => ({ ...current, end: '' }));
+      return;
+    }
+
+    setFilterError('');
+    setFilterDraft(current => ({ ...current, end: value }));
+  };
+
+  const applyFilters = () => {
+    if (filterDraft.start && filterDraft.end && filterDraft.start > filterDraft.end) {
+      setFilterError('A data inicial deve ser anterior ou igual à data final.');
+      return;
+    }
+    if (filterDraft.start > todayIso || filterDraft.end > todayIso) {
+      setFilterError('O período do relatório não pode conter datas futuras.');
+      return;
+    }
+    setFilterError('');
+    setDateRange({ start: filterDraft.start, end: filterDraft.end });
+    setCategoryFilter(filterDraft.category);
+  };
+
+  const clearFilters = () => {
+    const empty = { start: '', end: '', category: 'Todas Categorias' };
+    setFilterDraft(empty);
+    setFilterError('');
+    setDateRange({ start: '', end: '' });
+    setCategoryFilter('Todas Categorias');
+  };
+
   // --- CÁLCULOS ESTRATÉGICOS (KPIs) ---
   const filteredOrders = useMemo(() => {
     return orders.filter(o => {
-      const orderDate = new Date(o.createdAt);
+      const rawCreatedAt = o.createdAt || (o as any).created_at;
+      const orderDate = rawCreatedAt ? new Date(rawCreatedAt) : null;
 
       // Filtro de Data Início (Correção de Timezone)
       if (dateRange.start) {
@@ -110,7 +170,7 @@ const Reports: React.FC = () => {
           // Mês no JS é 0-indexado (Janeiro = 0)
           const startDate = new Date(year, month - 1, day, 0, 0, 0, 0);
           
-          if (orderDate < startDate) return false;
+          if (!orderDate || Number.isNaN(orderDate.getTime()) || orderDate < startDate) return false;
       }
       
       // Filtro de Data Fim (Correção de Timezone)
@@ -119,20 +179,21 @@ const Reports: React.FC = () => {
           // Cria data no final do dia (23:59:59) localmente
           const endDate = new Date(year, month - 1, day, 23, 59, 59, 999);
           
-          if (orderDate > endDate) return false;
+          if (!orderDate || Number.isNaN(orderDate.getTime()) || orderDate > endDate) return false;
       }
 
       // Filtro de Categoria (Com Normalização para ignorar acentos)
       if (categoryFilter !== 'Todas Categorias' && categoryFilter !== 'Todos') {
-          if (!o.items || !Array.isArray(o.items)) return false;
-          
-          const searchCat = normalizeText(categoryFilter).replace(/s$/, ''); // Remove plural simples
-          
-          const hasCategory = o.items.some((item: any) => {
+          const embeddedItems = Array.isArray(o.items) ? o.items : [];
+          const linkedItems = (poItems || []).filter((row: any) => row.purchase_orders?.id === o.id);
+          const orderItems = embeddedItems.length > 0 ? embeddedItems : linkedItems;
+          const wantsServices = normalizeText(categoryFilter).startsWith('servic');
+          const hasCategory = orderItems.some((item: any) => {
               const itemCat = normalizeText(item.category || item.type || '');
               const itemName = normalizeText(item.name || '');
-              // Busca na categoria ou no nome do item
-              return itemCat.includes(searchCat) || itemName.includes(searchCat);
+              const unit = normalizeText(item.unit || '');
+              const isService = itemCat.includes('servic') || itemName.includes('servic') || unit === 'hl';
+              return wantsServices ? isService : !isService;
           });
           
           if (!hasCategory) return false;
@@ -140,11 +201,26 @@ const Reports: React.FC = () => {
 
       return true;
     });
-  }, [orders, dateRange, categoryFilter]);
+  }, [orders, poItems, dateRange, categoryFilter]);
+
+  const financialOrders = useMemo(
+    () => filteredOrders.filter((order) => order.status !== 'Cancelada' && order.status !== 'Devolvida'),
+    [filteredOrders],
+  );
+
+  const reversalStats = useMemo(() => {
+    const reversedOrders = filteredOrders.filter((order) => order.status === 'Cancelada' || order.status === 'Devolvida');
+    return {
+      cancelledOrders: reversedOrders.filter((order) => order.status === 'Cancelada').length,
+      returnedOrders: reversedOrders.filter((order) => order.status === 'Devolvida').length,
+      affectedQuotations: new Set(reversedOrders.map((order) => order.quotation_id || order.quotationId).filter(Boolean)).size,
+      reversedValue: reversedOrders.reduce((sum, order) => sum + Number(order.reversed_amount || order.total || 0), 0),
+    };
+  }, [filteredOrders]);
 
   const strategicKPIs = useMemo(() => {
-    const totalSpent = filteredOrders.reduce((acc, o) => acc + (o.total || 0), 0);
-    const completedOrders = filteredOrders.filter(o => o.status === 'Aprovada' || o.status === 'Recebida');
+    const totalSpent = financialOrders.reduce((acc, o) => acc + (o.total || 0), 0);
+    const completedOrders = financialOrders.filter(o => o.status === 'Aprovada' || o.status === 'Recebida');
     
     // Estimativa de Economia (Mock lógica de negócio para demonstração)
     const estimatedMarketValue = totalSpent * 1.15; 
@@ -154,11 +230,11 @@ const Reports: React.FC = () => {
       totalSpent,
       savings,
       roi: totalSpent > 0 ? (savings / totalSpent) * 100 : 0,
-      avgTicket: filteredOrders.length > 0 ? totalSpent / filteredOrders.length : 0,
-      volume: filteredOrders.length,
-      conversionRate: orders.length > 0 ? (completedOrders.length / orders.length) * 100 : 0
+      avgTicket: financialOrders.length > 0 ? totalSpent / financialOrders.length : 0,
+      volume: financialOrders.length,
+      conversionRate: financialOrders.length > 0 ? (completedOrders.length / financialOrders.length) * 100 : 0
     };
-  }, [filteredOrders, orders]);
+  }, [financialOrders]);
 
   const repurchaseStats = useMemo(() => {
     const cutoff = new Date();
@@ -196,6 +272,7 @@ const Reports: React.FC = () => {
       if (!itemId || !releaseItemIds.has(itemId)) return;
       const order = row.purchase_orders;
       if (!order?.supplier_id) return;
+      if (order.status === 'Cancelada' || order.status === 'Devolvida') return;
       if (!itemOrdersMap[itemId]) itemOrdersMap[itemId] = [];
       itemOrdersMap[itemId].push({ supplier_id: order.supplier_id, created_at: order.created_at });
     });
@@ -230,8 +307,9 @@ const Reports: React.FC = () => {
   // --- DADOS DOS GRÁFICOS ---
   const chartData = useMemo(() => {
     const grouped: any = {};
-    filteredOrders.forEach(o => {
-      const date = new Date(o.createdAt);
+    financialOrders.forEach(o => {
+      const date = new Date(o.createdAt || (o as any).created_at);
+      if (Number.isNaN(date.getTime())) return;
       // Formatação PT-BR para o gráfico
       const key = `${date.toLocaleString('pt-BR', { month: 'short' })}/${date.getFullYear()}`;
       // Chave de ordenação interna
@@ -243,69 +321,95 @@ const Reports: React.FC = () => {
     });
     
     return Object.keys(grouped).sort().map(k => grouped[k]);
-  }, [filteredOrders]);
+  }, [financialOrders]);
 
   const statusData = useMemo(() => {
     const counts: any = {};
-    filteredOrders.forEach(o => {
+    financialOrders.forEach(o => {
       counts[o.status] = (counts[o.status] || 0) + 1;
     });
     return Object.keys(counts).map(k => ({ name: k, value: counts[k] }));
-  }, [filteredOrders]);
+  }, [financialOrders]);
 
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 pb-20 print:p-0 print:bg-white">
+    <div className="report-page space-y-5 animate-in fade-in duration-300 pb-12 print:p-0 print:bg-white">
+      <header className="report-print-header hidden">
+        <div>
+          <p className="report-print-kicker">EventsCar · Grupo ESC Sistemas</p>
+          <h1>Relatório gerencial de sinistros e compras</h1>
+          <p>Período: {dateRange.start ? new Date(`${dateRange.start}T00:00:00`).toLocaleDateString('pt-BR') : 'início da operação'} até {dateRange.end ? new Date(`${dateRange.end}T00:00:00`).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR')}</p>
+        </div>
+        <div className="report-print-meta">
+          <strong>Emitido em</strong>
+          <span>{new Date().toLocaleString('pt-BR')}</span>
+          <strong>Categoria</strong>
+          <span>{categoryFilter}</span>
+        </div>
+      </header>
       
       {/* Header & Actions */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print:hidden">
+      <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center print:hidden">
         <div>
-            <h2 className="text-3xl font-black text-slate-800 tracking-tight">Inteligência de Negócios</h2>
-            <p className="text-sm text-slate-500 font-medium">Relatórios estratégicos para tomada de decisão.</p>
+            <p className="text-xs font-semibold uppercase text-blue-700">Análise gerencial</p>
+            <h2 className="text-2xl font-bold text-slate-950">Relatórios operacionais e financeiros</h2>
+            <p className="mt-1 text-sm text-slate-500">Indicadores, recompras e desempenho dos fornecedores.</p>
         </div>
         <div className="flex gap-3">
-            <button onClick={handleGenerateAnalysis} disabled={analyzing} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 transition-all hover:scale-105 disabled:opacity-70">
+            <button onClick={handleGenerateAnalysis} disabled={analyzing} className="flex min-h-10 items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 text-xs font-bold text-indigo-800 hover:bg-indigo-100">
                 {analyzing ? <Loader2 className="animate-spin" size={16}/> : <Brain size={16}/>}
-                {analyzing ? 'Gerando Insights...' : 'IA Estratégica'}
+                {analyzing ? 'Gerando análise...' : 'Análise assistida'}
             </button>
-            <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm">
-                <Printer size={16}/> PDF
+            <button onClick={handlePrint} className="app-btn-primary gap-2">
+                <Printer size={16}/> Imprimir / PDF
             </button>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-center print:hidden">
+      <div className="report-filters app-toolbar flex-col md:flex-row print:hidden">
          <div className="flex items-center gap-2 text-slate-400 font-bold uppercase text-xs tracking-widest px-2">
             <Filter size={16}/> Filtros
          </div>
          <div className="flex items-center gap-2 flex-1">
             <input 
               type="date" 
+              max={filterDraft.end || todayIso}
               className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 transition-all" 
-              value={dateRange.start} 
-              onChange={e => setDateRange({...dateRange, start: e.target.value})} 
+              value={filterDraft.start}
+              onInput={e => updateStartDate((e.currentTarget as HTMLInputElement).value)}
+              onChange={e => updateStartDate(e.target.value)}
+              aria-label="Data inicial"
             />
             <span className="text-slate-300 font-bold">-</span>
             <input 
               type="date" 
+              min={filterDraft.start || undefined}
+              max={todayIso}
               className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 transition-all" 
-              value={dateRange.end} 
-              onChange={e => setDateRange({...dateRange, end: e.target.value})} 
+              value={filterDraft.end}
+              onInput={e => updateEndDate((e.currentTarget as HTMLInputElement).value)}
+              onChange={e => updateEndDate(e.target.value)}
+              aria-label="Data final"
             />
          </div>
-         <select className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer" value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}>
+         <select aria-label="Categoria" className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer" value={filterDraft.category} onChange={e => setFilterDraft(current => ({...current, category: e.target.value}))}>
             <option>Todas Categorias</option>
             <option>Peças</option>
             <option>Serviços</option>
          </select>
-         <button onClick={() => { setDateRange({start: '', end: ''}); setCategoryFilter('Todas Categorias'); }} className="p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all" title="Limpar Filtros"><RefreshCw size={16}/></button>
+         <span className="whitespace-nowrap text-xs font-semibold text-slate-600">
+           {filteredOrders.length} de {orders.length} ordem(ns)
+         </span>
+         <button type="button" onClick={applyFilters} className="app-btn-primary min-h-9 px-4">Aplicar filtros</button>
+         <button type="button" onClick={clearFilters} className="app-icon-button" title="Limpar filtros" aria-label="Limpar filtros"><RefreshCw size={16}/></button>
+         {filterError && <p role="alert" className="w-full text-xs font-semibold text-red-700 md:w-auto">{filterError}</p>}
       </div>
 
       {/* Strategic KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
+      <div className="report-kpi-grid grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="report-kpi app-panel flex flex-col justify-between p-4">
            <div className="flex justify-between items-start">
                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Investimento Total</p>
                <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><DollarSign size={18}/></div>
@@ -314,7 +418,7 @@ const Reports: React.FC = () => {
            <p className="text-[10px] font-bold text-slate-400 mt-1 flex items-center gap-1"><TrendingUp size={10} className="text-slate-400"/> Volume filtrado</p>
         </div>
 
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
+        <div className="report-kpi app-panel flex flex-col justify-between p-4">
            <div className="flex justify-between items-start">
                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Economia (Savings)</p>
                <div className="p-2 bg-green-50 text-green-600 rounded-xl"><TrendingDown size={18}/></div>
@@ -323,7 +427,7 @@ const Reports: React.FC = () => {
            <p className="text-[10px] font-bold text-green-500 mt-1 flex items-center gap-1"><CheckCircle size={10}/> ROI: {strategicKPIs.roi.toFixed(1)}%</p>
         </div>
 
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
+        <div className="report-kpi app-panel flex flex-col justify-between p-4">
            <div className="flex justify-between items-start">
                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ticket Médio</p>
                <div className="p-2 bg-amber-50 text-amber-600 rounded-xl"><Target size={18}/></div>
@@ -332,7 +436,7 @@ const Reports: React.FC = () => {
            <p className="text-[10px] font-bold text-slate-400 mt-1">Por ordem de compra</p>
         </div>
 
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
+        <div className="report-kpi app-panel flex flex-col justify-between p-4">
            <div className="flex justify-between items-start">
                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Taxa de Conversão</p>
                <div className="p-2 bg-purple-50 text-purple-600 rounded-xl"><ShoppingBag size={18}/></div>
@@ -342,7 +446,14 @@ const Reports: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between gap-3">
+      <div className="app-panel grid grid-cols-2 divide-x divide-y divide-slate-200 overflow-hidden md:grid-cols-4 md:divide-y-0">
+        <div className="p-4"><p className="text-[9px] font-black uppercase text-slate-400">OCs canceladas</p><p className="mt-1 text-xl font-black text-red-700">{reversalStats.cancelledOrders}</p></div>
+        <div className="p-4"><p className="text-[9px] font-black uppercase text-slate-400">OCs devolvidas</p><p className="mt-1 text-xl font-black text-amber-700">{reversalStats.returnedOrders}</p></div>
+        <div className="p-4"><p className="text-[9px] font-black uppercase text-slate-400">Cotações afetadas</p><p className="mt-1 text-xl font-black text-slate-900">{reversalStats.affectedQuotations}</p></div>
+        <div className="p-4"><p className="text-[9px] font-black uppercase text-slate-400">Valor estornado / devolvido</p><p className="mt-1 text-xl font-black text-emerald-700">R$ {reversalStats.reversedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p><p className="mt-1 text-[10px] font-semibold text-slate-500">Fora do investimento e do ticket médio</p></div>
+      </div>
+
+      <div className="report-period app-panel flex items-center justify-between gap-3 p-4">
         <div>
           <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Janela Gerencial de Recompra</p>
           <p className="text-xs font-medium text-slate-500">Aplicado em recompra/estorno e comparação de troca de fornecedor.</p>
@@ -358,7 +469,7 @@ const Reports: React.FC = () => {
         </select>
       </div>
 
-      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+      <section className="report-section app-panel p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">Recompras / Estornos</h3>
           <span className="px-3 py-1 rounded-xl bg-amber-100 text-amber-700 text-xs font-black">{repurchaseStats.total} liberações</span>
@@ -376,9 +487,9 @@ const Reports: React.FC = () => {
             ))}
           </div>
         )}
-      </div>
+      </section>
 
-      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+      <section className="report-section app-panel p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">Fornecedor Original x Recompra</h3>
           <span className="px-3 py-1 rounded-xl bg-blue-100 text-blue-700 text-xs font-black">{supplierSwitchStats.analyzedItems} item(ns) analisado(s)</span>
@@ -415,26 +526,25 @@ const Reports: React.FC = () => {
         ) : (
           <p className="text-xs font-medium text-slate-400">Sem trocas de fornecedor registradas nas liberações de recompra.</p>
         )}
-      </div>
+      </section>
 
       {/* AI Analysis Block */}
       {aiAnalysis && (
-          <div className="bg-indigo-900 text-white p-8 rounded-[40px] shadow-2xl shadow-indigo-900/20 relative overflow-hidden animate-in slide-in-from-bottom-4 duration-500">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
-              <div className="relative z-10">
-                  <h3 className="text-xl font-black flex items-center gap-3 mb-6"><Brain className="text-indigo-300"/> Análise Estratégica Visionária</h3>
-                  <div className="prose prose-invert prose-sm max-w-none text-indigo-100 leading-relaxed whitespace-pre-wrap font-medium">
+          <section className="report-ai app-panel border-indigo-200 bg-indigo-50 p-5 animate-in slide-in-from-bottom-4 duration-300">
+              <div>
+                  <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-indigo-950"><Brain size={18} className="text-indigo-700"/> Análise assistida</h3>
+                  <div className="prose prose-sm max-w-none whitespace-pre-wrap leading-relaxed text-indigo-950">
                       {aiAnalysis}
                   </div>
               </div>
-          </div>
+          </section>
       )}
 
       {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="report-charts grid grid-cols-1 gap-4 xl:grid-cols-2">
         {/* Financial Trend */}
-        <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm h-[400px] flex flex-col">
-           <h3 className="text-lg font-black text-slate-800 mb-6">Tendência de Despesas e Economia</h3>
+        <section className="report-chart app-panel flex h-[340px] flex-col p-5">
+           <h3 className="mb-4 text-sm font-bold text-slate-900">Tendência de despesas e economia</h3>
            <div className="flex-1">
               <ResponsiveContainer width="100%" height="100%">
                  <AreaChart data={chartData}>
@@ -458,11 +568,11 @@ const Reports: React.FC = () => {
                  </AreaChart>
               </ResponsiveContainer>
            </div>
-        </div>
+        </section>
 
         {/* Operational Efficiency (Status) */}
-        <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm h-[400px] flex flex-col">
-           <h3 className="text-lg font-black text-slate-800 mb-6">Eficiência Operacional (Status)</h3>
+        <section className="report-chart app-panel flex h-[340px] flex-col p-5">
+           <h3 className="mb-4 text-sm font-bold text-slate-900">Eficiência operacional por status</h3>
            <div className="flex-1">
               <ResponsiveContainer width="100%" height="100%">
                  <PieChart>
@@ -484,8 +594,13 @@ const Reports: React.FC = () => {
                  </PieChart>
               </ResponsiveContainer>
            </div>
-        </div>
+        </section>
       </div>
+
+      <footer className="report-print-footer hidden">
+        <span>EventsCar · Relatório gerencial confidencial</span>
+        <span>Gerado automaticamente pelo sistema</span>
+      </footer>
     </div>
   );
 };

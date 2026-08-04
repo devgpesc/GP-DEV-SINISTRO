@@ -11,7 +11,7 @@ import { ensureInviteAccess, getInviteDetails, repairSessionAccess, type InviteD
 import { 
   Loader2, ArrowRight, ShieldCheck, Mail, Lock, 
   LayoutDashboard, Zap, Globe, AlertCircle, Eye, EyeOff, Link as LinkIcon,
-  CheckCircle2, Building2
+  Building2
 } from 'lucide-react';
 import EscLogo from '../components/EscLogo';
 
@@ -34,14 +34,9 @@ const Login: React.FC = () => {
   const isLocalHost = typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
   const productPill = isLocalHost ? 'Localhost' : 'Producao';
   const featureCards = [
-    { icon: LayoutDashboard, title: 'Operacao ao vivo', desc: 'Sinistros, prazos e etapas em um painel unico.' },
-    { icon: Zap, title: 'Cotacao ate compra', desc: 'Comparacao, aprovacao e OCs com trilha auditavel.' },
-    { icon: ShieldCheck, title: 'Controle financeiro', desc: 'Historico, permissoes e recompra sem perda de dados.' },
-  ];
-  const loginChecks = [
-    'Acesso por empresa',
-    'Convites e Google OAuth',
-    'Sessoes protegidas',
+    { icon: LayoutDashboard, title: 'Operação em tempo real' },
+    { icon: Zap, title: 'Cotação, compra e entrega no mesmo fluxo' },
+    { icon: ShieldCheck, title: 'Auditoria e acesso por empresa' },
   ];
 
   useEffect(() => {
@@ -347,99 +342,78 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F4F7FB] font-sans selection:bg-blue-100 selection:text-blue-900">
-      <div className="grid min-h-screen lg:grid-cols-[minmax(420px,0.82fr)_minmax(560px,1.18fr)]">
-        <aside className="relative hidden overflow-hidden bg-[#111827] lg:flex lg:flex-col lg:justify-between p-12 xl:p-14">
-          <div className="absolute inset-0 opacity-[0.16]" style={{
-            backgroundImage: 'linear-gradient(rgba(96,165,250,0.32) 1px, transparent 1px), linear-gradient(90deg, rgba(96,165,250,0.32) 1px, transparent 1px)',
-            backgroundSize: '48px 48px',
-          }} />
-          <div className="absolute inset-x-0 bottom-0 h-64 bg-gradient-to-t from-slate-950/30 to-transparent pointer-events-none" />
-
-          <div className="relative z-10">
-            <div className="flex items-center justify-between mb-12">
-              <EscLogo className="w-12 h-12 text-white" classNameText="text-white text-[26px]" />
+    <div className="min-h-[100dvh] bg-[#F5F7FA] font-sans selection:bg-blue-100 selection:text-blue-900">
+      <div className="grid min-h-[100dvh] lg:grid-cols-[minmax(360px,0.72fr)_minmax(520px,1.28fr)]">
+        <aside className="hidden bg-[#101827] p-9 lg:flex lg:flex-col lg:justify-between xl:p-11">
+          <div>
+            <div className="mb-14 flex items-center justify-between">
+              <EscLogo className="h-10 w-10 text-white" classNameText="text-white text-[22px]" />
               <span className="px-3 py-1 rounded-md border border-white/10 bg-white/[0.04] text-[11px] font-bold text-slate-300">
                 {productPill}
               </span>
             </div>
 
-            <div className="max-w-xl">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-300 mb-4">
-                Plataforma de sinistros
-              </p>
-              <h1 className="text-4xl xl:text-5xl font-extrabold text-white leading-[1.08] tracking-tight mb-6">
-                Gestão clara para cada etapa do sinistro.
+            <div className="max-w-md">
+              <p className="mb-3 text-xs font-semibold uppercase text-blue-300">Plataforma de sinistros</p>
+              <h1 className="text-3xl font-bold leading-tight text-white xl:text-4xl">
+                Controle operacional do início à entrega.
               </h1>
-              <p className="text-[17px] text-slate-300 max-w-md leading-7 font-medium">
-                Abra casos, acompanhe prazos, aprove compras e mantenha a auditoria completa sem perder contexto.
+              <p className="mt-4 max-w-sm text-[15px] leading-6 text-slate-300">
+                Uma visão clara dos casos, cotações, compras e responsáveis em cada etapa.
               </p>
             </div>
 
-            <div className="mt-10 grid gap-3">
+            <div className="mt-9 border-t border-white/10">
               {featureCards.map((item) => (
-                <div key={item.title} className="rounded-xl border border-white/10 bg-white/[0.035] p-4 flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-lg bg-blue-500/12 text-blue-300 flex items-center justify-center border border-blue-400/15 shrink-0">
-                    <item.icon size={20} />
-                  </div>
-                  <div>
-                    <h3 className="text-[15px] font-bold text-white">{item.title}</h3>
-                    <p className="text-[13px] font-medium text-slate-400 mt-1 leading-relaxed">{item.desc}</p>
-                  </div>
+                <div key={item.title} className="flex items-center gap-3 border-b border-white/10 py-4">
+                  <item.icon size={17} className="shrink-0 text-blue-300" />
+                  <p className="text-sm font-semibold text-slate-200">{item.title}</p>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="relative z-10 grid grid-cols-3 gap-3">
-            {[
-              ['24h', 'SLA e prazos'],
-              ['100%', 'Auditoria'],
-              ['Multi', 'Empresa'],
-            ].map(([value, label]) => (
-              <div key={label} className="rounded-xl border border-white/10 bg-white/[0.035] p-4">
-                <p className="text-2xl font-extrabold text-white">{value}</p>
-                <p className="text-[11px] font-semibold text-slate-400 mt-1">{label}</p>
-              </div>
-            ))}
+          <div className="flex items-center gap-2 text-xs text-slate-400">
+            <ShieldCheck size={15} className="text-emerald-400" />
+            Sessão protegida e trilha de auditoria
           </div>
         </aside>
 
-        <main className="flex items-center justify-center p-4 md:p-8 xl:p-12">
-          <div className="w-full max-w-[520px] animate-in slide-in-from-bottom-4 duration-500 fade-in">
-            <div className="lg:hidden flex items-center justify-between mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <EscLogo className="w-9 h-9 text-slate-900" classNameText="text-slate-900 text-xl" />
+        <main className="flex items-center justify-center p-4 sm:p-6 lg:p-8">
+          <div className="w-full max-w-[460px] animate-in fade-in duration-300">
+            <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-4 lg:hidden">
+              <EscLogo className="h-8 w-8 text-slate-900" classNameText="text-slate-900 text-lg" />
               <span className="px-3 py-1 rounded-md bg-blue-50 text-blue-700 text-[11px] font-bold">
                 {productPill}
               </span>
             </div>
 
-            <section className="bg-white rounded-2xl border border-slate-200 shadow-[0_24px_80px_-52px_rgba(15,23,42,0.55)] overflow-hidden">
-              <div className="px-6 md:px-8 pt-7 pb-6 border-b border-slate-100 bg-white">
+            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-100 bg-white px-5 py-5 sm:px-7">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-600 mb-2">
+                    <p className="mb-1 text-xs font-semibold uppercase text-blue-700">
                       {inviteInfo ? 'Convite ativo' : 'Acesso restrito'}
                     </p>
-                    <h2 className="text-2xl md:text-[32px] font-extrabold text-slate-950 tracking-tight">
+                    <h2 className="text-2xl font-bold text-slate-950">
                       {inviteInfo ? 'Entrar e aceitar convite' : 'Entrar no sistema'}
                     </h2>
-                    <p className="text-[15px] text-slate-500 mt-2 font-medium leading-relaxed">
+                    <p className="mt-1 text-sm leading-relaxed text-slate-500">
                       {inviteInfo
                         ? `Convite para ${inviteInfo.tenant_name}`
                         : 'Use uma conta cadastrada na empresa ou continue com Google.'}
                     </p>
-                    <p className="mt-3 text-xs font-semibold text-slate-400">
+                    <p className="mt-2 text-xs font-medium text-slate-400">
                       {isSupabaseConfigured ? `${productPill} conectado ao Supabase` : 'Supabase nao configurado'}
                     </p>
                   </div>
-                  <div className="hidden sm:flex w-11 h-11 rounded-xl bg-blue-600 text-white items-center justify-center shadow-lg shadow-blue-600/20">
-                    <Building2 size={22} />
+                  <div className="hidden h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white sm:flex">
+                    <Building2 size={18} />
                   </div>
                 </div>
               </div>
 
-              <div className="p-6 md:p-8">
+              <div className="p-5 sm:p-7">
 
             {inviteInfo && (
               <div className="mb-6 space-y-3">
@@ -459,18 +433,18 @@ const Login: React.FC = () => {
                </div>
             )}
 
-            <form onSubmit={handleLogin} className="space-y-6">
+            <form onSubmit={handleLogin} className="space-y-4">
                <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wide ml-1">E-mail</label>
                   <div className="relative group">
-                      <Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={20} />
+                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={18} />
                       <input 
                         type="email" 
                         required 
                         value={email}
                         onChange={e => setEmail(e.target.value)}
                         readOnly={!!inviteInfo}
-                        className="w-full pl-14 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-xl outline-none text-[16px] font-semibold text-slate-800 focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all placeholder:text-slate-400"
+                        className="w-full rounded-lg border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-[15px] font-semibold text-slate-800 outline-none transition-all placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
                         placeholder="nome@empresa.com"
                       />
                   </div>
@@ -482,13 +456,13 @@ const Login: React.FC = () => {
                     <a href="#" className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:underline">Esqueceu?</a>
                   </div>
                   <div className="relative group">
-                      <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={20} />
+                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={18} />
                       <input 
                         type={showPassword ? "text" : "password"} 
                         required 
                         value={password}
                         onChange={e => setPassword(e.target.value)}
-                        className="w-full pl-14 pr-12 py-4 bg-slate-50 border border-slate-200 rounded-xl outline-none text-[16px] font-semibold text-slate-800 focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all placeholder:text-slate-400"
+                        className="w-full rounded-lg border border-slate-200 bg-slate-50 py-3 pl-11 pr-12 text-[15px] font-semibold text-slate-800 outline-none transition-all placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
                         placeholder="********"
                       />
                       <button 
@@ -504,7 +478,7 @@ const Login: React.FC = () => {
                <button 
                   type="submit" 
                   disabled={localLoading}
-                  className="w-full py-4 bg-blue-600 text-white rounded-xl font-extrabold text-[15px] shadow-xl shadow-blue-600/20 hover:bg-blue-700 hover:shadow-blue-600/30 hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-3 text-[15px] font-bold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
                >
                   {localLoading ? <Loader2 className="animate-spin" size={22}/> : (
                     <>
@@ -514,7 +488,7 @@ const Login: React.FC = () => {
                </button>
             </form>
 
-            <div className="mt-8 mb-8 relative flex py-2 items-center">
+            <div className="relative my-5 flex items-center py-1">
                 <div className="flex-grow border-t border-slate-100"></div>
                 <span className="flex-shrink-0 mx-4 text-xs font-bold text-slate-300 uppercase">Ou continue com</span>
                 <div className="flex-grow border-t border-slate-100"></div>
@@ -523,13 +497,13 @@ const Login: React.FC = () => {
             <button 
                onClick={handleGoogle}
                disabled={localLoading}
-               className="w-full py-4 bg-white border border-slate-200 text-slate-700 font-bold text-sm rounded-xl flex items-center justify-center gap-3 hover:bg-slate-50 hover:border-slate-300 transition-all group disabled:opacity-60"
+               className="group flex w-full items-center justify-center gap-3 rounded-lg border border-slate-200 bg-white py-3 text-sm font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60"
             >
                <Globe size={20} className="text-slate-400 group-hover:text-blue-600 transition-colors"/>
                Google (Gmail)
             </button>
 
-            <div className="mt-10 text-center space-y-2">
+            <div className="mt-6 space-y-1 text-center">
                <p className="text-slate-500 text-sm font-medium">
                  Nao tem conta?{' '}
                  <Link
@@ -548,21 +522,8 @@ const Login: React.FC = () => {
               </div>
             </section>
 
-            <div className="mt-6 grid gap-2 sm:grid-cols-3">
-              {loginChecks.map((check) => (
-                <div key={check} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
-                  <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
-                  <span className="text-[10px] font-bold text-slate-500">{check}</span>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-7 text-center space-y-2">
-              <div className="inline-flex items-center gap-2 px-3 py-1 bg-slate-100 rounded-full border border-slate-200">
-                <ShieldCheck size={12} className="text-green-600" />
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Sessao segura</span>
-              </div>
-              <p className="text-xs text-slate-500 font-black">© 2026 {company.product} by {company.name}.</p>
+            <div className="mt-4 text-center">
+              <p className="text-xs font-semibold text-slate-500">© 2026 {company.product} by {company.name}.</p>
             </div>
           </div>
         </main>

@@ -5,7 +5,8 @@ import {
   LayoutDashboard, FileText, ShoppingCart, Users, Truck, 
   BarChart3, Package, Car, Bell, Search, UserCircle, X, ShoppingBag, Clock, Trash2, CheckCheck,
   Globe, ShieldCheck, Wifi, WifiOff, AlertTriangle, CheckCircle2, UserCheck, Mail, Phone, MapPin, Key,
-  Camera, Save, Loader2, Edit3, AlertCircle, LogOut, ChevronDown, Zap, Sparkles, Info, Menu, Hexagon, Wrench
+  Camera, Save, Loader2, Edit3, AlertCircle, LogOut, ChevronDown, Zap, Sparkles, Info, Menu, Hexagon, Wrench,
+  Download, PanelLeftClose, PanelLeftOpen, Type, Check
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { isSupabaseConfigured, supabase } from '../services/supabaseClient';
@@ -13,6 +14,12 @@ import { auditService } from '../services/auditService';
 import AIChatWindow from './AIChatWindow';
 import SupportWidget from './SupportWidget';
 import EscLogo from './EscLogo';
+import {
+  getStoredTypographyPreset,
+  storeTypographyPreset,
+  TYPOGRAPHY_PRESETS,
+  TypographyPresetId,
+} from '../utils/typography';
 
 // ... (Interfaces remain same)
 interface LayoutProps {
@@ -37,33 +44,62 @@ interface NotificationItem {
     link?: string;
 }
 
-const NavItem = ({ to, icon: Icon, label, active, badge, onClick }: { to: string, icon: any, label: string, active: boolean, badge?: string, onClick?: () => void }) => (
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+}
+
+const NavItem = ({ to, icon: Icon, label, active, badge, onClick, collapsed = false }: { to: string, icon: any, label: string, active: boolean, badge?: string, onClick?: () => void, collapsed?: boolean }) => (
   <Link 
     to={to} 
     onClick={onClick}
-    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all relative group min-h-[46px] ${
+    title={collapsed ? label : undefined}
+    aria-label={label}
+    className={`relative flex min-h-[40px] items-center gap-3 rounded-lg px-3 py-2 transition-colors group ${collapsed ? 'lg:justify-center lg:px-2' : ''} ${
       active 
-        ? 'bg-[#30394B] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]'
-        : 'text-[#A6B0C3] hover:bg-[#20293A] hover:text-white'
+        ? 'bg-[#2155D4] text-white'
+        : 'text-[#B7C0D1] hover:bg-white/[0.07] hover:text-white'
     }`}
   >
-    <Icon size={19} strokeWidth={active ? 2.3 : 1.9} className={active ? 'text-[#58A6FF]' : 'text-[#A6B0C3] group-hover:text-white'} />
-    <span className="font-semibold text-[13px]">{label}</span>
+    <Icon size={18} strokeWidth={active ? 2.2 : 1.8} className={active ? 'text-white' : 'text-[#9CA8BD] group-hover:text-white'} />
+    <span className={`text-[13px] font-semibold ${collapsed ? 'lg:hidden' : ''}`}>{label}</span>
     {badge && (
-      <span className="absolute right-3 top-1/2 -translate-y-1/2 bg-[#58A6FF] text-[#0D1424] text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase">
+      <span className={`absolute right-3 top-1/2 -translate-y-1/2 bg-[#58A6FF] text-[#0D1424] text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase ${collapsed ? 'lg:hidden' : ''}`}>
         {badge}
       </span>
     )}
   </Link>
 );
 
+const PAGE_META: Record<string, { title: string; subtitle: string }> = {
+  '/': { title: 'Dashboard', subtitle: 'Indicadores e visão geral da operação' },
+  '/eventos': { title: 'Sinistros', subtitle: 'Abertura, prazos e acompanhamento dos casos' },
+  '/posicionamento': { title: 'Posicionamento', subtitle: 'Acompanhamento do veículo e evidências do reparo' },
+  '/cotacoes': { title: 'Cotações', subtitle: 'Comparação de propostas e decisão de compra' },
+  '/compras': { title: 'Compras', subtitle: 'Ordens de compra e aprovações' },
+  '/entregas': { title: 'Entregas', subtitle: 'Recebimento, responsáveis e histórico' },
+  '/associados': { title: 'Associados', subtitle: 'Clientes e segurados cadastrados' },
+  '/fornecedores': { title: 'Fornecedores', subtitle: 'Rede de oficinas e fornecedores' },
+  '/veiculos': { title: 'Veículos', subtitle: 'Frota vinculada aos associados' },
+  '/catalogo': { title: 'Catálogo', subtitle: 'Peças e serviços disponíveis' },
+  '/relatorios': { title: 'Relatórios', subtitle: 'Análises operacionais e financeiras' },
+  '/notificacoes': { title: 'Notificações', subtitle: 'Alertas e histórico de atividades' },
+  '/saas-admin': { title: 'Gestão SaaS', subtitle: 'Empresas, acessos e instâncias' },
+  '/configuracoes': { title: 'Administração', subtitle: 'Configurações e permissões da plataforma' },
+};
+
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
   const { user, profile, isSuperAdmin, signOut, updateProfile, access } = useAuth();
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showTypography, setShowTypography] = useState(false);
+  const [typographyPreset, setTypographyPreset] = useState<TypographyPresetId>(getStoredTypographyPreset);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [isAiChatOpen, setIsAiChatOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => localStorage.getItem('eventscar:sidebar-collapsed') === 'true');
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [isStandalone, setIsStandalone] = useState(() => window.matchMedia('(display-mode: standalone)').matches);
   
   // Profile Edit States
   const [editName, setEditName] = useState('');
@@ -77,6 +113,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   // REAL NOTIFICATIONS STATE
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const canPreviewTypography = ['127.0.0.1', 'localhost'].includes(window.location.hostname);
+
+  const selectTypographyPreset = (preset: TypographyPresetId) => {
+    setTypographyPreset(preset);
+    storeTypographyPreset(preset);
+  };
 
   // Acesso: membros da empresa têm fluxo operacional completo por padrão
   const {
@@ -110,11 +152,47 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   }, [location.pathname, user]);
 
   useEffect(() => {
+    setShowNotifications(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
     if (showProfileModal) {
         setEditName(profile?.full_name || user?.user_metadata?.full_name || '');
         setEditAvatar(profile?.avatar_url || user?.user_metadata?.avatar_url || '');
     }
   }, [showProfileModal]);
+
+  useEffect(() => {
+    const handleBeforeInstall = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+    const handleInstalled = () => {
+      setInstallPrompt(null);
+      setIsStandalone(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('appinstalled', handleInstalled);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+      window.removeEventListener('appinstalled', handleInstalled);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsMobileMenuOpen(false);
+    };
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isMobileMenuOpen]);
 
   // Notificacoes em idle — libera primeira pintura
   useEffect(() => {
@@ -229,14 +307,31 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const clearAllNotifications = async () => {
       const dbIds = notifications.filter(n => typeof n.id === 'string' && !n.id.startsWith('sys-')).map(n => n.id);
+      const systemIds = notifications
+        .filter(n => typeof n.id === 'string' && n.id.startsWith('sys-'))
+        .map(n => n.id);
       if (dbIds.length > 0) {
           await supabase.from('notifications').update({ read: true }).in('id', dbIds);
       }
-      loadNotifications();
+      if (systemIds.length > 0) {
+          const dismissedSys = JSON.parse(sessionStorage.getItem('dismissedSysNotifs') || '[]');
+          sessionStorage.setItem('dismissedSysNotifs', JSON.stringify([...new Set([...dismissedSys, ...systemIds])]));
+      }
+      setNotifications([]);
+      setShowNotifications(false);
       addToast('success', 'Atualizado', 'Notificações arquivadas.');
   };
 
   const unreadCount = notifications.length;
+  const pageMeta = PAGE_META[location.pathname] || PAGE_META['/'];
+  const displayName = profile?.full_name || user?.user_metadata?.full_name || user?.email || 'Usuário';
+  const userInitials = displayName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part: string) => part[0])
+    .join('')
+    .toUpperCase();
 
   const addToast = (type: 'success' | 'error' | 'warning', title: string, message: string) => {
     const id = Date.now();
@@ -283,8 +378,30 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
 
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed((current) => {
+      const next = !current;
+      localStorage.setItem('eventscar:sidebar-collapsed', String(next));
+      return next;
+    });
+  };
+
+  const handleInstallApp = async () => {
+    if (!installPrompt) {
+      addToast('warning', 'Instalação do aplicativo', 'Use a opção Instalar aplicativo ou Adicionar à tela inicial no menu do navegador.');
+      return;
+    }
+
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    if (choice.outcome === 'accepted') {
+      setInstallPrompt(null);
+      addToast('success', 'Aplicativo instalado', 'O EventsCar já pode ser aberto como aplicativo.');
+    }
+  };
+
   return (
-    <div className="app-shell flex min-h-screen bg-[#F4F7FB] print:bg-white overflow-x-hidden">
+    <div className={`app-shell flex min-h-screen overflow-x-hidden bg-[#F4F7FB] print:bg-white ${isSidebarCollapsed ? 'sidebar-is-collapsed' : ''}`}>
       <style>{`
         @keyframes bell-ring {
           0%, 100% { transform: rotate(0deg); }
@@ -298,9 +415,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       `}</style>
 
       {/* Toast Container */}
-      <div className="fixed top-6 right-6 z-[120] flex flex-col gap-3 pointer-events-none">
+      <div className="app-toast-container fixed right-3 top-3 z-[120] flex flex-col gap-3 pointer-events-none sm:right-6 sm:top-6">
         {toasts.map(toast => (
-          <div key={toast.id} className="bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-2xl border border-slate-200 flex items-start gap-4 min-w-[320px] animate-in slide-in-from-right-10 duration-300 pointer-events-auto">
+          <div key={toast.id} className="app-toast flex min-w-0 items-start gap-4 rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-2xl backdrop-blur-md animate-in slide-in-from-right-10 duration-300 pointer-events-auto sm:min-w-[320px]">
              <div className={`p-2 rounded-xl ${
                 toast.type === 'success' ? 'bg-green-100 text-green-600' : 
                 toast.type === 'error' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'
@@ -319,94 +436,118 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
         <div 
-          className="fixed inset-0 bg-[#0D1424]/70 backdrop-blur-sm z-30 md:hidden animate-in fade-in"
+          className="fixed inset-0 z-30 bg-[#0D1424]/70 backdrop-blur-sm lg:hidden animate-in fade-in"
           onClick={() => setIsMobileMenuOpen(false)}
-        ></div>
+          aria-hidden="true"
+        />
       )}
 
       {/* Sidebar - Responsive */}
       <aside className={`
-        fixed top-0 left-0 h-full w-[270px] bg-[#111827] text-white flex flex-col z-40 transition-transform duration-300 ease-in-out border-r border-white/[0.04]
-        ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 print:hidden
+        app-sidebar fixed left-0 top-0 z-40 flex h-[100dvh] w-[min(88vw,300px)] flex-col border-r border-white/[0.05] bg-[#101827] text-white transition-[width,transform] duration-300 ease-in-out
+        ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} ${isSidebarCollapsed ? 'lg:w-[72px]' : 'lg:w-[232px]'} lg:translate-x-0 print:hidden
       `}>
-        {/* ... (Sidebar Content remains the same) ... */}
-        <div className="p-4">
-          <div className="flex items-center justify-between mb-7 px-1">
+        <button
+          type="button"
+          onClick={toggleSidebar}
+          className="absolute -right-3 top-4 hidden h-7 w-7 items-center justify-center rounded-full border border-slate-600 bg-[#182235] text-[#A6B0C3] shadow-sm hover:border-blue-400 hover:text-white lg:flex"
+          aria-label={isSidebarCollapsed ? 'Expandir barra lateral' : 'Recolher barra lateral'}
+          title={isSidebarCollapsed ? 'Expandir barra lateral' : 'Recolher barra lateral'}
+        >
+          {isSidebarCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
+        </button>
+
+        <div className={`flex min-h-0 flex-1 flex-col p-3 ${isSidebarCollapsed ? 'lg:px-3' : ''}`}>
+          <div className={`mb-5 flex h-10 shrink-0 items-center justify-between px-1 ${isSidebarCollapsed ? 'lg:justify-center' : ''}`}>
             
             {/* LOGO CUSTOMIZADA ESC */}
-            <EscLogo className="w-9 h-9 text-white shrink-0" classNameText="text-white text-[19px]" />
+            <EscLogo className="w-9 h-9 text-white shrink-0" classNameText={`text-white text-[19px] ${isSidebarCollapsed ? 'lg:hidden' : ''}`} />
 
-            <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-[#A6B0C3] hover:text-white">
+            <button onClick={() => setIsMobileMenuOpen(false)} className="text-[#A6B0C3] hover:text-white lg:hidden" aria-label="Fechar menu">
                 <X size={24}/>
             </button>
           </div>
           
-          <nav className="space-y-1 overflow-y-auto max-h-[calc(100vh-210px)] pr-1 custom-scrollbar">
-            <p className="px-3 pb-2 text-[10px] font-bold text-[#738098] uppercase tracking-[0.22em]">Menu</p>
+          <nav className="sidebar-scroll min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain pr-1">
+            <p className={`px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.22em] text-[#738098] ${isSidebarCollapsed ? 'lg:hidden' : ''}`}>Menu</p>
             {canAccessDashboard && (
-              <NavItem to="/" icon={LayoutDashboard} label="Dashboard" active={location.pathname === '/'} onClick={closeMobileMenu} />
+              <NavItem to="/" icon={LayoutDashboard} label="Dashboard" active={location.pathname === '/'} onClick={closeMobileMenu} collapsed={isSidebarCollapsed} />
             )}
             {canAccessEvents && (
-              <NavItem to="/eventos" icon={FileText} label="Sinistros" active={location.pathname === '/eventos'} onClick={closeMobileMenu} />
+              <NavItem to="/eventos" icon={FileText} label="Sinistros" active={location.pathname === '/eventos'} onClick={closeMobileMenu} collapsed={isSidebarCollapsed} />
             )}
             {canAccessEvents && (
-              <NavItem to="/posicionamento" icon={Wrench} label="Posicionamento" active={location.pathname.startsWith('/posicionamento')} onClick={closeMobileMenu} />
+              <NavItem to="/posicionamento" icon={Wrench} label="Posicionamento" active={location.pathname.startsWith('/posicionamento')} onClick={closeMobileMenu} collapsed={isSidebarCollapsed} />
             )}
 
             {hasFlowModules && (
               <>
-                <p className="px-3 pt-4 pb-2 text-[10px] font-bold text-[#738098] uppercase tracking-[0.22em]">Fluxo</p>
+                <p className={`px-3 pb-2 pt-4 text-[10px] font-bold uppercase tracking-[0.22em] text-[#738098] ${isSidebarCollapsed ? 'lg:hidden' : ''}`}>Fluxo</p>
                 {canAccessQuotations && (
-                  <NavItem to="/cotacoes" icon={Search} label="Cotações" active={location.pathname === '/cotacoes'} onClick={closeMobileMenu} />
+                  <NavItem to="/cotacoes" icon={Search} label="Cotações" active={location.pathname === '/cotacoes'} onClick={closeMobileMenu} collapsed={isSidebarCollapsed} />
                 )}
                 {canAccessPurchases && (
-                  <NavItem to="/compras" icon={ShoppingCart} label="Compras" active={location.pathname === '/compras'} onClick={closeMobileMenu} />
+                  <NavItem to="/compras" icon={ShoppingCart} label="Compras" active={location.pathname === '/compras'} onClick={closeMobileMenu} collapsed={isSidebarCollapsed} />
                 )}
                 {canAccessDeliveries && (
-                  <NavItem to="/entregas" icon={Truck} label="Entregas" active={location.pathname === '/entregas'} onClick={closeMobileMenu} />
+                  <NavItem to="/entregas" icon={Truck} label="Entregas" active={location.pathname === '/entregas'} onClick={closeMobileMenu} collapsed={isSidebarCollapsed} />
                 )}
               </>
             )}
 
             {hasRegistryModules && (
               <>
-                <p className="px-3 pt-4 pb-2 text-[10px] font-bold text-[#738098] uppercase tracking-[0.22em]">Cadastros</p>
+                <p className={`px-3 pb-2 pt-4 text-[10px] font-bold uppercase tracking-[0.22em] text-[#738098] ${isSidebarCollapsed ? 'lg:hidden' : ''}`}>Cadastros</p>
                 {canAccessAssociates && (
-                  <NavItem to="/associados" icon={UserCheck} label="Associados" active={location.pathname === '/associados'} onClick={closeMobileMenu} />
+                  <NavItem to="/associados" icon={UserCheck} label="Associados" active={location.pathname === '/associados'} onClick={closeMobileMenu} collapsed={isSidebarCollapsed} />
                 )}
                 {canAccessSuppliers && (
-                  <NavItem to="/fornecedores" icon={Users} label="Fornecedores" active={location.pathname === '/fornecedores'} onClick={closeMobileMenu} />
+                  <NavItem to="/fornecedores" icon={Users} label="Fornecedores" active={location.pathname === '/fornecedores'} onClick={closeMobileMenu} collapsed={isSidebarCollapsed} />
                 )}
                 {canAccessVehicles && (
-                  <NavItem to="/veiculos" icon={Car} label="Veículos" active={location.pathname === '/veiculos'} onClick={closeMobileMenu} />
+                  <NavItem to="/veiculos" icon={Car} label="Veículos" active={location.pathname === '/veiculos'} onClick={closeMobileMenu} collapsed={isSidebarCollapsed} />
                 )}
                 {canAccessCatalog && (
-                  <NavItem to="/catalogo" icon={Package} label="Catálogo" active={location.pathname === '/catalogo'} onClick={closeMobileMenu} />
+                  <NavItem to="/catalogo" icon={Package} label="Catálogo" active={location.pathname === '/catalogo'} onClick={closeMobileMenu} collapsed={isSidebarCollapsed} />
                 )}
               </>
             )}
 
             {canViewReports && (
-                <NavItem to="/relatorios" icon={BarChart3} label="Relatórios" active={location.pathname === '/relatorios'} onClick={closeMobileMenu} />
+                <NavItem to="/relatorios" icon={BarChart3} label="Relatórios" active={location.pathname === '/relatorios'} onClick={closeMobileMenu} collapsed={isSidebarCollapsed} />
             )}
 
           </nav>
         </div>
         
-        <div className="mt-auto border-t border-white/[0.06] p-4 space-y-1">
+        <div className={`mt-auto shrink-0 space-y-0.5 border-t border-white/[0.06] p-3 ${isSidebarCollapsed ? 'lg:px-3' : ''}`}>
+          {!isStandalone && (
+            <button
+              type="button"
+              onClick={handleInstallApp}
+              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-[#A6B0C3] transition-all hover:bg-[#20293A] hover:text-white ${isSidebarCollapsed ? 'lg:justify-center lg:px-3' : ''}`}
+              title={isSidebarCollapsed ? 'Instalar aplicativo' : undefined}
+              aria-label="Instalar aplicativo"
+            >
+              <Download size={18} strokeWidth={1.9} />
+              <span className={`text-[13px] font-semibold ${isSidebarCollapsed ? 'lg:hidden' : ''}`}>Instalar aplicativo</span>
+            </button>
+          )}
           {isSuperAdmin && (
             <Link
               to="/saas-admin"
               onClick={closeMobileMenu}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all relative ${
+              title={isSidebarCollapsed ? 'Gestão SaaS' : undefined}
+              aria-label="Gestão SaaS"
+              className={`relative flex w-full items-center gap-3 rounded-xl px-4 py-3 transition-all ${isSidebarCollapsed ? 'lg:justify-center lg:px-3' : ''} ${
                 location.pathname === '/saas-admin'
                   ? 'bg-[#30394B] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]'
                   : 'text-[#A6B0C3] hover:bg-[#20293A] hover:text-white'
               }`}
             >
               <Globe size={18} strokeWidth={location.pathname === '/saas-admin' ? 2.3 : 1.9} className={location.pathname === '/saas-admin' ? 'text-[#58A6FF]' : 'text-[#A6B0C3]'} />
-              <span className="font-semibold text-[13px]">Gestão SaaS</span>
-              <span className="ml-auto bg-[#58A6FF] text-[#0D1424] text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase">
+              <span className={`text-[13px] font-semibold ${isSidebarCollapsed ? 'lg:hidden' : ''}`}>Gestão SaaS</span>
+              <span className={`ml-auto rounded-md bg-[#58A6FF] px-1.5 py-0.5 text-[9px] font-black uppercase text-[#0D1424] ${isSidebarCollapsed ? 'lg:hidden' : ''}`}>
                 Super
               </span>
             </Link>
@@ -414,83 +555,151 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <button
             type="button"
             onClick={() => { setShowProfileModal(true); closeMobileMenu(); }}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#A6B0C3] hover:bg-[#20293A] hover:text-white transition-all"
+            className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-[#A6B0C3] transition-all hover:bg-[#20293A] hover:text-white ${isSidebarCollapsed ? 'lg:justify-center lg:px-3' : ''}`}
+            title={isSidebarCollapsed ? 'Plataforma' : undefined}
+            aria-label="Plataforma"
           >
             <Hexagon size={18} strokeWidth={1.9} />
-            <span className="font-semibold text-[13px]">Plataforma</span>
+            <span className={`text-[13px] font-semibold ${isSidebarCollapsed ? 'lg:hidden' : ''}`}>Plataforma</span>
           </button>
           {(isSuperAdmin || canManageSettings) && (
             <Link
               to="/configuracoes"
               onClick={closeMobileMenu}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#A6B0C3] hover:bg-[#20293A] hover:text-white transition-all"
+              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-[#A6B0C3] transition-all hover:bg-[#20293A] hover:text-white ${isSidebarCollapsed ? 'lg:justify-center lg:px-3' : ''}`}
+              title={isSidebarCollapsed ? 'Admin' : undefined}
+              aria-label="Admin"
             >
               <ShieldCheck size={18} strokeWidth={1.9} />
-              <span className="font-semibold text-[13px]">Admin</span>
+              <span className={`text-[13px] font-semibold ${isSidebarCollapsed ? 'lg:hidden' : ''}`}>Admin</span>
             </Link>
           )}
           <button
             type="button"
             onClick={signOut}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#A6B0C3] hover:bg-[#20293A] hover:text-white transition-all"
+            className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-[#A6B0C3] transition-all hover:bg-[#20293A] hover:text-white ${isSidebarCollapsed ? 'lg:justify-center lg:px-3' : ''}`}
+            title={isSidebarCollapsed ? 'Sair' : undefined}
+            aria-label="Sair"
           >
             <LogOut size={18} strokeWidth={1.9} />
-            <span className="font-semibold text-[13px]">Sair</span>
+            <span className={`text-[13px] font-semibold ${isSidebarCollapsed ? 'lg:hidden' : ''}`}>Sair</span>
           </button>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 md:ml-[270px] p-4 md:p-8 relative print:ml-0 print:p-0 print:w-full min-w-0 w-full">
+      <main className={`relative min-w-0 w-full flex-1 transition-[margin] duration-300 ${isSidebarCollapsed ? 'lg:ml-[72px]' : 'lg:ml-[232px]'} print:ml-0 print:w-full`}>
         {/* ... (Main Content Header remains the same) ... */}
-        <div className="md:hidden flex justify-between items-center mb-6 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-            <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-slate-600 hover:bg-slate-50 rounded-xl">
+        <div className="mobile-app-bar sticky top-0 z-20 flex min-h-14 items-center justify-between border-b border-slate-200 bg-white/95 px-3 py-2 backdrop-blur lg:hidden">
+            <button onClick={() => setIsMobileMenuOpen(true)} className="rounded-lg p-2 text-slate-600 hover:bg-slate-50" aria-label="Abrir menu" aria-expanded={isMobileMenuOpen}>
                 <Menu size={24}/>
             </button>
             
             {/* LOGO CUSTOMIZADA MOBILE */}
             <EscLogo className="w-6 h-6 text-slate-800" classNameText="text-slate-800 text-base" showText={true} />
 
-            <button 
-              onClick={() => setShowNotifications(!showNotifications)}
-              className="relative p-2 text-slate-600 hover:bg-slate-50 rounded-xl"
-            >
-                <Bell size={20}/>
-                {unreadCount > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full"></span>}
-            </button>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setIsAiChatOpen(true)} className="rounded-lg p-2 text-slate-600 hover:bg-slate-50" aria-label="Abrir assistente">
+                <Sparkles size={19}/>
+              </button>
+              <Link to="/notificacoes" className="relative rounded-lg p-2 text-slate-600 hover:bg-slate-50" aria-label="Abrir notificações">
+                  <Bell size={20}/>
+                  {unreadCount > 0 && <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white"></span>}
+              </Link>
+            </div>
         </div>
 
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 print:hidden">
-          <div className="hidden md:block">
-            <h2 className="text-2xl font-bold text-slate-800">
-                {isSuperAdmin ? 'Painel Mestre' : 'Visão Operacional'}
-            </h2>
-            <p className="text-slate-500">
-                {isSuperAdmin ? 'Controle total de todas as instâncias do sistema.' : 'Operações e Inteligência em tempo real.'}
-            </p>
+        <header className="app-desktop-topbar sticky top-0 z-20 hidden h-14 items-center justify-between border-b border-slate-200 bg-white/95 px-6 backdrop-blur lg:flex print:hidden">
+          <div className="min-w-0">
+            <h1 className="truncate text-[15px] font-bold leading-tight text-slate-900">{pageMeta.title}</h1>
+            <p className="truncate text-xs leading-tight text-slate-500">{pageMeta.subtitle}</p>
           </div>
           
-          <div className="hidden md:flex items-center gap-4 relative">
+          <div className="relative hidden items-center gap-4 lg:flex">
             <button 
                 onClick={() => setIsAiChatOpen(true)}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-600/30 flex items-center gap-2 transition-all hover:scale-105 active:scale-95"
+                className="flex min-h-9 items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
             >
-                <Sparkles size={16} /> IA Visionária
+                <Sparkles size={15} /> Assistente IA
             </button>
+
+            {canPreviewTypography && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowTypography((current) => !current);
+                    setShowNotifications(false);
+                  }}
+                  className={`flex h-9 w-9 items-center justify-center rounded-lg border transition-colors ${
+                    showTypography
+                      ? 'border-blue-600 bg-blue-600 text-white'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700'
+                  }`}
+                  aria-label="Testar tipografia"
+                  title="Testar tipografia"
+                >
+                  <Type size={18} />
+                </button>
+
+                {showTypography && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowTypography(false)} />
+                    <div className="absolute right-0 top-full z-50 mt-3 w-80 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+                      <div className="border-b border-slate-100 px-4 py-3">
+                        <p className="text-sm font-bold text-slate-900">Tipografia do sistema</p>
+                        <p className="mt-0.5 text-xs text-slate-500">Compare ao vivo neste ambiente local.</p>
+                      </div>
+                      <div className="space-y-1 p-2">
+                        {TYPOGRAPHY_PRESETS.map((preset) => {
+                          const isSelected = typographyPreset === preset.id;
+                          return (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              onClick={() => selectTypographyPreset(preset.id)}
+                              className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left ${
+                                isSelected
+                                  ? 'border-blue-300 bg-blue-50'
+                                  : 'border-transparent hover:border-slate-200 hover:bg-slate-50'
+                              }`}
+                            >
+                              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-xl font-bold text-slate-900 shadow-sm ${preset.sampleClassName}`}>
+                                Aa
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className={`block truncate text-sm font-bold text-slate-900 ${preset.sampleClassName}`}>
+                                  {preset.name}
+                                </span>
+                                <span className="block truncate text-[11px] text-slate-500">{preset.description}</span>
+                              </span>
+                              {isSelected && <Check size={17} className="shrink-0 text-blue-600" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
             <div className="relative">
               <button 
-                  onClick={() => setShowNotifications(!showNotifications)}
-                  className={`p-3 rounded-2xl transition-all relative group duration-300 ${
+                  onClick={() => {
+                    setShowNotifications(!showNotifications);
+                    setShowTypography(false);
+                  }}
+                  className={`relative flex h-9 w-9 items-center justify-center rounded-lg border transition-colors group ${
                     showNotifications 
-                      ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/30 scale-110' 
+                      ? 'border-blue-600 bg-blue-600 text-white'
                       : unreadCount > 0
-                        ? 'bg-white text-blue-600 shadow-lg shadow-blue-200 border border-blue-100 hover:bg-blue-50'
-                        : 'bg-white text-slate-400 hover:text-slate-600 border border-slate-200 shadow-sm'
+                        ? 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                        : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700'
                   }`}
                 >
                   <div className={unreadCount > 0 && !showNotifications ? 'animate-bell-ring' : ''}>
-                    <Bell size={24} strokeWidth={showNotifications || unreadCount > 0 ? 2.5 : 2} />
+                    <Bell size={18} strokeWidth={showNotifications || unreadCount > 0 ? 2.3 : 1.9} />
                   </div>
                   
                   {unreadCount > 0 && (
@@ -506,7 +715,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               {showNotifications && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)}></div>
-                  <div className="absolute right-0 top-full mt-4 w-96 bg-white/95 backdrop-blur-xl rounded-[32px] shadow-2xl border border-white/50 overflow-hidden z-50 animate-in fade-in slide-in-from-top-4 origin-top-right ring-1 ring-black/5">
+                  <div className="absolute right-0 top-full z-50 mt-3 w-96 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl animate-in fade-in slide-in-from-top-2 origin-top-right">
                      <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/80">
                         <div className="flex items-center gap-3">
                            <div className="bg-blue-100 p-2 rounded-xl text-blue-700"><Bell size={18} /></div>
@@ -575,17 +784,23 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 </>
               )}
             </div>
+            <button
+              type="button"
+              onClick={() => setShowProfileModal(true)}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-800 hover:bg-blue-200"
+              aria-label={`Abrir perfil de ${displayName}`}
+              title={displayName}
+            >
+              {editAvatar || profile?.avatar_url ? (
+                <img src={profile?.avatar_url || editAvatar} alt="" className="h-9 w-9 rounded-full object-cover" />
+              ) : userInitials}
+            </button>
           </div>
-          
-          <button 
-              onClick={() => setIsAiChatOpen(true)}
-              className="md:hidden fixed bottom-6 right-6 z-[90] bg-indigo-600 text-white w-12 h-12 rounded-full shadow-xl flex items-center justify-center animate-in zoom-in"
-          >
-              <Sparkles size={20} />
-          </button>
         </header>
-        
-        {children}
+
+        <div className="app-page-content p-3 sm:p-4 lg:p-6 xl:p-7 print:p-0">
+          {children}
+        </div>
       </main>
 
       <AIChatWindow isOpen={isAiChatOpen} onClose={() => setIsAiChatOpen(false)} />

@@ -1,7 +1,7 @@
 import React from 'react';
-import { Columns3, LayoutGrid, List, type LucideIcon } from 'lucide-react';
+import { Columns3, LayoutGrid, List, PanelRightOpen, type LucideIcon } from 'lucide-react';
 
-export type ViewMode = 'list' | 'cards' | 'matrix';
+export type ViewMode = 'list' | 'cards' | 'matrix' | 'panel';
 
 interface ViewModeSwitchProps {
   value: ViewMode;
@@ -14,6 +14,7 @@ const modeMeta: Record<ViewMode, { label: string; icon: LucideIcon }> = {
   list: { label: 'Lista', icon: List },
   cards: { label: 'Cards', icon: LayoutGrid },
   matrix: { label: 'Matriz', icon: Columns3 },
+  panel: { label: 'Painel lateral', icon: PanelRightOpen },
 };
 
 const ViewModeSwitch: React.FC<ViewModeSwitchProps> = ({

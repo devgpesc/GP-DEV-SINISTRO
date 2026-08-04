@@ -22,6 +22,7 @@ const actionLabels: Record<string, string> = {
   updated: 'Atualizada',
   deleted: 'Excluída',
   divergence: 'Divergência tratada',
+  returned: 'Devolução registrada',
 };
 
 export const getActionLabel = (action: string) => actionLabels[action] || action;
@@ -98,6 +99,10 @@ export const purchaseOrderService = {
     reason?: string;
   }) {
     const reason = input.reason?.trim() || 'Ordem de compra cancelada; itens liberados automaticamente para nova cotacao/compra.';
+    await supabase
+      .from('purchase_orders')
+      .update({ cancellation_reason: reason })
+      .eq('id', input.purchaseOrderId);
     const { data, error } = await supabase.rpc(
       'cancel_purchase_order_and_release_for_repurchase',
       {
@@ -105,6 +110,16 @@ export const purchaseOrderService = {
         p_reason: reason,
       },
     );
+
+    if (error) throw error;
+    return data;
+  },
+
+  async registerReturn(input: { purchaseOrderId: string; reason?: string }) {
+    const { data, error } = await supabase.rpc('register_purchase_order_return', {
+      p_purchase_order_id: input.purchaseOrderId,
+      p_reason: input.reason?.trim() || null,
+    });
 
     if (error) throw error;
     return data;

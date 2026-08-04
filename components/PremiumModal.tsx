@@ -35,12 +35,12 @@ const PremiumModal: React.FC<PremiumModalProps> = ({
         onClick={() => !busy && onClose()}
       />
       <div
-        className={`relative w-full ${maxWidthClass} bg-white rounded-t-[20px] md:rounded-[20px] shadow-[0_24px_70px_-24px_rgba(15,23,42,0.5)] overflow-hidden animate-in slide-in-from-bottom-6 md:zoom-in-95 duration-200 flex flex-col max-h-[96vh] md:max-h-[92vh] border border-slate-300`}
+        className={`relative flex max-h-[96vh] w-full flex-col overflow-hidden rounded-t-2xl border border-slate-300 bg-white shadow-[0_24px_70px_-24px_rgba(15,23,42,0.5)] animate-in slide-in-from-bottom-6 duration-200 md:max-h-[92vh] md:rounded-2xl md:zoom-in-95 ${maxWidthClass}`}
         role="dialog"
         aria-modal="true"
         aria-label={title}
       >
-        <div className="relative px-5 md:px-7 py-5 border-b border-slate-200 bg-white">
+        <div className="relative border-b border-slate-200 bg-white px-5 py-4 md:px-6">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-start gap-4 min-w-0">
               {Icon && (
@@ -49,11 +49,11 @@ const PremiumModal: React.FC<PremiumModalProps> = ({
                 </div>
               )}
               <div className="min-w-0">
-                <h3 className="text-xl md:text-2xl font-bold text-slate-900 truncate">
+                <h3 className="truncate text-lg font-bold text-slate-950 md:text-xl">
                   {title}
                 </h3>
                 {subtitle && (
-                  <p className="text-sm text-slate-500 font-medium mt-1">{subtitle}</p>
+                  <p className="mt-0.5 text-sm text-slate-600">{subtitle}</p>
                 )}
               </div>
             </div>
@@ -69,12 +69,12 @@ const PremiumModal: React.FC<PremiumModalProps> = ({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 md:px-7 py-5 md:py-6 bg-white">
+        <div className="flex-1 overflow-y-auto bg-slate-50/70 px-4 py-4 md:px-6 md:py-5">
           {children}
         </div>
 
         {footer && (
-          <div className="app-form-actions sticky bottom-0 px-5 py-4 md:px-7">
+          <div className="app-form-actions sticky bottom-0 px-5 py-3 md:px-6">
             {footer}
           </div>
         )}
@@ -98,7 +98,7 @@ export const FormSection: React.FC<{
   children: React.ReactNode;
 }> = ({ step, title, description, locked, complete, children }) => (
   <section
-    className={`relative overflow-hidden rounded-xl border transition-all duration-200 ${
+    className={`relative overflow-hidden rounded-lg border transition-colors ${
       locked
         ? 'border-slate-200 bg-slate-50 opacity-75'
         : complete
@@ -106,9 +106,10 @@ export const FormSection: React.FC<{
           : 'border-slate-200 bg-white'
     }`}
   >
-    <div className="px-5 md:px-6 py-5 border-b border-slate-100 flex items-start gap-4">
+    <div className="grid md:grid-cols-[190px_minmax(0,1fr)]">
+      <div className="flex items-start gap-3 border-b border-slate-100 px-4 py-4 md:border-b-0 md:border-r md:px-5">
       <div
-        className={`shrink-0 w-8 h-8 rounded-md flex items-center justify-center text-sm font-bold ${
+        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-bold ${
           complete
             ? 'bg-emerald-500 text-white'
             : locked
@@ -119,11 +120,12 @@ export const FormSection: React.FC<{
         {step}
       </div>
       <div>
-        <h4 className="text-sm font-bold text-slate-800">{title}</h4>
-        {description && <p className="text-xs text-slate-500 font-medium mt-1">{description}</p>}
+        <h4 className="text-sm font-bold text-slate-900">{title}</h4>
+        {description && <p className="mt-1 text-xs leading-snug text-slate-500">{description}</p>}
       </div>
+      </div>
+      <div className={`p-4 md:p-5 ${locked ? 'pointer-events-none select-none' : ''}`}>{children}</div>
     </div>
-    <div className={`p-5 md:p-6 ${locked ? 'pointer-events-none select-none' : ''}`}>{children}</div>
   </section>
 );
 
@@ -131,13 +133,13 @@ export const FieldLabel: React.FC<{ children: React.ReactNode; required?: boolea
   children,
   required,
 }) => (
-  <label className="block text-xs font-bold text-slate-600 mb-1.5">
+  <label className="mb-1.5 block text-xs font-bold text-slate-700">
     {children}
     {required && <span className="text-red-500 ml-1">*</span>}
   </label>
 );
 
 export const fieldClassName =
-  'w-full min-h-11 px-3.5 py-3 bg-white border border-slate-300 rounded-xl font-semibold text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 placeholder:text-slate-400 disabled:bg-slate-50 disabled:text-slate-400';
+  'w-full min-h-10 rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 font-semibold text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 disabled:bg-slate-100 disabled:text-slate-500';
 
 export default PremiumModal;

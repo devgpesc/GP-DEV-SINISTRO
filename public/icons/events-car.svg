@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="EventsCar">
+  <rect width="512" height="512" rx="104" fill="#111827"/>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M390 153 256 78 122 153l134 75 134 75-134 75-134-75" stroke="#fff" stroke-width="34"/>
+    <path d="M189 190h123l42-37M323 266H200l-42 37" stroke="#58a6ff" stroke-width="27"/>
+  </g>
+</svg>

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 const { useNavigate } = ReactRouterDOM as any;
 import {
@@ -26,6 +26,7 @@ import { useToast } from '../context/ToastContext';
 import { supabase } from '../services/supabaseClient';
 import { openMatrixPrintPreview } from '../utils/matrixPrint';
 import { formatDateTimeBr, formatVehicleLabel } from '../utils/vehicleLabel';
+import { getOfferRecommendation, OfferRecommendation } from '../utils/offerRecommendation';
 import ViewModeSwitch, { ViewMode } from './ViewModeSwitch';
 
 interface MatrixProps {
@@ -38,7 +39,19 @@ interface EditingCell {
   supplierId: string;
 }
 
+type AutoSaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error';
+
+const autoSaveLabels: Record<AutoSaveState, string> = {
+  idle: 'Preencha o valor',
+  pending: 'Alterações pendentes',
+  saving: 'Salvando...',
+  saved: 'Salvo',
+  error: 'Falha ao salvar',
+};
+
 const money = (value: number) => value.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+const editSignature = (cell: EditingCell, price: string, deliveryDays: string, availability: boolean, observation: string) =>
+  [cell.itemId, cell.supplierId, price.trim(), deliveryDays.trim(), availability ? '1' : '0', observation.trim()].join('|');
 const escapeSpreadsheetXml = (value: unknown) => String(value ?? '')
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -70,6 +83,10 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
   const [editDeliveryDays, setEditDeliveryDays] = useState('');
   const [editAvailability, setEditAvailability] = useState(true);
   const [isSavingPrice, setIsSavingPrice] = useState(false);
+  const [autoSaveState, setAutoSaveState] = useState<AutoSaveState>('idle');
+  const autoSaveTimerRef = useRef<number | null>(null);
+  const lastSavedSignatureRef = useRef('');
+  const saveInFlightRef = useRef(false);
   const [releasingItemId, setReleasingItemId] = useState<string | null>(null);
   const [releaseModalItem, setReleaseModalItem] = useState<QuotationItem | null>(null);
   const [releaseReason, setReleaseReason] = useState('');
@@ -171,7 +188,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
       });
     } catch (error) {
       console.error('Erro Matrix:', error);
-      addToast('error', 'Erro ao carregar matriz', 'Nao foi possivel buscar os dados.');
+      addToast('error', 'Erro ao carregar matriz', 'Não foi possível buscar os dados.');
     } finally {
       setLoading(false);
     }
@@ -183,41 +200,78 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
     try {
       await quotationService.simulateSupplierResponses(quotationId);
       await loadData();
-      addToast('success', 'Simulacao concluida', 'Precos ficticios gerados para teste.');
+      addToast('success', 'Simulação concluída', 'Preços fictícios gerados para teste.');
     } catch {
-      addToast('error', 'Erro', 'Falha na simulacao.');
+      addToast('error', 'Erro', 'Falha na simulação.');
     } finally {
       setGeneratingSim(false);
     }
   };
 
   const startEditing = (itemId: string, supplierId: string, currentPrice?: SupplierPrice) => {
-    setEditingCell({ itemId, supplierId });
-    setEditPrice(currentPrice?.price ? String(currentPrice.price) : '');
-    setEditObs(currentPrice?.obs || '');
-    setEditDeliveryDays(currentPrice?.delivery_days ? String(currentPrice.delivery_days) : '');
-    setEditAvailability(currentPrice?.availability ?? true);
+    const cell = { itemId, supplierId };
+    const initialPrice = currentPrice?.price != null ? String(currentPrice.price) : '';
+    const initialObservation = currentPrice?.obs || '';
+    const initialDeliveryDays = currentPrice?.delivery_days != null ? String(currentPrice.delivery_days) : '';
+    const initialAvailability = currentPrice?.availability ?? true;
+
+    if (autoSaveTimerRef.current) window.clearTimeout(autoSaveTimerRef.current);
+    setEditingCell(cell);
+    setEditPrice(initialPrice);
+    setEditObs(initialObservation);
+    setEditDeliveryDays(initialDeliveryDays);
+    setEditAvailability(initialAvailability);
+    lastSavedSignatureRef.current = currentPrice
+      ? editSignature(cell, initialPrice, initialDeliveryDays, initialAvailability, initialObservation)
+      : '';
+    setAutoSaveState(currentPrice ? 'saved' : 'idle');
   };
 
   const cancelEditing = () => {
+    if (autoSaveTimerRef.current) window.clearTimeout(autoSaveTimerRef.current);
     setEditingCell(null);
     setEditPrice('');
     setEditObs('');
     setEditDeliveryDays('');
     setEditAvailability(true);
+    setAutoSaveState('idle');
   };
 
-  const saveManualPrice = async () => {
-    if (!editingCell || !quotationId) return;
+  const persistManualPrice = async (options: { closeAfter?: boolean; notify?: boolean } = {}) => {
+    if (!editingCell || !quotationId) return false;
+    if (autoSaveTimerRef.current) window.clearTimeout(autoSaveTimerRef.current);
+
     const priceValue = Number(editPrice.replace(',', '.'));
     const deliveryDays = editDeliveryDays ? Number(editDeliveryDays) : null;
 
     if (!priceValue || priceValue < 0) {
-      addToast('warning', 'Valor invalido', 'Insira um preco valido.');
-      return;
+      setAutoSaveState('idle');
+      if (options.notify) addToast('warning', 'Valor inválido', 'Insira um preço válido.');
+      return false;
     }
 
+    if (deliveryDays !== null && (!Number.isInteger(deliveryDays) || deliveryDays < 0)) {
+      setAutoSaveState('error');
+      if (options.notify) addToast('warning', 'Prazo inválido', 'Informe o prazo em dias inteiros.');
+      return false;
+    }
+
+    const signature = editSignature(editingCell, editPrice, editDeliveryDays, editAvailability, editObs);
+    if (saveInFlightRef.current) {
+      for (let attempt = 0; attempt < 30 && saveInFlightRef.current; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 50));
+      }
+      if (saveInFlightRef.current) return false;
+    }
+    if (signature === lastSavedSignatureRef.current) {
+      setAutoSaveState('saved');
+      if (options.closeAfter) cancelEditing();
+      return true;
+    }
+
+    saveInFlightRef.current = true;
     setIsSavingPrice(true);
+    setAutoSaveState('saving');
     try {
       const savedPrice = await quotationService.savePrice({
         quotation_item_id: editingCell.itemId,
@@ -239,20 +293,56 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
         nextPrices[savedIndex] = savedPrice;
         return nextPrices;
       });
-      cancelEditing();
-      addToast('success', 'Preco lancado', 'Valor atualizado sem recarregar a pagina.');
+      lastSavedSignatureRef.current = signature;
+      setAutoSaveState('saved');
+      if (options.closeAfter) cancelEditing();
+      if (options.notify) addToast('success', 'Preço salvo', 'Valor atualizado sem recarregar a página.');
+      return true;
     } catch (error: any) {
+      setAutoSaveState('error');
       addToast('error', 'Erro ao salvar', error.message);
+      return false;
     } finally {
+      saveInFlightRef.current = false;
       setIsSavingPrice(false);
     }
   };
 
-  const bestPriceByItem = useMemo(() => {
-    const map: Record<string, number> = {};
+  const saveManualPrice = async () => {
+    await persistManualPrice({ closeAfter: true, notify: true });
+  };
+
+  useEffect(() => {
+    if (!editingCell) return;
+    const priceValue = Number(editPrice.replace(',', '.'));
+    const deliveryDays = editDeliveryDays ? Number(editDeliveryDays) : null;
+    const signature = editSignature(editingCell, editPrice, editDeliveryDays, editAvailability, editObs);
+
+    if (!priceValue || priceValue < 0 || (deliveryDays !== null && (!Number.isInteger(deliveryDays) || deliveryDays < 0))) {
+      setAutoSaveState('idle');
+      return;
+    }
+
+    if (signature === lastSavedSignatureRef.current) {
+      setAutoSaveState('saved');
+      return;
+    }
+
+    setAutoSaveState('pending');
+    autoSaveTimerRef.current = window.setTimeout(() => {
+      void persistManualPrice();
+    }, 850);
+
+    return () => {
+      if (autoSaveTimerRef.current) window.clearTimeout(autoSaveTimerRef.current);
+    };
+  }, [editingCell, editPrice, editDeliveryDays, editAvailability, editObs]);
+
+  const recommendationByItem = useMemo(() => {
+    const map: Record<string, OfferRecommendation | undefined> = {};
     items.forEach((item) => {
-      const itemPrices = prices.filter((price) => price.quotation_item_id === item.id && price.availability !== false);
-      if (itemPrices.length > 0) map[item.id] = Math.min(...itemPrices.map((price) => price.price));
+      const recommendation = getOfferRecommendation(prices.filter((price) => price.quotation_item_id === item.id));
+      if (recommendation) map[item.id] = recommendation;
     });
     return map;
   }, [items, prices]);
@@ -274,11 +364,10 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
       return;
     }
 
-    const isNotBestPrice = bestPriceByItem[item.id] !== undefined && price.price > bestPriceByItem[item.id];
     const nextSelection: ManualPurchaseSelection = {
       supplierId: supplier.id,
       quantity: item.quantity || 1,
-      justification: isNotBestPrice ? existing?.justification || '' : existing?.justification || '',
+      justification: existing?.justification || '',
     };
 
     setSelections((previous) => ({ ...previous, [item.id]: nextSelection }));
@@ -382,7 +471,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
     const complement = item.complement || item.version || item.variant || '';
     const matchesVersion = filterVersion === 'Todas as versões' || String(complement) === filterVersion;
     if (!matchesVersion) return false;
-    if (filterStatus === 'Sem Cotacao') return matchesText && !hasPrice;
+    if (filterStatus === 'Sem Cotação') return matchesText && !hasPrice;
     if (filterStatus === 'Cotado') return matchesText && hasPrice;
     if (filterStatus === 'Selecionado') return matchesText && !!activeSelections[item.id];
     if (filterStatus === 'Processado') return matchesText && processedItemIds.includes(item.id);
@@ -393,10 +482,38 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / itemsPerPage));
   const paginatedItems = filteredItems.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
+  const handleTabToNextCell = async (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Tab' || event.shiftKey || !editingCell) return;
+    event.preventDefault();
+
+    const saved = await persistManualPrice();
+    if (!saved) return;
+
+    const editableCells = filteredItems.flatMap((item) =>
+      processedItemIds.includes(item.id)
+        ? []
+        : filteredSuppliers.map((supplier) => ({ itemId: item.id, supplierId: supplier.id }))
+    );
+    const currentIndex = editableCells.findIndex((cell) =>
+      cell.itemId === editingCell.itemId && cell.supplierId === editingCell.supplierId
+    );
+    const nextCell = currentIndex >= 0 ? editableCells[currentIndex + 1] : undefined;
+
+    if (!nextCell) {
+      cancelEditing();
+      return;
+    }
+
+    const nextPrice = prices.find((price) =>
+      price.quotation_item_id === nextCell.itemId && price.supplier_id === nextCell.supplierId
+    );
+    startEditing(nextCell.itemId, nextCell.supplierId, nextPrice);
+  };
+
   const handleProcessPurchase = async () => {
     if (!quotationId) return;
     if (Object.keys(activeSelections).length === 0) {
-      addToast('warning', 'Selecao vazia', 'Selecione manualmente pelo menos um item para compra.');
+      addToast('warning', 'Seleção vazia', 'Selecione manualmente pelo menos um item para compra.');
       return;
     }
 
@@ -407,7 +524,17 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
     });
 
     if (invalid) {
-      addToast('warning', 'Selecao incompleta', 'Revise fornecedor, valor e quantidade dos itens selecionados.');
+      addToast('warning', 'Seleção incompleta', 'Revise fornecedor, valor e quantidade dos itens selecionados.');
+      return;
+    }
+
+    const withoutPolicyJustification = Object.entries(activeSelections).find(([itemId, selection]) => {
+      const recommendation = recommendationByItem[itemId];
+      return recommendation && !recommendation.supplierIds.includes(selection.supplierId) && !selection.justification?.trim();
+    });
+
+    if (withoutPolicyJustification) {
+      addToast('warning', 'Justificativa necessária', 'Explique a escolha quando ela não seguir disponibilidade, menor preço e menor prazo.');
       return;
     }
 
@@ -416,7 +543,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
       await quotationService.processPurchase(quotationId, activeSelections, eventId);
       setSelections({});
       await loadData();
-      addToast('success', 'Compras enviadas', 'As OCs foram geradas para aprovacao da gestao.');
+      addToast('success', 'Compras enviadas', 'As OCs foram geradas para aprovação da gestão.');
       navigate('/compras');
     } catch (error: any) {
       addToast('error', 'Erro no processamento', error.message);
@@ -451,8 +578,21 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
     });
   };
 
+  const getRecommendationText = (itemId: string, supplierId: string, price?: SupplierPrice) => {
+    if (!price) return '';
+    if (price.availability === false) return 'Indisponível';
+    const recommendation = recommendationByItem[itemId];
+    if (!recommendation) return '';
+    if (recommendation.supplierIds.includes(supplierId)) {
+      if (recommendation.technicalTie) return 'Empate técnico';
+      return recommendation.reason === 'fastest-delivery' ? 'Melhor prazo no empate de preço' : 'Melhor opção';
+    }
+    if (Math.abs(price.price - recommendation.bestPrice) < 0.005) return 'Mesmo preço, prazo maior';
+    return '';
+  };
+
   const exportCsv = () => {
-    const headers = ['Item', 'Qtd', 'Fornecedor', 'Valor', 'Prazo', 'Disponivel', 'Selecionado', 'Justificativa'];
+    const headers = ['Item', 'Quantidade', 'Fornecedor', 'Valor', 'Prazo (dias)', 'Disponível', 'Recomendação', 'Selecionado', 'Justificativa'];
     const rows = items.flatMap((item) => suppliers.map((supplier) => {
       const price = prices.find((candidate) => candidate.quotation_item_id === item.id && candidate.supplier_id === supplier.id);
       const selection = selections[item.id];
@@ -462,18 +602,23 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
         supplier.name,
         price?.price ?? '',
         price?.delivery_days ?? '',
-        price ? (price.availability === false ? 'Nao' : 'Sim') : '',
-        selection?.supplierId === supplier.id ? 'Sim' : 'Nao',
+        price ? (price.availability === false ? 'Não' : 'Sim') : '',
+        getRecommendationText(item.id, supplier.id, price),
+        selection?.supplierId === supplier.id ? 'Sim' : 'Não',
         selection?.supplierId === supplier.id ? selection.justification || '' : '',
       ];
     }));
-    const csv = [headers, ...rows].map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(';')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const csv = [headers, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(';'))
+      .join('\r\n');
+    const blob = new Blob([`\ufeffsep=;\r\n${csv}`], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = `matriz-cotacao-${quotationId}.csv`;
+    document.body.appendChild(link);
     link.click();
+    link.remove();
     URL.revokeObjectURL(url);
   };
 
@@ -490,6 +635,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
         Valor: price?.price ?? '',
         PrazoDias: price?.delivery_days ?? '',
         Disponivel: price ? (price.availability === false ? 'Não' : 'Sim') : '',
+        Recomendacao: getRecommendationText(item.id, supplier.id, price),
         Selecionado: selection?.supplierId === supplier.id ? 'Sim' : 'Não',
         Justificativa: selection?.supplierId === supplier.id ? selection.justification || '' : '',
       };
@@ -561,7 +707,13 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
               {filteredSuppliers.map((supplier) => {
                 const price = prices.find((candidate) => candidate.quotation_item_id === item.id && candidate.supplier_id === supplier.id);
                 const selected = activeSelections[item.id]?.supplierId === supplier.id;
-                const isBest = !!price && bestPriceByItem[item.id] === price.price;
+                const recommendation = recommendationByItem[item.id];
+                const isRecommended = !!price && !!recommendation?.supplierIds.includes(supplier.id);
+                const sameBestPrice = !!price && !!recommendation && Math.abs(price.price - recommendation.bestPrice) < 0.005;
+                const isSlowerPriceTie = sameBestPrice && !isRecommended && price.availability !== false;
+                const recommendationLabel = recommendation?.technicalTie
+                  ? 'Empate técnico'
+                  : recommendation?.reason === 'fastest-delivery' ? 'Melhor prazo' : 'Melhor opção';
                 const isEditing = editingCell?.itemId === item.id && editingCell?.supplierId === supplier.id;
 
                 if (isEditing) {
@@ -569,24 +721,24 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
                     <div key={supplier.id} className="grid gap-2 bg-blue-50/50 px-4 py-2 xl:grid-cols-[minmax(220px,1fr)_minmax(620px,2.4fr)] xl:items-center">
                       <div className="flex min-w-0 items-center gap-2"><p className="truncate text-xs font-black text-slate-800">{supplier.name}</p><span className="shrink-0 text-[10px] font-medium text-slate-400">{supplier.city || 'Local não informado'}</span></div>
                       <div className="grid gap-1.5 rounded-lg border border-blue-300 bg-white p-1.5 sm:grid-cols-[minmax(130px,1fr)_96px_105px_minmax(150px,1.2fr)_auto] sm:items-center">
-                        <label className="flex min-h-9 items-center gap-2 rounded-md bg-slate-50 px-2 text-xs font-bold text-slate-500">R$ <input autoFocus type="number" className="min-w-0 flex-1 bg-transparent font-black text-slate-800 outline-none" value={editPrice} onChange={(event) => setEditPrice(event.target.value)} placeholder="0,00" /></label>
-                        <input className="min-h-9 rounded-md bg-slate-50 px-2 text-xs font-medium outline-none" placeholder="Prazo (dias)" value={editDeliveryDays} onChange={(event) => setEditDeliveryDays(event.target.value)} />
+                        <label className="flex min-h-9 items-center gap-2 rounded-md bg-slate-50 px-2 text-xs font-bold text-slate-500">R$ <input autoFocus type="number" inputMode="decimal" aria-label="Valor da cotação" className="min-w-0 flex-1 bg-transparent font-black text-slate-800 outline-none" value={editPrice} onChange={(event) => setEditPrice(event.target.value)} placeholder="0,00" /></label>
+                        <input type="number" min={0} step={1} aria-label="Prazo em dias" className="min-h-9 rounded-md bg-slate-50 px-2 text-xs font-medium outline-none" placeholder="Prazo (dias)" value={editDeliveryDays} onChange={(event) => setEditDeliveryDays(event.target.value)} />
                         <label className="flex min-h-9 items-center gap-2 rounded-md bg-slate-50 px-2 text-xs font-bold text-slate-600"><input type="checkbox" checked={editAvailability} onChange={(event) => setEditAvailability(event.target.checked)} /> Disponível</label>
-                        <input className="min-h-9 rounded-md bg-slate-50 px-2 text-xs font-medium outline-none" placeholder="Observação" value={editObs} onChange={(event) => setEditObs(event.target.value)} />
-                        <div className="flex justify-end gap-1"><button type="button" onClick={cancelEditing} className="app-icon-button" title="Cancelar"><X size={14} /></button><button type="button" onClick={saveManualPrice} disabled={isSavingPrice} className="app-icon-button bg-blue-600 text-white" title="Salvar">{isSavingPrice ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}</button></div>
+                        <input aria-label="Observação da cotação" className="min-h-9 rounded-md bg-slate-50 px-2 text-xs font-medium outline-none" placeholder="Observação" value={editObs} onChange={(event) => setEditObs(event.target.value)} onKeyDown={handleTabToNextCell} />
+                        <div className="flex items-center justify-end gap-1"><span className={`mr-1 whitespace-nowrap text-[9px] font-bold ${autoSaveState === 'error' ? 'text-red-600' : autoSaveState === 'saved' ? 'text-emerald-600' : 'text-slate-400'}`}>{autoSaveLabels[autoSaveState]}</span><button type="button" onClick={cancelEditing} className="app-icon-button" title="Cancelar"><X size={14} /></button><button type="button" onClick={saveManualPrice} disabled={isSavingPrice} className="app-icon-button bg-blue-600 text-white" title="Salvar agora">{isSavingPrice ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}</button></div>
                       </div>
                     </div>
                   );
                 }
 
                 return (
-                  <div key={supplier.id} className={`grid gap-2 px-4 py-2 transition-colors lg:grid-cols-[minmax(220px,1fr)_90px_125px_145px] lg:items-center ${selected ? 'bg-blue-50' : isBest ? 'bg-emerald-50/60' : 'hover:bg-slate-50'}`}>
+                  <div key={supplier.id} className={`grid gap-2 px-4 py-2 transition-colors lg:grid-cols-[minmax(220px,1fr)_90px_125px_145px] lg:items-center ${selected ? 'bg-blue-50' : isRecommended ? 'bg-emerald-50/60' : 'hover:bg-slate-50'}`}>
                     <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-black text-slate-800">{supplier.name}</p>{isBest && <span className="rounded bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase text-emerald-700">Menor preço</span>}{selected && <CheckCircle2 size={16} className="text-blue-600" />}</div>
+                      <div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-black text-slate-800">{supplier.name}</p>{isRecommended && <span className="rounded bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase text-emerald-700">{recommendationLabel}</span>}{isSlowerPriceTie && <span className="rounded bg-amber-100 px-2 py-0.5 text-[9px] font-black uppercase text-amber-800">Mesmo preço, prazo maior</span>}{selected && <CheckCircle2 size={16} className="text-blue-600" />}</div>
                       <p className="text-[10px] font-medium text-slate-500">{supplier.city || 'Local não informado'}</p>
                     </div>
                     <div><p className="text-[9px] font-black uppercase text-slate-400">Prazo</p><p className="text-xs font-bold text-slate-700">{price ? (price.availability === false ? 'Indisponível' : price.delivery_days ? `${price.delivery_days} dia(s)` : 'Não informado') : 'Sem cotação'}</p></div>
-                    <div><p className="text-[9px] font-black uppercase text-slate-400">Valor unitário</p><p className={`text-sm font-black ${isBest ? 'text-emerald-700' : 'text-slate-800'}`}>{price ? `R$ ${money(price.price)}` : '—'}</p></div>
+                    <div><p className="text-[9px] font-black uppercase text-slate-400">Valor unitário</p><p className={`text-sm font-black ${isRecommended ? 'text-emerald-700' : 'text-slate-800'}`}>{price ? `R$ ${money(price.price)}` : '—'}</p></div>
                     <div className="flex items-center justify-end gap-2">
                       <button type="button" onClick={() => startEditing(item.id, supplier.id, price)} className="app-icon-button" title={price ? 'Editar cotação' : 'Lançar valor'}><Edit2 size={15} /></button>
                       {price && <button type="button" onClick={() => selectForPurchase(item, supplier, price)} disabled={isProcessed || price.availability === false} className={`min-w-[96px] rounded-lg px-3 py-2 text-[10px] font-black uppercase transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${selected ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:text-blue-700'}`}>{selected ? 'Selecionado' : 'Selecionar'}</button>}
@@ -602,11 +754,11 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
   );
 
   if (loading) {
-    return <div className="py-20 text-center flex flex-col items-center"><Loader2 className="animate-spin mb-4 text-blue-600" size={32} /><p className="text-xs font-bold uppercase tracking-widest text-slate-400">Montando matriz de cotacao...</p></div>;
+    return <div className="py-20 text-center flex flex-col items-center"><Loader2 className="animate-spin mb-4 text-blue-600" size={32} /><p className="text-xs font-bold uppercase tracking-widest text-slate-400">Montando matriz de cotação...</p></div>;
   }
 
   if (items.length === 0) {
-    return <div className="p-10 text-center text-slate-400 border-2 border-dashed border-slate-200 rounded-3xl">Nenhum item nesta cotacao.</div>;
+    return <div className="p-10 text-center text-slate-400 border-2 border-dashed border-slate-200 rounded-3xl">Nenhum item nesta cotação.</div>;
   }
 
   return (
@@ -615,8 +767,8 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
         <div className="flex items-start gap-2">
           <AlertTriangle size={18} className="mt-0.5 shrink-0" />
           <div>
-            <p className="text-xs font-bold">Decisão de compra manual</p>
-            <p className="text-xs font-medium">O menor preço é apenas destacado. Selecione o fornecedor desejado em cada linha.</p>
+            <p className="text-xs font-bold">Política de recomendação de compra</p>
+            <p className="text-xs font-medium">O sistema considera somente itens disponíveis, prioriza o menor preço e, em caso de empate, recomenda o menor prazo. Empates completos são identificados como empate técnico; a decisão final continua manual.</p>
           </div>
         </div>
       </div>
@@ -656,7 +808,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
           <span className="text-xl font-black text-slate-800">{stats.quotedItems}/{stats.totalItems}</span>
         </div>
         <div className="app-kpi">
-          <p className="mb-1 text-[9px] font-black uppercase text-slate-400">Orcamentos recebidos</p>
+          <p className="mb-1 text-[9px] font-black uppercase text-slate-400">Orçamentos recebidos</p>
           <span className="text-xl font-black text-slate-800">{stats.responsesCount}</span>
         </div>
         <div className="app-kpi">
@@ -671,7 +823,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
 
       {prices.length === 0 && (
         <div className="bg-white border border-amber-100 p-6 rounded-2xl flex justify-between items-center print:hidden">
-          <div className="text-amber-800"><p className="font-bold text-sm">Nenhum valor lancado</p><p className="text-xs">Use o lapis nas celulas para inserir valores manualmente.</p></div>
+          <div className="text-amber-800"><p className="font-bold text-sm">Nenhum valor lançado</p><p className="text-xs">Use o lápis nas células para inserir valores manualmente.</p></div>
           <button onClick={handleSimulate} disabled={generatingSim} className="bg-amber-100 text-amber-800 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-amber-200 transition-all flex items-center gap-2">
             {generatingSim ? <Loader2 className="animate-spin" size={14} /> : <><RefreshCw size={14} /> Simular teste</>}
           </button>
@@ -691,7 +843,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
           <select className="min-h-9 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 outline-none" value={filterStatus} onChange={(event) => setFilterStatus(event.target.value)}>
             <option>Todos</option>
             <option>Cotado</option>
-            <option>Sem Cotacao</option>
+            <option>Sem Cotação</option>
             <option>Selecionado</option>
             <option>Processado</option>
           </select>
@@ -758,20 +910,26 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
                   {filteredSuppliers.map((supplier) => {
                     const price = prices.find((candidate) => candidate.quotation_item_id === item.id && candidate.supplier_id === supplier.id);
                     const selected = activeSelections[item.id]?.supplierId === supplier.id;
-                    const isBest = !!price && bestPriceByItem[item.id] === price.price;
+                    const recommendation = recommendationByItem[item.id];
+                    const isRecommended = !!price && !!recommendation?.supplierIds.includes(supplier.id);
+                    const sameBestPrice = !!price && !!recommendation && Math.abs(price.price - recommendation.bestPrice) < 0.005;
+                    const isSlowerPriceTie = sameBestPrice && !isRecommended && price.availability !== false;
+                    const recommendationLabel = recommendation?.technicalTie
+                      ? 'Empate técnico'
+                      : recommendation?.reason === 'fastest-delivery' ? 'Melhor prazo' : 'Recomendado';
                     const isEditing = editingCell?.itemId === item.id && editingCell?.supplierId === supplier.id;
 
                     if (isEditing) {
                       return (
                         <td key={supplier.id} className="min-w-[190px] p-1.5">
                           <div className="rounded-md border border-blue-500 bg-white p-2 shadow-sm">
-                            <div className="mb-1.5 flex items-center gap-2"><span className="text-xs font-bold text-slate-500">R$</span><input autoFocus type="number" className="w-full border-b border-slate-200 text-sm font-black text-slate-800 outline-none" value={editPrice} onChange={(event) => setEditPrice(event.target.value)} placeholder="0.00" /></div>
+                            <div className="mb-1.5 flex items-center gap-2"><span className="text-xs font-bold text-slate-500">R$</span><input autoFocus type="number" inputMode="decimal" aria-label="Valor da cotação" className="w-full border-b border-slate-200 text-sm font-black text-slate-800 outline-none" value={editPrice} onChange={(event) => setEditPrice(event.target.value)} placeholder="0.00" /></div>
                             <div className="mb-1.5 grid grid-cols-2 gap-1.5">
-                              <input className="rounded bg-slate-50 p-1 text-[10px] font-medium text-slate-500 outline-none" placeholder="Prazo dias" value={editDeliveryDays} onChange={(event) => setEditDeliveryDays(event.target.value)} />
+                              <input type="number" min={0} step={1} aria-label="Prazo em dias" className="rounded bg-slate-50 p-1 text-[10px] font-medium text-slate-500 outline-none" placeholder="Prazo dias" value={editDeliveryDays} onChange={(event) => setEditDeliveryDays(event.target.value)} />
                               <label className="flex items-center gap-1 rounded bg-slate-50 p-1 text-[10px] font-bold text-slate-500"><input type="checkbox" checked={editAvailability} onChange={(event) => setEditAvailability(event.target.checked)} /> Disp.</label>
                             </div>
-                            <input className="mb-1.5 w-full rounded bg-slate-50 p-1 text-[10px] font-medium text-slate-500 outline-none" placeholder="Observacao" value={editObs} onChange={(event) => setEditObs(event.target.value)} />
-                            <div className="flex justify-end gap-1"><button onClick={cancelEditing} className="p-1.5 rounded-lg bg-slate-100 text-slate-500"><X size={14} /></button><button onClick={saveManualPrice} disabled={isSavingPrice} className="p-1.5 rounded-lg bg-blue-600 text-white">{isSavingPrice ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}</button></div>
+                            <input aria-label="Observação da cotação" className="mb-1.5 w-full rounded bg-slate-50 p-1 text-[10px] font-medium text-slate-500 outline-none" placeholder="Observação" value={editObs} onChange={(event) => setEditObs(event.target.value)} onKeyDown={handleTabToNextCell} />
+                            <div className="flex items-center justify-between gap-1"><span className={`text-[8px] font-bold ${autoSaveState === 'error' ? 'text-red-600' : autoSaveState === 'saved' ? 'text-emerald-600' : 'text-slate-400'}`}>{autoSaveLabels[autoSaveState]}</span><div className="flex gap-1"><button onClick={cancelEditing} className="p-1.5 rounded-lg bg-slate-100 text-slate-500" title="Cancelar"><X size={14} /></button><button onClick={saveManualPrice} disabled={isSavingPrice} className="p-1.5 rounded-lg bg-blue-600 text-white" title="Salvar agora">{isSavingPrice ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}</button></div></div>
                           </div>
                         </td>
                       );
@@ -781,7 +939,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
                       return (
                         <td key={supplier.id} className="p-2 text-center">
                           <button onClick={() => startEditing(item.id, supplier.id)} className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 bg-white px-2 py-1.5 text-xs font-bold text-slate-500 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600">
-                            <Edit2 size={14} /> Lancar valor
+                            <Edit2 size={14} /> Lançar valor
                           </button>
                         </td>
                       );
@@ -790,8 +948,9 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
                     return (
                       <td key={supplier.id} className="p-2 text-center relative group/cell">
                         <button onClick={(event) => { event.stopPropagation(); startEditing(item.id, supplier.id, price); }} className="absolute top-2 right-2 p-1.5 bg-white text-slate-400 hover:text-blue-600 rounded-full shadow-sm border border-slate-100 opacity-0 group-hover/cell:opacity-100 transition-opacity z-20"><Edit2 size={12} /></button>
-                        <button onClick={() => selectForPurchase(item, supplier, price)} disabled={isProcessed || price.availability === false} className={`relative flex min-h-[46px] w-full flex-col items-center justify-center rounded-md border px-2 py-1 transition-all ${selected ? 'bg-blue-50 border-blue-500 text-blue-900 ring-1 ring-blue-200' : isBest ? 'bg-emerald-50 border-emerald-300 text-slate-800 hover:border-blue-500' : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'} disabled:opacity-50 disabled:cursor-not-allowed`}>
-                          {isBest && !selected && <span className="absolute top-1 right-1 bg-emerald-100 text-emerald-700 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase">Menor preço</span>}
+                        <button onClick={() => selectForPurchase(item, supplier, price)} disabled={isProcessed || price.availability === false} className={`relative flex min-h-[46px] w-full flex-col items-center justify-center rounded-md border px-2 py-1 transition-all ${selected ? 'bg-blue-50 border-blue-500 text-blue-900 ring-1 ring-blue-200' : isRecommended ? 'bg-emerald-50 border-emerald-300 text-slate-800 hover:border-blue-500' : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'} disabled:opacity-50 disabled:cursor-not-allowed`}>
+                          {isRecommended && !selected && <span className="absolute left-1 top-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[8px] font-bold uppercase text-emerald-700">{recommendationLabel}</span>}
+                          {isSlowerPriceTie && !selected && <span className="absolute left-1 top-1 rounded bg-amber-100 px-1.5 py-0.5 text-[8px] font-bold uppercase text-amber-800">Prazo maior</span>}
                           <span className="text-sm font-black"><span className="opacity-50 text-[10px]">R$</span> {money(price.price)}</span>
                           <span className="flex items-center gap-1 text-[8px] font-bold uppercase text-slate-500">
                             Total R$ {money(price.price * (activeSelections[item.id]?.quantity || item.quantity || 1))}
@@ -827,7 +986,7 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
               <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><ShoppingCart size={20} className="text-blue-600" /> Itens selecionados para compra</h3>
               <p className="text-xs text-slate-500 font-bold">Revise as escolhas antes de processar. Uma escolha ativa por item.</p>
             </div>
-            <button onClick={clearSelection} className="px-4 py-2 bg-slate-100 text-slate-500 rounded-xl text-xs font-black uppercase flex items-center gap-2 print:hidden"><Trash2 size={14} /> Limpar selecao</button>
+            <button onClick={clearSelection} className="px-4 py-2 bg-slate-100 text-slate-500 rounded-xl text-xs font-black uppercase flex items-center gap-2 print:hidden"><Trash2 size={14} /> Limpar seleção</button>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {selectedGroups.map((group) => (
@@ -842,7 +1001,8 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
                 </button>
                 <div className="space-y-3">
                   {group.rows.map(({ item, price, selection }) => {
-                    const isNotBest = bestPriceByItem[item.id] !== undefined && price.price > bestPriceByItem[item.id];
+                    const recommendation = recommendationByItem[item.id];
+                    const isOutsideRecommendation = !!recommendation && !recommendation.supplierIds.includes(group.supplier.id);
                     const showDetails = expandedSupplierIds.includes(group.supplier.id);
                     return (
                       <div key={item.id} className="bg-slate-50 rounded-xl p-3">
@@ -854,8 +1014,8 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
                           <label className="text-[10px] font-black uppercase text-slate-400">Qtd</label>
                           <input type="number" min={1} value={selection.quantity} onChange={(event) => updateSelection(item, { quantity: Number(event.target.value) })} className="w-20 px-2 py-1 rounded-lg border border-slate-200 text-xs font-bold" />
                         </div>
-                        <textarea value={selection.justification || ''} onChange={(event) => updateSelection(item, { justification: event.target.value })} placeholder={isNotBest ? 'Justifique a escolha fora do menor preco...' : 'Observacao/justificativa opcional'} className={`mt-2 w-full p-2 rounded-lg text-xs font-medium border outline-none print:hidden ${isNotBest && !selection.justification ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white'}`} />
-                        {isNotBest && <p className="mt-1 text-[10px] text-amber-600 font-bold">Fornecedor escolhido nao e o menor preco. Registre a justificativa.</p>}
+                        <textarea value={selection.justification || ''} onChange={(event) => updateSelection(item, { justification: event.target.value })} placeholder={isOutsideRecommendation ? 'Justifique a escolha fora da recomendação...' : 'Observação/justificativa opcional'} className={`mt-2 w-full p-2 rounded-lg text-xs font-medium border outline-none print:hidden ${isOutsideRecommendation && !selection.justification ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white'}`} />
+                        {isOutsideRecommendation && <p className="mt-1 text-[10px] text-amber-700 font-bold">Esta escolha não segue a política de disponibilidade, menor preço e menor prazo. Registre a justificativa.</p>}
                       </div>
                     );
                   })}

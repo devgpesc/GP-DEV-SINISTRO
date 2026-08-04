@@ -921,7 +921,7 @@ const Events: React.FC = () => {
               type="button"
               onClick={handleSave}
               disabled={isFormLocked || isSaving}
-              className="px-8 py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none"
+              className="flex items-center justify-center gap-2 rounded-lg border border-blue-600 bg-blue-600 px-6 py-3 text-xs font-bold text-white shadow-sm disabled:border-slate-300 disabled:bg-slate-200 disabled:text-slate-600 disabled:opacity-100 disabled:shadow-none"
             >
               {isSaving ? <Loader2 className="animate-spin" size={16} /> : <ShieldAlert size={16} />}
               {isSaving ? 'Salvando...' : 'Salvar Sinistro'}

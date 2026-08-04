@@ -1,3 +1,5 @@
+import { getOfferRecommendation } from './offerRecommendation';
+
 export type MatrixPrintLayout = 'landscape' | 'list';
 
 type MatrixPrintInput = {
@@ -23,11 +25,8 @@ function computeChampionSupplierIds(input: MatrixPrintInput): Set<string> {
   const wins = new Map<string, number>();
   for (const item of input.items) {
     const offers = input.prices.filter((p) => p.quotation_item_id === item.id && Number(p.price) > 0);
-    if (!offers.length) continue;
-    const min = Math.min(...offers.map((p) => Number(p.price)));
-    offers
-      .filter((p) => Number(p.price) === min)
-      .forEach((p) => wins.set(p.supplier_id, (wins.get(p.supplier_id) || 0) + 1));
+    const recommendation = getOfferRecommendation(offers);
+    recommendation?.supplierIds.forEach((supplierId) => wins.set(supplierId, (wins.get(supplierId) || 0) + 1));
   }
   let bestCount = 0;
   const champions = new Set<string>();
@@ -53,17 +52,17 @@ function buildLandscapeTable(input: MatrixPrintInput, championIds: Set<string>) 
   `).join('');
 
   const rows = input.items.map((item) => {
+    const recommendation = getOfferRecommendation(input.prices.filter((p) => p.quotation_item_id === item.id));
     const itemPrices = input.suppliers.map((supplier) => {
       const price = input.prices.find((p) => p.quotation_item_id === item.id && p.supplier_id === supplier.id);
-      const allForItem = input.prices.filter((p) => p.quotation_item_id === item.id && p.price > 0);
-      const min = allForItem.length ? Math.min(...allForItem.map((p) => p.price)) : null;
-      const isMin = price && min !== null && price.price === min;
+      const isRecommended = !!price && !!recommendation?.supplierIds.includes(supplier.id);
+      const recommendationLabel = recommendation?.technicalTie ? 'Empate técnico' : recommendation?.reason === 'fastest-delivery' ? 'Melhor prazo' : 'Melhor opção';
       return `
-        <td class="price-cell ${isMin ? 'best' : ''}">
+        <td class="price-cell ${isRecommended ? 'best' : ''}">
           ${price ? `
-            <div class="price-value ${isMin ? 'best-value' : ''}">R$ ${money(price.price)}</div>
-            ${isMin ? '<div class="best-badge">Menor preço</div>' : ''}
-            <div class="price-meta">${price.delivery_days ? `${price.delivery_days} dia(s)` : '—'}</div>
+            <div class="price-value ${isRecommended ? 'best-value' : ''}">R$ ${money(price.price)}</div>
+            ${isRecommended ? `<div class="best-badge">${recommendationLabel}</div>` : ''}
+            <div class="price-meta">${price.availability === false ? 'Indisponível' : price.delivery_days ? `${price.delivery_days} dia(s)` : 'Sem prazo'}</div>
           ` : '<span class="empty">—</span>'}
         </td>
       `;
@@ -101,23 +100,29 @@ function buildListTable(input: MatrixPrintInput, championIds: Set<string>) {
         if (!price) return null;
         return { supplier, price };
       })
-      .filter(Boolean) as Array<{ supplier: { id: string; name: string; city?: string }; price: { price: number; delivery_days?: number | null } }>;
+      .filter(Boolean) as Array<{ supplier: { id: string; name: string; city?: string }; price: { supplier_id: string; price: number; delivery_days?: number | null; availability?: boolean } }>;
 
-    const min = offersRaw.length ? Math.min(...offersRaw.map((o) => o.price.price)) : null;
+    const recommendation = getOfferRecommendation(offersRaw.map((offer) => offer.price));
 
     const offers = offersRaw
-      .sort((a, b) => a.price.price - b.price.price)
+      .sort((a, b) => {
+        const availabilityDifference = Number(a.price.availability === false) - Number(b.price.availability === false);
+        if (availabilityDifference !== 0) return availabilityDifference;
+        if (a.price.price !== b.price.price) return a.price.price - b.price.price;
+        return Number(a.price.delivery_days ?? Number.POSITIVE_INFINITY) - Number(b.price.delivery_days ?? Number.POSITIVE_INFINITY);
+      })
       .map(({ supplier, price }) => {
-        const isMin = min !== null && price.price === min;
+        const isRecommended = !!recommendation?.supplierIds.includes(supplier.id);
+        const recommendationLabel = recommendation?.technicalTie ? 'Empate técnico' : recommendation?.reason === 'fastest-delivery' ? 'Melhor prazo' : 'Melhor opção';
         const isChampion = championIds.has(supplier.id);
         return `
-          <div class="list-offer ${isMin ? 'best' : ''} ${isChampion ? 'champion' : ''}">
+          <div class="list-offer ${isRecommended ? 'best' : ''} ${isChampion ? 'champion' : ''}">
             <div>
               <div class="offer-supplier">${supplier.name}${isChampion ? ' ★' : ''}</div>
               <div class="offer-city">${supplier.city || ''}</div>
-              ${isMin ? '<div class="best-badge">Menor preço</div>' : ''}
+              ${isRecommended ? `<div class="best-badge">${recommendationLabel}</div>` : ''}
             </div>
-            <div class="offer-price ${isMin ? 'best-value' : ''}">R$ ${money(price.price)}</div>
+            <div><div class="offer-price ${isRecommended ? 'best-value' : ''}">R$ ${money(price.price)}</div><div class="price-meta">${price.availability === false ? 'Indisponível' : price.delivery_days ? `${price.delivery_days} dia(s)` : 'Sem prazo'}</div></div>
           </div>
         `;
       })

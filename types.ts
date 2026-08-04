@@ -90,6 +90,8 @@ export interface PurchaseOrder {
   tenant_id?: string;
   code: string;
   eventId: string;
+  quotationId?: string;
+  quotation_id?: string;
   supplierId: string;
   items: Array<{ 
     catalogId: string;
@@ -99,9 +101,13 @@ export interface PurchaseOrder {
     catalog_item_id?: string;
   }>;
   total: number;
-  status: 'Gerada' | 'Enviada' | 'Aprovada' | 'Recebida' | 'Cancelada';
+  status: 'Gerada' | 'Enviada' | 'Aprovada' | 'Recebida' | 'Cancelada' | 'Devolvida';
   createdAt: string;
   approvedAt?: string;
+  reversed_amount?: number;
+  reversed_at?: string;
+  reversal_type?: 'cancelamento' | 'devolucao';
+  cancellation_reason?: string;
 }
 
 export interface Quotation {

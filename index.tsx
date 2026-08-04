@@ -1,11 +1,23 @@
 import React, { ReactNode } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import '@fontsource/source-sans-3/400.css';
-import '@fontsource/source-sans-3/600.css';
-import '@fontsource/source-sans-3/700.css';
-import '@fontsource/source-sans-3/800.css';
-import '@fontsource/jetbrains-mono/400.css';
+import '@fontsource/inter/latin-400.css';
+import '@fontsource/inter/latin-500.css';
+import '@fontsource/inter/latin-600.css';
+import '@fontsource/inter/latin-700.css';
+import '@fontsource/inter/latin-800.css';
+import '@fontsource/eb-garamond/latin-600.css';
+import '@fontsource/eb-garamond/latin-700.css';
+import '@fontsource/cormorant-garamond/latin-600.css';
+import '@fontsource/cormorant-garamond/latin-700.css';
+import '@fontsource/source-sans-3/latin-400.css';
+import '@fontsource/source-sans-3/latin-600.css';
+import '@fontsource/source-sans-3/latin-700.css';
+import '@fontsource/source-sans-3/latin-800.css';
+import '@fontsource/jetbrains-mono/latin-400.css';
 import './styles/app.css';
+import { applyTypographyPreset, getStoredTypographyPreset } from './utils/typography';
+
+applyTypographyPreset(getStoredTypographyPreset());
 
 interface ErrorBoundaryProps {
   children?: ReactNode;
@@ -58,6 +70,14 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
 
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('Elemento raiz indisponível.');
+
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((error) => {
+      if (import.meta.env.DEV) console.error('[PWA]', error);
+    });
+  });
+}
 
 const root: Root = createRoot(rootElement);
 const supabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || '').trim();
