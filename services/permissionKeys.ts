@@ -31,7 +31,7 @@ export type CanonicalPermissionId = (typeof CANONICAL_PERMISSIONS)[number]['id']
 
 /** Módulos do sistema — permissão por empresa (organization_members.module_permissions). */
 export const MODULE_PERMISSIONS = [
-  { id: 'dashboard', route: '/', label: 'Dashboard', group: 'Menu' },
+  { id: 'dashboard', route: '/', label: 'Visão geral', group: 'Menu' },
   { id: 'eventos', route: '/eventos', label: 'Sinistros', group: 'Menu' },
   { id: 'cotacoes', route: '/cotacoes', label: 'Cotações', group: 'Fluxo' },
   { id: 'compras', route: '/compras', label: 'Compras', group: 'Fluxo' },

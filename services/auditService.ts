@@ -2,6 +2,61 @@
 import { supabase } from './supabaseClient';
 import { AuditLog } from '../types';
 
+const normalizeAuditTerm = (value?: string | null) => (value || '').trim().toLowerCase();
+
+const auditActionLabels: Record<string, string> = {
+  'accept invite': 'Aceite de convite',
+  'create': 'Criação',
+  'create invite': 'Criação de convite',
+  'create member': 'Inclusão de membro',
+  'delete': 'Exclusão',
+  'delete user': 'Remoção de usuário',
+  'navigate': 'Acesso',
+  'register': 'Cadastro',
+  'update': 'Atualização',
+  'update settings': 'Atualização das configurações',
+  'update status': 'Alteração de status',
+  'update user': 'Atualização de usuário',
+};
+
+const auditEntityLabels: Record<string, string> = {
+  'associate': 'Associado',
+  'event': 'Sinistro',
+  'invitation': 'Convite',
+  'page': 'Página',
+  'purchase order': 'Ordem de compra',
+  'purchaseorder': 'Ordem de compra',
+  'quotation': 'Cotação',
+  'settings': 'Configurações',
+  'supplier': 'Fornecedor',
+  'user': 'Usuário',
+  'vehicle': 'Veículo',
+};
+
+const auditActivityDescriptions: Record<string, string> = {
+  'accept invite|invitation': 'aceitou um convite',
+  'create invite|invitation': 'criou um convite',
+  'create member|user': 'adicionou um membro',
+  'delete|purchaseorder': 'excluiu uma ordem de compra',
+  'delete user|user': 'removeu um usuário',
+  'navigate|page': 'acessou uma página',
+  'register|user': 'realizou um cadastro',
+  'update settings|settings': 'atualizou as configurações',
+  'update status|purchaseorder': 'alterou o status de uma ordem de compra',
+  'update user|user': 'atualizou um usuário',
+};
+
+export const translateAuditAction = (action?: string | null) =>
+  auditActionLabels[normalizeAuditTerm(action)] || 'Atividade registrada';
+
+export const translateAuditEntity = (entity?: string | null) =>
+  auditEntityLabels[normalizeAuditTerm(entity)] || 'Registro';
+
+export const describeAuditActivity = (action?: string | null, entity?: string | null) => {
+  const key = `${normalizeAuditTerm(action)}|${normalizeAuditTerm(entity)}`;
+  return auditActivityDescriptions[key] || `registrou uma atividade em ${translateAuditEntity(entity).toLowerCase()}`;
+};
+
 export const auditService = {
   
   async getClientMetadata() {
@@ -11,7 +66,7 @@ export const auditService = {
         userAgent: window.navigator.userAgent,
         os: 'Desconhecido',
         browser: 'Desconhecido',
-        device: 'Desktop'
+        device: 'Computador'
     };
 
     try {
@@ -31,7 +86,7 @@ export const auditService = {
         else if (ua.indexOf("OPR") !== -1 || ua.indexOf("Opera") !== -1) metadata.browser = "Opera";
 
         // Device Type
-        if (/Mobi|Android|iPhone/i.test(ua)) metadata.device = 'Mobile';
+        if (/Mobi|Android|iPhone/i.test(ua)) metadata.device = 'Celular';
     } catch (e) { console.warn("Erro parse UA", e); }
 
     // IP Fetch com Multi-Provider Fallback

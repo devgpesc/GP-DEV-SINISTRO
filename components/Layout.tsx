@@ -14,6 +14,7 @@ import { auditService } from '../services/auditService';
 import AIChatWindow from './AIChatWindow';
 import SupportWidget from './SupportWidget';
 import EscLogo from './EscLogo';
+import { getUserFacingError } from '../utils/userFacingError';
 import {
   getStoredTypographyPreset,
   storeTypographyPreset,
@@ -72,7 +73,7 @@ const NavItem = ({ to, icon: Icon, label, active, badge, onClick, collapsed = fa
 );
 
 const PAGE_META: Record<string, { title: string; subtitle: string }> = {
-  '/': { title: 'Dashboard', subtitle: 'Indicadores e visão geral da operação' },
+  '/': { title: 'Visão geral', subtitle: 'Indicadores e visão geral da operação' },
   '/eventos': { title: 'Sinistros', subtitle: 'Abertura, prazos e acompanhamento dos casos' },
   '/posicionamento': { title: 'Posicionamento', subtitle: 'Acompanhamento do veículo e evidências do reparo' },
   '/cotacoes': { title: 'Cotações', subtitle: 'Comparação de propostas e decisão de compra' },
@@ -370,7 +371,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         addToast('success', 'Perfil Atualizado', 'Suas informações foram salvas com sucesso.');
         setTimeout(() => setShowProfileModal(false), 800);
     } catch (error: any) {
-        addToast('error', 'Erro ao Salvar', error.message);
+        console.error('Erro ao salvar perfil:', error);
+        addToast('error', 'Erro ao salvar', getUserFacingError(error, 'Não foi possível salvar o perfil.'));
     } finally {
         setIsSavingProfile(false);
     }
@@ -471,7 +473,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <nav className="sidebar-scroll min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain pr-1">
             <p className={`px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.22em] text-[#738098] ${isSidebarCollapsed ? 'lg:hidden' : ''}`}>Menu</p>
             {canAccessDashboard && (
-              <NavItem to="/" icon={LayoutDashboard} label="Dashboard" active={location.pathname === '/'} onClick={closeMobileMenu} collapsed={isSidebarCollapsed} />
+              <NavItem to="/" icon={LayoutDashboard} label="Visão geral" active={location.pathname === '/'} onClick={closeMobileMenu} collapsed={isSidebarCollapsed} />
             )}
             {canAccessEvents && (
               <NavItem to="/eventos" icon={FileText} label="Sinistros" active={location.pathname === '/eventos'} onClick={closeMobileMenu} collapsed={isSidebarCollapsed} />
@@ -548,7 +550,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               <Globe size={18} strokeWidth={location.pathname === '/saas-admin' ? 2.3 : 1.9} className={location.pathname === '/saas-admin' ? 'text-[#58A6FF]' : 'text-[#A6B0C3]'} />
               <span className={`text-[13px] font-semibold ${isSidebarCollapsed ? 'lg:hidden' : ''}`}>Gestão SaaS</span>
               <span className={`ml-auto rounded-md bg-[#58A6FF] px-1.5 py-0.5 text-[9px] font-black uppercase text-[#0D1424] ${isSidebarCollapsed ? 'lg:hidden' : ''}`}>
-                Super
+                Geral
               </span>
             </Link>
           )}
@@ -567,11 +569,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               to="/configuracoes"
               onClick={closeMobileMenu}
               className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-[#A6B0C3] transition-all hover:bg-[#20293A] hover:text-white ${isSidebarCollapsed ? 'lg:justify-center lg:px-3' : ''}`}
-              title={isSidebarCollapsed ? 'Admin' : undefined}
-              aria-label="Admin"
+              title={isSidebarCollapsed ? 'Administração' : undefined}
+              aria-label="Administração"
             >
               <ShieldCheck size={18} strokeWidth={1.9} />
-              <span className={`text-[13px] font-semibold ${isSidebarCollapsed ? 'lg:hidden' : ''}`}>Admin</span>
+              <span className={`text-[13px] font-semibold ${isSidebarCollapsed ? 'lg:hidden' : ''}`}>Administração</span>
             </Link>
           )}
           <button

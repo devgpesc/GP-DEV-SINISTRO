@@ -32,6 +32,7 @@ import PremiumModal, { FieldLabel } from '../components/PremiumModal';
 import FileViewerModal from '../components/FileViewerModal';
 import { ATTACHMENT_ACCEPT } from '../utils/defaults';
 import { getAttachmentKind, validateEventAttachmentFile } from '../services/attachmentService';
+import { getUserFacingError } from '../utils/userFacingError';
 import {
   deletePositioningAttachment,
   MAX_POSITIONING_ATTACHMENTS,
@@ -140,7 +141,7 @@ const ViewSwitch: React.FC<{ value: ViewMode; onChange: (mode: ViewMode) => void
     {[
       { value: 'list' as ViewMode, label: 'Lista', icon: LayoutList },
       { value: 'board' as ViewMode, label: 'Quadro', icon: Columns3 },
-      { value: 'cards' as ViewMode, label: 'Cards', icon: Grid2X2 },
+      { value: 'cards' as ViewMode, label: 'Cartões', icon: Grid2X2 },
     ].map((option) => {
       const Icon = option.icon;
       const active = value === option.value;
@@ -453,7 +454,7 @@ const VehiclePositioning: React.FC = () => {
   const updatePosition = async (id: string, patch: Record<string, unknown>) => {
     setSaving(id);
     const { error } = await supabase.from('vehicle_positionings').update(patch).eq('id', id);
-    if (error) addToast('error', 'Não foi possível salvar', error.message);
+    if (error) addToast('error', 'Não foi possível salvar', getUserFacingError(error));
     else await load(false);
     setSaving(null);
   };
@@ -461,7 +462,7 @@ const VehiclePositioning: React.FC = () => {
   const updateService = async (positioningId: string, service: any, patch: Record<string, unknown>) => {
     setSaving(service.id);
     const { error } = await supabase.from('vehicle_positioning_services').update(patch).eq('id', service.id);
-    if (error) addToast('error', 'Serviço não atualizado', error.message);
+    if (error) addToast('error', 'Serviço não atualizado', getUserFacingError(error));
     else await load(false);
     setSaving(null);
   };
@@ -490,7 +491,8 @@ const VehiclePositioning: React.FC = () => {
 
     const { data, error } = await supabase.from('vehicle_positionings').insert(payload).select('id, event_id').single();
     if (error) {
-      addToast('error', 'Erro ao cadastrar', error.message);
+      console.error('Erro ao cadastrar posicionamento:', error);
+      addToast('error', 'Erro ao cadastrar', getUserFacingError(error));
       setSubmitting(false);
       return;
     }
@@ -520,7 +522,7 @@ const VehiclePositioning: React.FC = () => {
       const prepared = await prepareFiles(files, form.attachments.length);
       setForm((current) => ({ ...current, attachments: [...current.attachments, ...prepared] }));
     } catch (error: any) {
-      addToast('error', 'Arquivo não aceito', error.message);
+      addToast('error', 'Arquivo não aceito', getUserFacingError(error, 'Verifique o formato e o tamanho do arquivo.'));
     }
   };
 
@@ -534,7 +536,8 @@ const VehiclePositioning: React.FC = () => {
         await load(false);
       }
     } catch (error: any) {
-      addToast('error', 'Falha no envio', error.message);
+      console.error('Falha no envio de anexos:', error);
+      addToast('error', 'Falha no envio', getUserFacingError(error, 'Não foi possível enviar os anexos.'));
     } finally {
       setUploading(null);
     }
@@ -560,7 +563,8 @@ const VehiclePositioning: React.FC = () => {
       addToast('success', 'Anexo excluído', 'O arquivo foi removido do acompanhamento.');
       await load(false);
     } catch (error: any) {
-      addToast('error', 'Não foi possível excluir', error.message);
+      console.error('Erro ao excluir anexo:', error);
+      addToast('error', 'Não foi possível excluir', getUserFacingError(error));
     }
   };
 

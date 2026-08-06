@@ -32,7 +32,7 @@ const Login: React.FC = () => {
   
   const [company] = useState({ name: 'Grupo Esc Sistemas', product: 'EventsCar' });
   const isLocalHost = typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
-  const productPill = isLocalHost ? 'Localhost' : 'Producao';
+  const productPill = isLocalHost ? 'Ambiente local' : 'Produção';
   const featureCards = [
     { icon: LayoutDashboard, title: 'Operação em tempo real' },
     { icon: Zap, title: 'Cotação, compra e entrega no mesmo fluxo' },
@@ -404,7 +404,7 @@ const Login: React.FC = () => {
                         : 'Use uma conta cadastrada na empresa ou continue com Google.'}
                     </p>
                     <p className="mt-2 text-xs font-medium text-slate-400">
-                      {isSupabaseConfigured ? `${productPill} conectado ao Supabase` : 'Supabase nao configurado'}
+                      {isSupabaseConfigured ? `${productPill} conectado ao Supabase` : 'Supabase não configurado'}
                     </p>
                   </div>
                   <div className="hidden h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white sm:flex">
@@ -505,7 +505,7 @@ const Login: React.FC = () => {
 
             <div className="mt-6 space-y-1 text-center">
                <p className="text-slate-500 text-sm font-medium">
-                 Nao tem conta?{' '}
+                 Não tem conta?{' '}
                  <Link
                    to={inviteToken ? `/register?invite=${inviteToken}` : '/register'}
                    className="text-blue-600 font-bold hover:underline"
@@ -523,7 +523,7 @@ const Login: React.FC = () => {
             </section>
 
             <div className="mt-4 text-center">
-              <p className="text-xs font-semibold text-slate-500">© 2026 {company.product} by {company.name}.</p>
+              <p className="text-xs font-semibold text-slate-500">© 2026 {company.product} da {company.name}.</p>
             </div>
           </div>
         </main>

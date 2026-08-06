@@ -28,6 +28,7 @@ import { openMatrixPrintPreview } from '../utils/matrixPrint';
 import { formatDateTimeBr, formatVehicleLabel } from '../utils/vehicleLabel';
 import { getOfferRecommendation, OfferRecommendation } from '../utils/offerRecommendation';
 import ViewModeSwitch, { ViewMode } from './ViewModeSwitch';
+import { getUserFacingError } from '../utils/userFacingError';
 
 interface MatrixProps {
   quotationId?: string;
@@ -300,7 +301,8 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
       return true;
     } catch (error: any) {
       setAutoSaveState('error');
-      addToast('error', 'Erro ao salvar', error.message);
+      console.error('Erro ao salvar valor da cotação:', error);
+      addToast('error', 'Erro ao salvar', getUserFacingError(error, 'Não foi possível salvar o valor da cotação.'));
       return false;
     } finally {
       saveInFlightRef.current = false;
@@ -417,7 +419,8 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
       closeReleaseModal();
       await loadData();
     } catch (error: any) {
-      addToast('error', 'Erro ao liberar', error.message || 'Não foi possível liberar item para recompra.');
+      console.error('Erro ao liberar item para recompra:', error);
+      addToast('error', 'Erro ao liberar', getUserFacingError(error, 'Não foi possível liberar o item para recompra.'));
     } finally {
       setReleasingItemId(null);
     }
@@ -546,7 +549,8 @@ const MatrixTable: React.FC<MatrixProps> = ({ quotationId, eventId }) => {
       addToast('success', 'Compras enviadas', 'As OCs foram geradas para aprovação da gestão.');
       navigate('/compras');
     } catch (error: any) {
-      addToast('error', 'Erro no processamento', error.message);
+      console.error('Erro ao processar cotação:', error);
+      addToast('error', 'Erro no processamento', getUserFacingError(error, 'Não foi possível processar a cotação.'));
     } finally {
       setIsSubmitting(false);
     }

@@ -429,7 +429,7 @@ const Reports: React.FC = () => {
 
         <div className="report-kpi app-panel flex flex-col justify-between p-4">
            <div className="flex justify-between items-start">
-               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ticket Médio</p>
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Valor médio por compra</p>
                <div className="p-2 bg-amber-50 text-amber-600 rounded-xl"><Target size={18}/></div>
            </div>
            <h3 className="text-2xl font-black text-slate-800 mt-2">R$ {strategicKPIs.avgTicket.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</h3>
@@ -450,7 +450,7 @@ const Reports: React.FC = () => {
         <div className="p-4"><p className="text-[9px] font-black uppercase text-slate-400">OCs canceladas</p><p className="mt-1 text-xl font-black text-red-700">{reversalStats.cancelledOrders}</p></div>
         <div className="p-4"><p className="text-[9px] font-black uppercase text-slate-400">OCs devolvidas</p><p className="mt-1 text-xl font-black text-amber-700">{reversalStats.returnedOrders}</p></div>
         <div className="p-4"><p className="text-[9px] font-black uppercase text-slate-400">Cotações afetadas</p><p className="mt-1 text-xl font-black text-slate-900">{reversalStats.affectedQuotations}</p></div>
-        <div className="p-4"><p className="text-[9px] font-black uppercase text-slate-400">Valor estornado / devolvido</p><p className="mt-1 text-xl font-black text-emerald-700">R$ {reversalStats.reversedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p><p className="mt-1 text-[10px] font-semibold text-slate-500">Fora do investimento e do ticket médio</p></div>
+        <div className="p-4"><p className="text-[9px] font-black uppercase text-slate-400">Valor estornado / devolvido</p><p className="mt-1 text-xl font-black text-emerald-700">R$ {reversalStats.reversedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p><p className="mt-1 text-[10px] font-semibold text-slate-500">Fora do investimento e do valor médio por compra</p></div>
       </div>
 
       <div className="report-period app-panel flex items-center justify-between gap-3 p-4">

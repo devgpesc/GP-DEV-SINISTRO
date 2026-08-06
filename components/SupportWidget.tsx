@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { aiService } from '../services/aiService';
+import { getUserFacingError } from '../utils/userFacingError';
 import * as ReactRouterDOM from 'react-router-dom';
 const { useLocation } = ReactRouterDOM as any;
 
@@ -296,7 +297,7 @@ const SupportWidget: React.FC = () => {
       setMessages(prev => [...prev, { 
         id: Date.now().toString(), 
         role: 'agent', 
-        text: `Erro de conexão: ${error.message || 'Tente novamente.'}`
+        text: getUserFacingError(error, 'Não foi possível falar com o suporte agora. Tente novamente.')
       }]);
     } finally {
       setLoading(false);
@@ -337,7 +338,7 @@ ${dossier.summary}
 🤖 *Diagnóstico Preliminar:*
 ${dossier.suggested_fix}
 
-_Ticket gerado via EventsCar AI_
+_Chamado gerado pela IA do EventsCar_
     `.trim();
 
     window.open(`https://wa.me/5562998464374?text=${encodeURIComponent(text)}`, '_blank');
@@ -376,7 +377,7 @@ _Ticket gerado via EventsCar AI_
             <div>
               <h3 className="font-bold text-sm leading-tight">Suporte ESC Solutions</h3>
               <p className="text-[10px] text-green-100 flex items-center gap-1">
-                Gerente Virtual Online
+                Gerente virtual disponível
               </p>
             </div>
           </div>

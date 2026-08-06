@@ -12,7 +12,7 @@ interface ViewModeSwitchProps {
 
 const modeMeta: Record<ViewMode, { label: string; icon: LucideIcon }> = {
   list: { label: 'Lista', icon: List },
-  cards: { label: 'Cards', icon: LayoutGrid },
+  cards: { label: 'Cartões', icon: LayoutGrid },
   matrix: { label: 'Matriz', icon: Columns3 },
   panel: { label: 'Painel lateral', icon: PanelRightOpen },
 };

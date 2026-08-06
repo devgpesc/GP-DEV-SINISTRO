@@ -254,7 +254,7 @@ const AIChatWindow: React.FC<AIChatWindowProps> = ({ isOpen, onClose }) => {
                     )}
                 </div>
                 <div>
-                    <h3 className="font-black text-lg tracking-tight leading-none text-white">EventsCar AI</h3>
+                    <h3 className="font-black text-lg tracking-tight leading-none text-white">IA EventsCar</h3>
                     <p className="text-[10px] text-blue-200 font-bold uppercase tracking-widest mt-1 flex items-center gap-1.5">
                         {contextLoading ? <Loader2 size={10} className="animate-spin"/> : <span className="w-1.5 h-1.5 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.8)]"></span>}
                         Inteligência de Frotas

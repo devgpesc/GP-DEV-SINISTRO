@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles, Send, X, Bot, User, ChevronDown, ChevronUp, Loader2, Minimize2 } from 'lucide-react';
 import { aiService } from '../services/aiService';
 import { useAuth } from '../context/AuthContext';
+import { getUserFacingError } from '../utils/userFacingError';
 
 const AIAssistant: React.FC = () => {
   const { user } = useAuth();
@@ -44,7 +45,8 @@ const AIAssistant: React.FC = () => {
         
         setMessages(prev => [...prev, { role: 'ai', text: response }]);
     } catch (error: any) {
-        setMessages(prev => [...prev, { role: 'ai', text: `Erro: ${error.message || 'Falha na comunicação com a IA.'}` }]);
+        console.error('Falha na comunicação com a IA:', error);
+        setMessages(prev => [...prev, { role: 'ai', text: getUserFacingError(error, 'Não foi possível consultar a inteligência artificial agora.') }]);
     } finally {
         setIsLoading(false);
     }

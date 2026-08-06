@@ -338,7 +338,7 @@ const SaasAdmin: React.FC = () => {
                       }]);
                       addToast(
                           'warning',
-                          'Admin pendente',
+                          'Administrador pendente',
                           'Informe uma senha (8+ caracteres) na aba Administrador para liberar o login sem convite.',
                       );
                   }
@@ -479,7 +479,7 @@ const SaasAdmin: React.FC = () => {
                 {/* ... KPIs mantidos ... */}
                 <div className="bg-white p-5 rounded-[32px] border border-slate-200 shadow-sm"> <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">MRR (Mensal)</p> <p className="text-2xl font-black text-slate-800">R$ {stats.totalRevenue.toLocaleString('pt-BR')}</p> </div>
                 <div className="bg-white p-5 rounded-[32px] border border-slate-200 shadow-sm"> <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Clientes Ativos</p> <p className="text-2xl font-black text-slate-800">{stats.activeTenantsCount}</p> </div>
-                <div className="bg-white p-5 rounded-[32px] border border-slate-200 shadow-sm"> <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Ticket Médio</p> <p className="text-2xl font-black text-slate-800">R$ {stats.avgTicket.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</p> </div>
+                <div className="bg-white p-5 rounded-[32px] border border-slate-200 shadow-sm"> <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Valor médio por compra</p> <p className="text-2xl font-black text-slate-800">R$ {stats.avgTicket.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</p> </div>
                 <div className="bg-white p-5 rounded-[32px] border border-slate-200 shadow-sm"> <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Assinaturas</p> <p className="text-2xl font-black text-slate-800">{stats.totalCapacity}</p> </div>
             </div>
 
@@ -512,7 +512,7 @@ const SaasAdmin: React.FC = () => {
                                     </h4>
                                     <p className="text-xs text-slate-400 font-bold mt-0.5">{tenant.document}</p>
                                     <p className="text-[11px] text-slate-500 font-bold mt-1">
-                                        Admin: {tenantOwners[tenant.id]?.full_name || 'Aguardando ativacao'} 
+                                        Administrador: {tenantOwners[tenant.id]?.full_name || 'Aguardando ativação'}
                                         {tenantOwners[tenant.id]?.email && <span className="text-slate-400"> - {tenantOwners[tenant.id].email}</span>}
                                     </p>
                                 </div>
@@ -649,7 +649,7 @@ const SaasAdmin: React.FC = () => {
                         <div>
                             <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Nome Completo</label>
                             <input required className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-bold outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-100/40 transition-all" 
-                                value={tenantForm.adminName} onChange={e => setTenantForm({...tenantForm, adminName: e.target.value})} placeholder="Ex: João Admin" autoComplete="new-admin-name" data-lpignore="true" />
+                                value={tenantForm.adminName} onChange={e => setTenantForm({...tenantForm, adminName: e.target.value})} placeholder="Ex.: João Silva" autoComplete="new-admin-name" data-lpignore="true" />
                         </div>
                         <div className="mt-4">
                             <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">E-mail de Acesso</label>
@@ -696,8 +696,8 @@ const SaasAdmin: React.FC = () => {
                             </div>
                             <p className="text-[10px] text-blue-800/80 mt-2 pl-1 font-semibold">
                               {editingTenant
-                                ? 'Preencha a nova senha e clique em Salvar Alterações para atualizar o acesso do admin imediatamente.'
-                                : 'Com senha, o admin entra em /login sem link de convite.'}
+                                ? 'Preencha a nova senha e clique em Salvar Alterações para atualizar o acesso do administrador imediatamente.'
+                                : 'Com senha, o administrador entra pela tela de acesso sem link de convite.'}
                             </p>
                         </div>
                     </div>
@@ -706,7 +706,7 @@ const SaasAdmin: React.FC = () => {
                 <div className="flex justify-end gap-3 pt-4">
                     <button type="button" onClick={() => setIsTenantModalOpen(false)} disabled={isProcessing} className="px-6 py-3 text-slate-400 font-black uppercase text-[10px]">Cancelar</button>
                     <button type="submit" disabled={isProcessing} className="px-8 py-3 bg-blue-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-blue-600/20 flex items-center gap-2">
-                        {isProcessing ? <Loader2 className="animate-spin" size={14}/> : (editingTenant ? 'Salvar Alterações' : 'Criar Empresa & Admin')}
+                        {isProcessing ? <Loader2 className="animate-spin" size={14}/> : (editingTenant ? 'Salvar Alterações' : 'Criar empresa e administrador')}
                     </button>
                 </div>
             </form>

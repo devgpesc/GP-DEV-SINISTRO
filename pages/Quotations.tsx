@@ -13,6 +13,7 @@ import { lookupService } from '../services/lookupService';
 import { formatDateTimeBr, formatVehicleLabel, formatVehicleModelShort } from '../utils/vehicleLabel';
 import { quotationService } from '../services/quotationService';
 import ViewModeSwitch, { ViewMode } from '../components/ViewModeSwitch';
+import { getUserFacingError } from '../utils/userFacingError';
 
 const Quotations: React.FC = () => {
   const { addToast } = useToast();
@@ -270,7 +271,7 @@ const Quotations: React.FC = () => {
         
         await supabase.from('events').update({ status: 'Em Cotação' }).eq('id', newQuote.eventId);
         
-        addToast('success', editingQuoteId ? 'Cotação Atualizada' : 'Cotação Criada', 'RFQ pronta. Acesse a matriz.');
+        addToast('success', editingQuoteId ? 'Cotação atualizada' : 'Cotação criada', 'Cotação pronta. Acesse a matriz.');
         await loadData();
         setActiveQuoteId(quoteId);
         setActiveEventId(newQuote.eventId);
@@ -278,7 +279,8 @@ const Quotations: React.FC = () => {
 
     } catch (error: any) {
         console.error('Erro:', error);
-        addToast('error', 'Erro Crítico', error.message);
+        console.error('Erro ao salvar cotação:', error);
+        addToast('error', 'Não foi possível salvar', getUserFacingError(error, 'Revise os dados da cotação e tente novamente.'));
     }
   };
 
@@ -518,7 +520,8 @@ const Quotations: React.FC = () => {
       addToast('success', 'Sinistro criado', `Protocolo ${createdEvent.protocol} vinculado a cotacao.`);
     } catch (error: any) {
       console.error('Cadastro rapido:', error);
-      addToast('error', 'Erro no cadastro', error.message || 'Nao foi possivel criar o sinistro.');
+      console.error('Erro no cadastro rápido de sinistro:', error);
+      addToast('error', 'Erro no cadastro', getUserFacingError(error, 'Não foi possível criar o sinistro.'));
     } finally {
       setIsQuickSaving(false);
     }
@@ -657,7 +660,7 @@ const Quotations: React.FC = () => {
       <div className="flex items-center gap-6">
         <button onClick={() => setStep(1)} className="app-icon-button"><ArrowLeft size={20}/></button>
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">{editingQuoteId ? 'Editar Cotação' : 'Nova Cotação (RFQ)'}</h2>
+          <h2 className="text-2xl font-bold text-slate-800">{editingQuoteId ? 'Editar cotação' : 'Nova cotação'}</h2>
           <p className="text-sm text-slate-500 font-medium">Configure os itens e convide fornecedores.</p>
         </div>
       </div>

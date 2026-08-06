@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Settings as SettingsIcon, Save, CheckCircle, Database, Bell, Shield, Globe, Mail, User, Building, Users, MoreVertical, Edit2, Plus, Loader2, X, AlertTriangle, Copy, Check, Send, Info, Key, Server, Cpu, ToggleLeft, ToggleRight, Zap, Brain, MessageSquare, UserPlus, Link as LinkIcon, Trash2, ClipboardList, Clock, RefreshCw, Eye, EyeOff, MapPin, Laptop, Smartphone } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { useToast } from '../context/ToastContext';
-import { auditService } from '../services/auditService';
+import { auditService, translateAuditAction, translateAuditEntity } from '../services/auditService';
 import { useAuth } from '../context/AuthContext';
 import { apiKeyService, ApiKeyRecord } from '../services/apiKeyService';
 import ActionModal from '../components/ActionModal';
 import { Invitation, AuditLog } from '../types';
 import { DEFAULT_EVENT_TYPES } from '../utils/defaults';
+import { getUserFacingError } from '../utils/userFacingError';
 import { CANONICAL_PERMISSIONS, MODULE_PERMISSIONS, normalizeModulePermissions, normalizePermissions, sanitizeModulePermissionsForSave, sanitizePermissionsForSave } from '../services/permissionKeys';
 import {
   buildInviteLoginUrl,
@@ -162,7 +163,8 @@ const Settings: React.FC = () => {
       if (error) throw error;
       setUsersList(data || []);
     } catch (err: any) {
-      addToast('error', 'Erro', err.message || 'Falha ao carregar equipe da empresa.');
+      console.error('Falha ao carregar equipe:', err);
+      addToast('error', 'Erro', getUserFacingError(err, 'Falha ao carregar a equipe da empresa.'));
       setUsersList([]);
     } finally {
       setLoadingUsers(false);
@@ -196,7 +198,8 @@ const Settings: React.FC = () => {
       const keys = await apiKeyService.list(currentTenant.id);
       setApiKeys(keys);
     } catch (err: any) {
-      addToast('error', 'Erro', err.message || 'Falha ao carregar chaves de API.');
+      console.error('Falha ao carregar chaves de API:', err);
+      addToast('error', 'Erro', getUserFacingError(err, 'Falha ao carregar as chaves de integração.'));
     } finally {
       setLoadingApiKeys(false);
     }
@@ -215,7 +218,8 @@ const Settings: React.FC = () => {
       await loadApiKeys();
       addToast('success', 'Chave criada', 'Copie a chave agora — ela não será exibida novamente.');
     } catch (err: any) {
-      addToast('error', 'Erro', err.message || 'Não foi possível criar a chave.');
+      console.error('Falha ao criar chave de API:', err);
+      addToast('error', 'Erro', getUserFacingError(err, 'Não foi possível criar a chave de integração.'));
     } finally {
       setCreatingApiKey(false);
     }
@@ -227,7 +231,8 @@ const Settings: React.FC = () => {
       await loadApiKeys();
       addToast('success', 'Revogada', 'Chave de API desativada.');
     } catch (err: any) {
-      addToast('error', 'Erro', err.message || 'Falha ao revogar chave.');
+      console.error('Falha ao revogar chave de API:', err);
+      addToast('error', 'Erro', getUserFacingError(err, 'Não foi possível revogar a chave de integração.'));
     }
   };
 
@@ -251,7 +256,8 @@ const Settings: React.FC = () => {
         addToast('success', 'Salvo', 'Configurações atualizadas.');
         setTimeout(() => setSaved(false), 3000);
     } catch (error: any) {
-        addToast('error', 'Erro', error.message);
+        console.error('Erro ao salvar configurações:', error);
+        addToast('error', 'Erro', getUserFacingError(error, 'Não foi possível salvar as configurações.'));
     } finally {
         setSaving(false);
     }
@@ -307,7 +313,8 @@ const Settings: React.FC = () => {
           }
       } catch (err: any) {
           console.error(err);
-          addToast('error', 'Erro', err.message || 'Falha ao remover o usuário.');
+          console.error('Falha ao remover usuário:', err);
+          addToast('error', 'Erro', getUserFacingError(err, 'Falha ao remover o usuário.'));
       }
   };
 
@@ -348,7 +355,8 @@ const Settings: React.FC = () => {
       };
       const { error } = await supabase.rpc('update_tenant_member_profile', payload);
       if (error) {
-          addToast('error', 'Erro', error.message);
+          console.error('Erro ao atualizar usuário:', error);
+          addToast('error', 'Erro', getUserFacingError(error, 'Não foi possível atualizar o usuário.'));
           return;
       }
 
@@ -365,7 +373,8 @@ const Settings: React.FC = () => {
           });
           addToast('success', 'Senha redefinida', 'O usuario ja pode entrar com a nova senha (e Google do mesmo e-mail).');
         } catch (err: any) {
-          addToast('error', 'Senha', err.message || 'Permissoes salvas, mas falhou ao redefinir a senha.');
+          console.error('Erro ao redefinir senha:', err);
+          addToast('error', 'Senha', getUserFacingError(err, 'Permissões salvas, mas não foi possível redefinir a senha.'));
           setSavingPassword(false);
           return;
         } finally {
@@ -421,7 +430,8 @@ const Settings: React.FC = () => {
           });
           addToast('success', 'Membro adicionado', 'Acesso liberado com e-mail e senha — sem link de convite.');
       } catch (err: any) {
-          setInviteError(err.message || 'Não foi possível criar o membro.');
+          console.error('Erro ao criar membro:', err);
+          setInviteError(getUserFacingError(err, 'Não foi possível criar o membro.'));
       } finally {
           setIsGeneratingInvite(false);
       }
@@ -458,7 +468,8 @@ const Settings: React.FC = () => {
           setGeneratedLoginLink(loginUrl);
           addToast('success', 'Convite gerado', 'Envie o link para o usuario aceitar o convite.');
       } catch (err: any) {
-          setInviteError(err.message || 'Não foi possível gerar o convite.');
+          console.error('Erro ao gerar convite:', err);
+          setInviteError(getUserFacingError(err, 'Não foi possível gerar o convite.'));
       } finally {
           setIsGeneratingInvite(false);
       }
@@ -475,32 +486,6 @@ const Settings: React.FC = () => {
           loginUrl: generatedLoginLink,
       });
       window.open(mailto, '_blank');
-  };
-
-  // --- TRADUTORES PARA AUDITORIA ---
-  const translateAction = (act: string) => {
-      const map: any = {
-          'create': 'Criar',
-          'update': 'Editar',
-          'delete': 'Excluir',
-          'update settings': 'Configurações',
-          'create invite': 'Novo Convite',
-          'update user': 'Editar Usuário',
-          'delete user': 'Remover Usuário',
-          'register': 'Novo Cadastro',
-          'navigate': 'Acesso'
-      };
-      return map[act.toLowerCase()] || act;
-  };
-
-  const translateEntity = (ent: string) => {
-      const map: any = {
-          'user': 'Usuário',
-          'settings': 'Configuração',
-          'invitation': 'Convite',
-          'page': 'Página'
-      };
-      return map[ent.toLowerCase()] || ent;
   };
 
   const tabs = [
@@ -546,7 +531,7 @@ const Settings: React.FC = () => {
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                           <div className="col-span-1 md:col-span-2">
-                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Logo URL</label>
+                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Endereço da logomarca</label>
                             <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-medium text-slate-700 outline-none" value={companyInfo.logo_url} onChange={e => setCompanyInfo({...companyInfo, logo_url: e.target.value})} />
                           </div>
                           <div><label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Razão Social</label><input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none" value={companyInfo.company_name} onChange={e => setCompanyInfo({...companyInfo, company_name: e.target.value})} /></div>
@@ -560,7 +545,7 @@ const Settings: React.FC = () => {
                      {/* ... (Mantém inputs de API Key) ... */}
                      <div className="flex items-center gap-3 pb-6 border-b border-slate-50">
                         <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl"><Brain size={24}/></div>
-                        <div><h3 className="text-lg font-black text-slate-800">Cérebro da Empresa (LLM)</h3></div>
+                        <div><h3 className="text-lg font-black text-slate-800">Modelo de inteligência artificial</h3></div>
                      </div>
                      <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
                         <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">Provedor Ativo</label>
@@ -571,7 +556,7 @@ const Settings: React.FC = () => {
                         </div>
                         <div className="relative">
                             <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
-                            <input type={showKeys['google'] ? "text" : "password"} className="w-full pl-12 pr-12 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none" value={companyInfo.gemini_key} onChange={e => setCompanyInfo({...companyInfo, gemini_key: e.target.value})} placeholder="Google Gemini Key" />
+                            <input type={showKeys['google'] ? "text" : "password"} className="w-full pl-12 pr-12 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none" value={companyInfo.gemini_key} onChange={e => setCompanyInfo({...companyInfo, gemini_key: e.target.value})} placeholder="Chave do Google Gemini" />
                             <button type="button" onClick={() => toggleShowKey('google')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">{showKeys['google'] ? <EyeOff size={16}/> : <Eye size={16}/>}</button>
                         </div>
                      </div>
@@ -664,7 +649,7 @@ const Settings: React.FC = () => {
                       <div className="flex items-center gap-3 pb-6 border-b border-slate-50">
                           <div className="p-3 bg-slate-50 text-slate-600 rounded-2xl"><ClipboardList size={24}/></div>
                           <div>
-                              <h3 className="text-lg font-black text-slate-800">Logs de Auditoria</h3>
+                              <h3 className="text-lg font-black text-slate-800">Registros de auditoria</h3>
                               <p className="text-xs text-slate-400 font-medium">Rastreabilidade completa com Geolocalização e IP.</p>
                           </div>
                       </div>
@@ -688,16 +673,16 @@ const Settings: React.FC = () => {
                                       {auditLogs.map((log: any) => (
                                           <tr key={log.id} className="text-xs group hover:bg-white transition-colors">
                                               <td className="p-4 text-slate-500 font-mono whitespace-nowrap">
-                                                  {new Date(log.created_at).toLocaleString()}
+                                                  {new Date(log.created_at).toLocaleString('pt-BR')}
                                               </td>
                                               <td className="p-4 font-bold text-slate-700">
                                                   {log.profiles?.full_name || log.user_email || 'Sistema'}
                                               </td>
                                               <td className="p-4">
-                                                  <span className="bg-white border border-slate-200 px-2 py-1 rounded font-bold text-slate-600">{translateAction(log.action)}</span>
+                                                  <span className="bg-white border border-slate-200 px-2 py-1 rounded font-bold text-slate-600">{translateAuditAction(log.action)}</span>
                                               </td>
                                               <td className="p-4 text-slate-500">
-                                                  <span className="font-bold text-slate-600">{translateEntity(log.entity)}</span> <span className="opacity-50">#{log.entity_id?.substring(0,6)}</span>
+                                                  <span className="font-bold text-slate-600">{translateAuditEntity(log.entity)}</span> <span className="opacity-50">#{log.entity_id?.substring(0,6)}</span>
                                               </td>
                                               <td className="p-4 text-slate-500">
                                                   {(log.details?.ip) ? (
@@ -872,7 +857,7 @@ const Settings: React.FC = () => {
                               <option value="Gerente">Gerente</option>
                               <option value="Admin">Administrador (Pode ver Config e Auditoria)</option>
                               {profile?.email?.toLowerCase() === 'devgpesc@gmail.com' && (
-                                  <option value="super_admin">Super Admin da plataforma</option>
+                                  <option value="super_admin">Administrador geral da plataforma</option>
                               )}
                           </select>
                       </div>
@@ -1062,12 +1047,12 @@ const Settings: React.FC = () => {
                                   </p>
                                   <p className="text-[11px] font-semibold text-slate-600">
                                     Passe ao usuario: <strong>{createdMemberInfo.email}</strong> / senha definida.
-                                    Login: <a className="text-blue-600 underline" href={createdMemberInfo.loginUrl} target="_blank" rel="noreferrer">{createdMemberInfo.loginUrl}</a>
+                                    Acesso: <a className="text-blue-600 underline" href={createdMemberInfo.loginUrl} target="_blank" rel="noreferrer">{createdMemberInfo.loginUrl}</a>
                                   </p>
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      const text = `Acesso EventsCar\nE-mail: ${createdMemberInfo.email}\nSenha: ${createdMemberInfo.password}\nLogin: ${createdMemberInfo.loginUrl}`;
+                                      const text = `Acesso EventsCar\nE-mail: ${createdMemberInfo.email}\nSenha: ${createdMemberInfo.password}\nEndereço de acesso: ${createdMemberInfo.loginUrl}`;
                                       navigator.clipboard.writeText(text);
                                       setCopied(true);
                                       addToast('success', 'Copiado', 'Credenciais na area de transferencia.');

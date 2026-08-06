@@ -11,7 +11,7 @@ import {
 import { supabase } from '../services/supabaseClient';
 import { PurchaseOrder, Event } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { auditService } from '../services/auditService';
+import { auditService, describeAuditActivity } from '../services/auditService';
 import * as ReactRouterDOM from 'react-router-dom';
 const { Link } = ReactRouterDOM as any;
 
@@ -273,7 +273,7 @@ const Dashboard: React.FC = () => {
                 to="/cotacoes"
                 icon={Search}
                 title="2. Cotar Peças"
-                desc="Monte a matriz de cotação e envie RFQ aos fornecedores."
+                desc="Monte a matriz de cotação e envie aos fornecedores."
                 accent="bg-indigo-600"
                 stat={`${quotationsCount} cotações`}
               />
@@ -414,7 +414,7 @@ const Dashboard: React.FC = () => {
               return (
                 <div key={row.id} className="flex items-start gap-3 px-4 py-3">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[10px] font-bold text-blue-800">{initials}</div>
-                  <div className="min-w-0 flex-1"><p className="text-xs text-slate-600"><span className="font-bold text-slate-900">{activityName}</span> realizou <span className="font-semibold text-blue-700">{row.action}</span> em {row.entity || 'registro'}.</p><p className="mt-0.5 text-[11px] text-slate-400">{new Date(row.created_at).toLocaleString('pt-BR')}</p></div>
+                  <div className="min-w-0 flex-1"><p className="text-xs text-slate-600"><span className="font-bold text-slate-900">{activityName}</span> <span className="font-semibold text-blue-700">{describeAuditActivity(row.action, row.entity)}</span>.</p><p className="mt-0.5 text-[11px] text-slate-400">{new Date(row.created_at).toLocaleString('pt-BR')}</p></div>
                 </div>
               );
             })}

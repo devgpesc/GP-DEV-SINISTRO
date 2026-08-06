@@ -13,6 +13,7 @@ import { auditService } from '../services/auditService';
 import { formatVehicleLabel } from '../utils/vehicleLabel';
 import ViewModeSwitch, { ViewMode } from '../components/ViewModeSwitch';
 import { getOfferRecommendation } from '../utils/offerRecommendation';
+import { getUserFacingError } from '../utils/userFacingError';
 
 const Purchases: React.FC = () => {
   const { access } = useAuth();
@@ -332,7 +333,8 @@ const Purchases: React.FC = () => {
           ...extra,
         });
     } else {
-        setToast({ show: true, title: 'Erro', message: error.message || 'Falha ao atualizar status.', type: 'info' });
+        console.error('Erro ao atualizar ordem de compra:', error);
+        setToast({ show: true, title: 'Erro', message: getUserFacingError(error, 'Não foi possível atualizar a situação da compra.'), type: 'info' });
     }
   };
 
@@ -436,7 +438,8 @@ const Purchases: React.FC = () => {
             type: 'success'
           });
         } catch (error: any) {
-          setToast({ show: true, title: 'Erro ao cancelar', message: error?.message || 'Nao foi possivel liberar a recompra.', type: 'info' });
+          console.error('Erro ao cancelar ordem de compra:', error);
+          setToast({ show: true, title: 'Erro ao cancelar', message: getUserFacingError(error, 'Não foi possível liberar a recompra.'), type: 'info' });
           return;
         }
       } else if (confirmModal.type === 'return') {
@@ -463,7 +466,8 @@ const Purchases: React.FC = () => {
             type: 'success',
           });
         } catch (error: any) {
-          setToast({ show: true, title: 'Erro na devolução', message: error?.message || 'Não foi possível registrar a devolução.', type: 'info' });
+          console.error('Erro ao registrar devolução:', error);
+          setToast({ show: true, title: 'Erro na devolução', message: getUserFacingError(error, 'Não foi possível registrar a devolução.'), type: 'info' });
           return;
         }
       } else if (confirmModal.type === 'delete') {
@@ -479,7 +483,8 @@ const Purchases: React.FC = () => {
             auditService.log('Delete', 'PurchaseOrder', confirmModal.orderId!, { code: confirmModal.orderCode });
             setToast({ show: true, title: 'Excluído', message: `Ordem ${confirmModal.orderCode} removida.`, type: 'success' });
         } else {
-            setToast({ show: true, title: 'Erro', message: error.message || 'Não foi possível excluir.', type: 'info' });
+            console.error('Erro ao excluir ordem de compra:', error);
+            setToast({ show: true, title: 'Erro', message: getUserFacingError(error, 'Não foi possível excluir o registro.'), type: 'info' });
         }
       }
       setConfirmModal({ isOpen: false, type: null, orderId: null, orderCode: null });

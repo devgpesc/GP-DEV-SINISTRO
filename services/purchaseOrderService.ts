@@ -25,7 +25,7 @@ const actionLabels: Record<string, string> = {
   returned: 'Devolução registrada',
 };
 
-export const getActionLabel = (action: string) => actionLabels[action] || action;
+export const getActionLabel = (action: string) => actionLabels[action] || 'Movimentação registrada';
 
 export const purchaseOrderService = {
   async getHistory(purchaseOrderId: string): Promise<PurchaseOrderHistoryEntry[]> {
