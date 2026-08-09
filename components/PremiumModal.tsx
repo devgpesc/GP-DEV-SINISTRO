@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { X, Loader2, LucideIcon } from 'lucide-react';
 
 type PremiumModalProps = {
@@ -28,7 +29,7 @@ const PremiumModal: React.FC<PremiumModalProps> = ({
 }) => {
   if (!open) return null;
 
-  return (
+  return createPortal((
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-5">
       <div
         className="absolute inset-0 bg-[#0B1220]/62 backdrop-blur-[2px]"
@@ -86,7 +87,7 @@ const PremiumModal: React.FC<PremiumModalProps> = ({
         )}
       </div>
     </div>
-  );
+  ), document.body);
 };
 
 export const FormSection: React.FC<{

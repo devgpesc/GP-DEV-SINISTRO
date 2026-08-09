@@ -16,6 +16,7 @@ import {
   Grid2X2,
   LayoutList,
   Loader2,
+  MessageSquareText,
   Paperclip,
   Plus,
   Save,
@@ -166,11 +167,20 @@ type DetailsProps = {
   timeline: any[];
   saving: string | null;
   uploading: string | null;
-  onUpdatePosition: (id: string, patch: Record<string, unknown>) => Promise<void>;
-  onUpdateService: (positioningId: string, service: any, patch: Record<string, unknown>) => Promise<void>;
+  onUpdatePosition: (id: string, patch: Record<string, unknown>) => Promise<boolean>;
+  onUpdateService: (positioningId: string, service: any, patch: Record<string, unknown>) => Promise<boolean>;
   onFiles: (row: any, files: FileList | null) => Promise<void>;
   onOpenAttachment: (attachment: PositioningAttachment) => Promise<void>;
   onDeleteAttachment: (attachment: PositioningAttachment) => Promise<void>;
+};
+
+type StatusChangeDraft = {
+  scope: 'positioning' | 'service';
+  field?: 'current_stage' | 'stage_status';
+  previousValue: string;
+  nextValue: string;
+  label: string;
+  service?: any;
 };
 
 const PositioningDetails: React.FC<DetailsProps> = ({
@@ -186,19 +196,80 @@ const PositioningDetails: React.FC<DetailsProps> = ({
 }) => {
   const services = [...(row.vehicle_positioning_services || [])].sort((a, b) => a.service_order - b.service_order);
   const attachments: PositioningAttachment[] = row.vehicle_positioning_attachments || [];
+  const [statusChange, setStatusChange] = useState<StatusChangeDraft | null>(null);
+  const [statusObservation, setStatusObservation] = useState('');
+  const [submittingStatusChange, setSubmittingStatusChange] = useState(false);
+
+  const requestPositioningStatusChange = (
+    field: 'current_stage' | 'stage_status',
+    nextValue: string,
+    label: string,
+  ) => {
+    const previousValue = String(row[field] || '');
+    if (nextValue === previousValue) return;
+    setStatusObservation('');
+    setStatusChange({ scope: 'positioning', field, previousValue, nextValue, label });
+  };
+
+  const requestServiceStatusChange = (service: any, nextValue: string) => {
+    if (nextValue === service.status) return;
+    setStatusObservation('');
+    setStatusChange({
+      scope: 'service',
+      previousValue: service.status,
+      nextValue,
+      label: service.service_name,
+      service,
+    });
+  };
+
+  const closeStatusChange = () => {
+    if (submittingStatusChange) return;
+    setStatusChange(null);
+    setStatusObservation('');
+  };
+
+  const confirmStatusChange = async () => {
+    if (!statusChange) return;
+    setSubmittingStatusChange(true);
+    const observation = statusObservation.trim();
+    let updated = false;
+
+    if (statusChange.scope === 'service' && statusChange.service) {
+      const patch: Record<string, unknown> = {
+        status: statusChange.nextValue,
+        finished_at: statusChange.nextValue === 'Concluído' ? new Date().toISOString().slice(0, 10) : null,
+      };
+      if (statusChange.nextValue === 'Em andamento' && !statusChange.service.started_at) {
+        patch.started_at = new Date().toISOString().slice(0, 10);
+      }
+      if (observation) patch.observation = observation;
+      updated = await onUpdateService(row.id, statusChange.service, patch);
+    } else if (statusChange.field) {
+      const patch: Record<string, unknown> = { [statusChange.field]: statusChange.nextValue };
+      if (observation) patch.observation = observation;
+      updated = await onUpdatePosition(row.id, patch);
+    }
+
+    setSubmittingStatusChange(false);
+    if (updated) {
+      setStatusChange(null);
+      setStatusObservation('');
+    }
+  };
 
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <label className="text-xs font-bold text-slate-600">
           Posicionamento
-          <select className={`${inputClass} mt-1`} value={row.current_stage} onChange={(event) => onUpdatePosition(row.id, { current_stage: event.target.value })}>
+          <select className={`${inputClass} mt-1`} value={row.current_stage} onChange={(event) => requestPositioningStatusChange('current_stage', event.target.value, 'Posicionamento')}>
             {STAGES.map((item) => <option key={item}>{item}</option>)}
           </select>
         </label>
         <label className="text-xs font-bold text-slate-600">
           Status
-          <select className={`${inputClass} mt-1`} value={row.stage_status} onChange={(event) => onUpdatePosition(row.id, { stage_status: event.target.value })}>
+          <select className={`${inputClass} mt-1`} value={row.stage_status} onChange={(event) => requestPositioningStatusChange('stage_status', event.target.value, 'Status')}>
             {STATUSES.map((item) => <option key={item}>{item}</option>)}
           </select>
         </label>
@@ -230,17 +301,14 @@ const PositioningDetails: React.FC<DetailsProps> = ({
                 <button
                   type="button"
                   disabled={saving === service.id}
-                  onClick={() => onUpdateService(row.id, service, {
-                    status: service.status === 'Concluído' ? 'Pendente' : 'Concluído',
-                    finished_at: service.status === 'Concluído' ? null : new Date().toISOString().slice(0, 10),
-                  })}
+                  onClick={() => requestServiceStatusChange(service, service.status === 'Concluído' ? 'Pendente' : 'Concluído')}
                   className={service.status === 'Concluído' ? 'text-emerald-600' : 'text-slate-300 hover:text-blue-600'}
                   title={service.status === 'Concluído' ? 'Reabrir serviço' : 'Concluir serviço'}
                 >
                   <CheckCircle2 size={20} />
                 </button>
                 <span className={`min-w-0 flex-1 text-xs font-semibold ${service.status === 'Concluído' ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{service.service_name}</span>
-                <select className="w-28 rounded-md border border-slate-200 px-2 py-1.5 text-xs font-semibold" value={service.status} onChange={(event) => onUpdateService(row.id, service, { status: event.target.value })}>
+                <select className="w-28 rounded-md border border-slate-200 px-2 py-1.5 text-xs font-semibold" value={service.status} onChange={(event) => requestServiceStatusChange(service, event.target.value)}>
                   {['Pendente', 'Em andamento', 'Concluído', 'Bloqueado'].map((item) => <option key={item}>{item}</option>)}
                 </select>
               </div>
@@ -315,6 +383,50 @@ const PositioningDetails: React.FC<DetailsProps> = ({
           </div>
         )}
       </section>
+
+      <PremiumModal
+        open={Boolean(statusChange)}
+        onClose={closeStatusChange}
+        busy={submittingStatusChange}
+        title={statusChange?.scope === 'service' ? 'Alterar status do serviço' : 'Alterar status do posicionamento'}
+        subtitle="Registre o contexto desta movimentação para manter o histórico claro."
+        icon={MessageSquareText}
+        maxWidthClass="max-w-lg"
+        footer={(
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" onClick={closeStatusChange} disabled={submittingStatusChange} className="app-btn-secondary min-h-10 px-5">Cancelar</button>
+            <button type="button" onClick={confirmStatusChange} disabled={submittingStatusChange} className="app-btn-primary min-h-10 px-5">
+              {submittingStatusChange ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+              Salvar alteração
+            </button>
+          </div>
+        )}
+      >
+        {statusChange && (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
+              <p className="text-xs font-bold uppercase text-blue-700">{statusChange.label}</p>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm font-bold text-slate-800">
+                <span className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5">{statusChange.previousValue}</span>
+                <ArrowRight size={15} className="text-blue-600" />
+                <span className="rounded-md border border-blue-200 bg-white px-2.5 py-1.5 text-blue-700">{statusChange.nextValue}</span>
+              </div>
+            </div>
+            <div>
+              <FieldLabel>Observação da alteração (opcional)</FieldLabel>
+              <textarea
+                autoFocus
+                maxLength={600}
+                className={`${inputClass} min-h-28 resize-y`}
+                value={statusObservation}
+                onChange={(event) => setStatusObservation(event.target.value)}
+                placeholder="Ex.: serviço iniciado, peça em falta ou veículo aguardando autorização"
+              />
+              <p className="mt-1 text-right text-xs font-semibold text-slate-400">{statusObservation.length}/600</p>
+            </div>
+          </div>
+        )}
+      </PremiumModal>
     </div>
   );
 };
@@ -454,17 +566,27 @@ const VehiclePositioning: React.FC = () => {
   const updatePosition = async (id: string, patch: Record<string, unknown>) => {
     setSaving(id);
     const { error } = await supabase.from('vehicle_positionings').update(patch).eq('id', id);
-    if (error) addToast('error', 'Não foi possível salvar', getUserFacingError(error));
-    else await load(false);
+    if (error) {
+      addToast('error', 'Não foi possível salvar', getUserFacingError(error));
+      setSaving(null);
+      return false;
+    }
+    await load(false);
     setSaving(null);
+    return true;
   };
 
   const updateService = async (positioningId: string, service: any, patch: Record<string, unknown>) => {
     setSaving(service.id);
     const { error } = await supabase.from('vehicle_positioning_services').update(patch).eq('id', service.id);
-    if (error) addToast('error', 'Serviço não atualizado', getUserFacingError(error));
-    else await load(false);
+    if (error) {
+      addToast('error', 'Serviço não atualizado', getUserFacingError(error));
+      setSaving(null);
+      return false;
+    }
+    await load(false);
     setSaving(null);
+    return true;
   };
 
   const create = async (event: React.FormEvent) => {
