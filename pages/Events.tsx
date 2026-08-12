@@ -52,6 +52,19 @@ const prioritySelectClass = (priority: Priority) => {
   return map[priority] || map[Priority.MEDIUM];
 };
 
+const ScheduleStatusBadge = ({ status }: { status?: Event['schedule_status'] }) => {
+  const value = status || 'Em andamento';
+  const styles: Record<string, string> = {
+    'Sem prazo': 'bg-slate-50 text-slate-600 border-slate-200',
+    Agendado: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+    'Em andamento': 'bg-blue-50 text-blue-700 border-blue-200',
+    'Em atraso': 'bg-red-50 text-red-700 border-red-200',
+    Concluído: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    Cancelado: 'bg-slate-100 text-slate-600 border-slate-200',
+  };
+  return <span className={`inline-flex rounded-lg border px-2.5 py-1 text-[10px] font-bold uppercase ${styles[value]}`}>{value}</span>;
+};
+
 const priorityOptions = [Priority.LOW, Priority.MEDIUM, Priority.URGENT];
 const defaultScoreForPriority = (priority: Priority) => {
   if (priority === Priority.LOW) return 2;
@@ -431,6 +444,10 @@ const Events: React.FC = () => {
         addToast('warning', 'Prazo obrigatório', 'Informe a data limite para este tipo de sinistro.');
         return;
     }
+    if (formData.openedAt && formData.deadlineAt && formData.deadlineAt < formData.openedAt) {
+        addToast('warning', 'Período inválido', 'A data limite não pode ser anterior à data de início.');
+        return;
+    }
 
     setIsSaving(true);
     try {
@@ -643,7 +660,7 @@ const Events: React.FC = () => {
               <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Protocolo / Cliente</th>
               <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Placa / Veículo</th>
               <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Prioridade</th>
-              <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
+              <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Fluxo / calendário</th>
               <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Prazo</th>
               <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Abertura</th>
               <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
@@ -701,7 +718,12 @@ const Events: React.FC = () => {
                       </span>
                     </div>
                   </td>
-                  <td className="px-6 py-5 text-center"><StatusBadge status={evt.status} /></td>
+                  <td className="px-6 py-5 text-center">
+                    <div className="flex flex-col items-center gap-1.5">
+                      <StatusBadge status={evt.status} />
+                      <ScheduleStatusBadge status={(evt as any).schedule_status} />
+                    </div>
+                  </td>
                   <td className="px-6 py-5">
                     <span className={`inline-flex px-2.5 py-1 rounded-lg border text-[10px] font-black uppercase tracking-wider ${getDeadlineTone(deadline.state)}`}>
                       {deadline.state}
@@ -755,6 +777,7 @@ const Events: React.FC = () => {
                   <div className="flex flex-wrap items-center gap-2 mb-2">
                     <span className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-bold uppercase">{eventDetail.protocol}</span>
                     <span className={`px-2.5 py-1 rounded-lg border text-[10px] font-bold uppercase ${getPriorityTone(detailPriority)}`}>{detailPriority} · {detailPriorityScore}/10</span>
+                    <ScheduleStatusBadge status={(eventDetail as any).schedule_status} />
                     {detailDeadline && (
                       <span className={`px-2.5 py-1 rounded-lg border text-[10px] font-bold uppercase ${getDeadlineTone(detailDeadline.state)}`}>{detailDeadline.state}</span>
                     )}
@@ -1091,7 +1114,7 @@ const Events: React.FC = () => {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <FieldLabel required>Data de abertura</FieldLabel>
+                  <FieldLabel required>Data de início</FieldLabel>
                   <input
                     type="date"
                     className={fieldClassName}
@@ -1105,6 +1128,7 @@ const Events: React.FC = () => {
                     type="date"
                     className={fieldClassName}
                     value={formData.deadlineAt}
+                    min={formData.openedAt || undefined}
                     onChange={(e) => setFormData({ ...formData, deadlineAt: e.target.value })}
                   />
                 </div>

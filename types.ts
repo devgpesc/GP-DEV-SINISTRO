@@ -216,6 +216,7 @@ export interface Event {
   createdAt: string;
   opened_at?: string | null;
   deadline_at?: string | null;
+  schedule_status?: 'Sem prazo' | 'Agendado' | 'Em andamento' | 'Em atraso' | 'Concluído' | 'Cancelado';
   responsible_name?: string | null;
   responsible_company?: string | null;
   notes?: string | null;

@@ -499,7 +499,7 @@ const VehiclePositioning: React.FC = () => {
   const [rows, setRows] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
   const [workshops, setWorkshops] = useState<any[]>([]);
-  const [serviceOrderLinks, setServiceOrderLinks] = useState<Array<{ eventId: string; supplierId: string }>>([]);
+  const [serviceOrderLinks, setServiceOrderLinks] = useState<Array<{ eventId: string; supplierId: string; orderCode: string }>>([]);
   const [timeline, setTimeline] = useState<Record<string, any[]>>({});
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
@@ -530,7 +530,7 @@ const VehiclePositioning: React.FC = () => {
       supabase.from('suppliers').select('id, name, city, segment, status').eq('status', 'Ativo').order('name'),
       supabase
         .from('purchase_order_items')
-        .select('quotation_items!inner(item_type), purchase_orders!inner(event_id, supplier_id, status)')
+        .select('quotation_items!inner(item_type), purchase_orders!inner(event_id, supplier_id, status, code)')
         .eq('quotation_items.item_type', 'Serviço'),
     ]);
 
@@ -565,7 +565,7 @@ const VehiclePositioning: React.FC = () => {
     setServiceOrderLinks((serviceItemRows.data || []).flatMap((item: any) => {
       const order = Array.isArray(item.purchase_orders) ? item.purchase_orders[0] : item.purchase_orders;
       if (!order?.event_id || !order?.supplier_id || ['Cancelada', 'Devolvida'].includes(order.status)) return [];
-      return [{ eventId: order.event_id, supplierId: order.supplier_id }];
+      return [{ eventId: order.event_id, supplierId: order.supplier_id, orderCode: order.code || 'OC de serviço' }];
     }));
 
     if (enrichedRows.length) {
@@ -606,10 +606,12 @@ const VehiclePositioning: React.FC = () => {
     localStorage.setItem('vehicle-positioning-view', mode);
   };
 
-  const automaticWorkshopForEvent = (eventId: string) => {
-    const supplierId = serviceOrderLinks.find((item) => item.eventId === eventId)?.supplierId;
-    return workshops.find((item) => item.id === supplierId) || null;
+  const automaticWorkshopsForEvent = (eventId: string) => {
+    const linkedSupplierIds = new Set(serviceOrderLinks.filter((item) => item.eventId === eventId).map((item) => item.supplierId));
+    return workshops.filter((item) => linkedSupplierIds.has(item.id));
   };
+
+  const automaticWorkshopForEvent = (eventId: string) => automaticWorkshopsForEvent(eventId)[0] || null;
 
   const selectEvent = (eventId: string) => {
     const linkedEvent = events.find((item) => item.id === eventId);
@@ -933,7 +935,7 @@ const VehiclePositioning: React.FC = () => {
                     }}
                     className={`rounded-md px-3 py-2 text-xs font-bold ${form.workshop_selection_mode === 'automatic' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500'}`}
                   >
-                    Automática pela OC
+                    Pela OC de serviço
                   </button>
                   <button
                     type="button"
@@ -945,24 +947,23 @@ const VehiclePositioning: React.FC = () => {
                 </div>
                 <SearchableSelect
                   value={form.workshop_supplier_id}
-                  options={(form.workshop_selection_mode === 'automatic'
-                    ? workshops.filter((supplier) => serviceOrderLinks.some((link) => link.eventId === form.event_id && link.supplierId === supplier.id))
-                    : workshops
-                  ).map((supplier) => ({
+                  options={(form.workshop_selection_mode === 'automatic' ? automaticWorkshopsForEvent(form.event_id) : workshops).map((supplier) => ({
                     value: supplier.id,
                     label: supplier.name,
-                    secondary: [supplier.city, supplier.segment].filter(Boolean).join(' · ') || 'Prestador cadastrado',
+                    secondary: form.workshop_selection_mode === 'automatic'
+                      ? serviceOrderLinks.filter((link) => link.eventId === form.event_id && link.supplierId === supplier.id).map((link) => link.orderCode).filter((value, index, values) => values.indexOf(value) === index).join(' · ')
+                      : [supplier.city, supplier.segment].filter(Boolean).join(' · ') || 'Prestador cadastrado',
                   }))}
                   onChange={(supplierId) => {
                     const supplier = workshops.find((item) => item.id === supplierId);
                     setForm({ ...form, workshop_supplier_id: supplierId, workshop_name: supplier?.name || '' });
                   }}
                   placeholder={form.workshop_selection_mode === 'automatic'
-                    ? (form.event_id ? 'Nenhuma oficina encontrada nas OCs de serviço' : 'Selecione o sinistro primeiro')
+                    ? (form.event_id ? 'Oficina responsável da OC de serviço' : 'Selecione o sinistro primeiro')
                     : 'Pesquisar oficina ou prestador...'}
                   searchPlaceholder="Pesquisar oficina por nome ou cidade..."
                   emptyMessage={form.workshop_selection_mode === 'automatic'
-                    ? 'Não há uma OC de serviço ativa para este sinistro. Use a seleção manual.'
+                    ? 'Não há oficina vinculada a uma OC de serviço ativa. Use a seleção manual.'
                     : 'Nenhum prestador ativo encontrado.'}
                   disabled={!form.event_id || (form.workshop_selection_mode === 'automatic' && !automaticWorkshopForEvent(form.event_id))}
                   required

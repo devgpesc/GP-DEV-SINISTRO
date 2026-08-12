@@ -22,6 +22,11 @@ export const eventService = {
   },
 
   async getEvents(): Promise<Event[]> {
+    const { error: scheduleError } = await supabase.rpc('sync_event_schedule_statuses');
+    if (scheduleError) {
+      console.warn('[eventService] Falha ao atualizar os status de prazo:', scheduleError);
+    }
+
     const { error: escalationError } = await supabase.rpc('escalate_event_priorities');
     if (escalationError) {
       console.warn('[eventService] Falha ao escalar prioridades automaticamente:', escalationError);
