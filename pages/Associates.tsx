@@ -181,9 +181,12 @@ const Associates: React.FC = () => {
                 const cleanPlate = formData.linkedPlate.toUpperCase().replace(/[^A-Z0-9]/g, '');
                 
                 // 1. Verifica se o veículo existe
-                const { data: existing } = await supabase.from('vehicles').select('id').eq('plate', cleanPlate).maybeSingle();
-                
+                const { data: existing } = await supabase.from('vehicles').select('id, associate_id').eq('plate', cleanPlate).maybeSingle();
+
                 if (existing) {
+                    if (existing.associate_id && existing.associate_id !== result.id) {
+                        throw new Error(`A placa ${cleanPlate} já está vinculada a outro associado.`);
+                    }
                     // Atualiza veículo existente
                     const { error: linkError } = await supabase
                         .from('vehicles')

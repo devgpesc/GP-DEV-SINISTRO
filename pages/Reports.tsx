@@ -54,7 +54,7 @@ const Reports: React.FC = () => {
         const { data: rels } = await supabase.from('quotation_item_releases').select('*');
         const { data: poi } = await supabase
           .from('purchase_order_items')
-          .select('quotation_item_id, name, unit, quantity, total_price, purchase_orders!inner(id, supplier_id, quotation_id, status, total, created_at)');
+          .select('quotation_item_id, name, unit, quantity, total_price, status, purchase_orders!inner(id, supplier_id, quotation_id, status, total, created_at)');
         const { data: sups } = await supabase.from('suppliers').select('id, name');
         
         setOrders((pos || []).map((order: any) => ({
@@ -210,11 +210,12 @@ const Reports: React.FC = () => {
 
   const reversalStats = useMemo(() => {
     const reversedOrders = filteredOrders.filter((order) => order.status === 'Cancelada' || order.status === 'Devolvida');
+    const ordersWithReversal = filteredOrders.filter((order) => Number(order.reversed_amount || 0) > 0);
     return {
       cancelledOrders: reversedOrders.filter((order) => order.status === 'Cancelada').length,
       returnedOrders: reversedOrders.filter((order) => order.status === 'Devolvida').length,
-      affectedQuotations: new Set(reversedOrders.map((order) => order.quotation_id || order.quotationId).filter(Boolean)).size,
-      reversedValue: reversedOrders.reduce((sum, order) => sum + Number(order.reversed_amount || order.total || 0), 0),
+      affectedQuotations: new Set(ordersWithReversal.map((order) => order.quotation_id || order.quotationId).filter(Boolean)).size,
+      reversedValue: filteredOrders.reduce((sum, order) => sum + Number(order.reversed_amount || 0), 0),
     };
   }, [filteredOrders]);
 
@@ -269,7 +270,7 @@ const Reports: React.FC = () => {
 
     (poItems || []).forEach((row: any) => {
       const itemId = row.quotation_item_id;
-      if (!itemId || !releaseItemIds.has(itemId)) return;
+      if (!itemId || !releaseItemIds.has(itemId) || row.status === 'Cancelado') return;
       const order = row.purchase_orders;
       if (!order?.supplier_id) return;
       if (order.status === 'Cancelada' || order.status === 'Devolvida') return;

@@ -6,11 +6,6 @@ export const CANONICAL_PERMISSIONS = [
     desc: 'Visualizar valores, custos e indicadores financeiros.',
   },
   {
-    id: 'approve_purchases',
-    label: 'Aprovar Compras',
-    desc: 'Aprovar e cancelar Ordens de Compra (OC).',
-  },
-  {
     id: 'manage_users',
     label: 'Gerir Equipe',
     desc: 'Convidar, editar e remover usuários da empresa.',
@@ -55,7 +50,6 @@ export const ALL_MODULE_PERMISSIONS_DEFAULT: Record<ModulePermissionId, boolean>
 
 const LEGACY_PERMISSION_MAP: Record<string, CanonicalPermissionId> = {
   relatorios: 'view_reports',
-  compras: 'approve_purchases',
 };
 
 const LEGACY_MODULE_MAP: Record<string, ModulePermissionId> = {

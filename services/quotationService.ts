@@ -475,9 +475,11 @@ export const quotationService = {
           supplier_id: supplierId,
           quotation_id: quotationId,
           total: totalOrder,
-          status: 'Gerada',
+          status: 'Aprovada',
           created_at: new Date().toISOString(),
           created_by: user.id,
+          approved_by: user.id,
+          approved_at: new Date().toISOString(),
         }])
         .select()
         .single();
@@ -516,9 +518,9 @@ export const quotationService = {
       purchase_orders: createdOrders.map((order: any) => ({ id: order.id, code: order.code, itemsCount: order.itemsCount })),
     });
 
-    await supabase.from('quotations').update({ status: 'Aguardando Aprovação' }).eq('id', quotationId);
+    await supabase.from('quotations').update({ status: 'Compra Autorizada' }).eq('id', quotationId);
     if (eventId) {
-      await supabase.from('events').update({ status: 'Aguardando Aprovação' }).eq('id', eventId);
+      await supabase.from('events').update({ status: 'Aprovado' }).eq('id', eventId);
     }
 
     return createdOrders;

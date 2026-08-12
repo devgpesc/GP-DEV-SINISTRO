@@ -107,17 +107,7 @@ const normalizeVehicleData = (source, provider) => {
     };
   }
 
-  // Fallback Mock
-  return {
-    plate: source.plate,
-    brand: source.brand,
-    model: source.model,
-    yearFab: source.yearFab,
-    yearModel: source.yearModel,
-    color: source.color,
-    fuel: source.fuel,
-    provider: 'Mock/Fallback'
-  };
+  throw new Error(`Provedor veicular não suportado: ${provider}`);
 };
 
 // --- PROVIDERS IMPLEMENTATION ---
@@ -158,69 +148,15 @@ async function fetchAPIBrasil(plate, customToken = null) {
 }
 
 async function fetchDetran(plate, customToken = null) {
-  const token = customToken || KEYS.DETRAN_KEY;
-  // NOTA: Integração Real com Detran exige Certificado Digital (e-CNPJ) e VPN.
-  if (!token && !KEYS.DETRAN_KEY) throw new Error('Credenciais Detran não configuradas');
-
-  try {
-    // MOCK RESPONSE para o exemplo
-    if (plate === 'DETRAN1') throw new Error('Simulação de Erro Detran');
-    if (customToken === 'invalid') throw new Error('Credenciais inválidas'); // Simulação de teste falho
-    
-    return normalizeVehicleData({
-        plate: plate,
-        brand_name: 'HONDA',
-        model_name: 'CIVIC TOURING',
-        manufacturing_year: '2023',
-        model_year: '2023',
-        color_name: 'BRANCA',
-        fuel_type: 'GASOLINA',
-        vin: '93H...........',
-        renavam_code: '123456789',
-        state: 'SP',
-        city: 'SANTOS',
-        status: 'EM CIRCULAÇÃO'
-    }, 'detran');
-
-  } catch (error) {
-    throw error;
-  }
+  void plate;
+  void customToken;
+  throw new Error('Consulta ao Detran ainda não configurada.');
 }
 
 async function fetchDetranGO(plate, customToken = null) {
-  // Simulação Detran GO
-  if (customToken === 'invalid') throw new Error('Token Detran-GO inválido');
-  
-  await new Promise(r => setTimeout(r, 800)); // Latência simulada
-
-  return normalizeVehicleData({
-      plate: plate,
-      brand_name: 'HYUNDAI',
-      model_name: 'HB20 1.0 SENSE',
-      manufacturing_year: '2022',
-      model_year: '2022',
-      color_name: 'PRATA',
-      fuel_type: 'FLEX',
-      vin: '9BH...........',
-      renavam_code: '987654321',
-      city: 'GOIÂNIA',
-      status: 'EM CIRCULAÇÃO'
-  }, 'detran-go');
-}
-
-async function fetchMock(plate) {
-  await new Promise(r => setTimeout(r, 600));
-  if (plate === 'AAA0000') return null; // Simula não encontrado
-
-  return normalizeVehicleData({
-      plate: plate,
-      brand: 'TOYOTA',
-      model: 'COROLLA XEI',
-      yearFab: '2023',
-      yearModel: '2024',
-      color: 'PRATA',
-      fuel: 'FLEX',
-  }, 'mock');
+  void plate;
+  void customToken;
+  throw new Error('Consulta ao Detran-GO ainda não configurada.');
 }
 
 // --- ENDPOINT: CONSULTA VEICULAR (MULTI-PROVIDER) ---
@@ -255,7 +191,7 @@ app.get('/api/vehicles/lookup', async (req, res) => {
     } else if (provider === 'detran-go') {
         result = await fetchDetranGO(cleanPlate, customToken);
     } else {
-        // AUTO MODE: Tenta APIBrasil -> Se falhar, tenta Detran-SP -> Se falhar, Mock
+        // AUTO MODE: usa somente provedores reais configurados.
         try {
             console.log(`[Lookup] Tentando Primário (APIBrasil)...`);
             result = await fetchAPIBrasil(cleanPlate);
@@ -265,15 +201,20 @@ app.get('/api/vehicles/lookup', async (req, res) => {
             try {
                 result = await fetchDetran(cleanPlate);
             } catch (e2) {
-                console.warn(`[Lookup] Secundário falhou: ${e2.message}. Usando Mock.`);
+                console.warn(`[Lookup] Secundário falhou: ${e2.message}.`);
                 errors.push(`Detran: ${e2.message}`);
-                result = await fetchMock(cleanPlate); // Último recurso
+                result = null;
             }
         }
     }
 
     if (!result) {
         return res.status(404).json({ error: 'Veículo não encontrado em nenhuma base.', details: errors });
+    }
+
+    const returnedPlate = String(result.plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!returnedPlate || returnedPlate !== cleanPlate || result.provider === 'Mock/Fallback') {
+        return res.status(422).json({ error: 'A consulta retornou dados que não correspondem à placa informada.' });
     }
 
     // Save to Cache (Only if not testing)

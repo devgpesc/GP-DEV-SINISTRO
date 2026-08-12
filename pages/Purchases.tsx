@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   ShoppingCart, Search, Filter, CheckCircle2, XCircle, Printer, MoreVertical, 
-  DollarSign, UserCheck, X, Eye, EyeOff, Loader2, Info, Trash2, ShieldCheck, AlertTriangle, Truck, Calendar, User, Car, History, ClipboardList, ChevronRight, Scale, RotateCcw
+  DollarSign, UserCheck, X, Eye, EyeOff, Loader2, Info, Trash2, AlertTriangle, Truck, Calendar, User, Car, History, ClipboardList, ChevronRight, Scale, RotateCcw
 } from 'lucide-react';
 import { PurchaseOrder } from '../types';
 import { supabase } from '../services/supabaseClient';
@@ -17,8 +17,8 @@ import { getUserFacingError } from '../utils/userFacingError';
 
 const Purchases: React.FC = () => {
   const { access } = useAuth();
-  const canApprove = access.canApprovePurchases;
   const canCancel = access.canCancelPurchases;
+  const canCancelItem = access.canAccessPurchases;
   const canDelete = access.canDeleteRecords;
   
   const [searchTerm, setSearchTerm] = useState('');
@@ -37,12 +37,20 @@ const Purchases: React.FC = () => {
 
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
-    type: 'approve' | 'cancel' | 'return' | 'delete' | null;
+    type: 'cancel' | 'return' | 'delete' | null;
     orderId: string | null;
     orderCode: string | null;
     amount?: number;
     approvalNote?: string;
   }>({ isOpen: false, type: null, orderId: null, orderCode: null, approvalNote: '' });
+
+  const [itemCancelModal, setItemCancelModal] = useState<{
+    isOpen: boolean;
+    order: any | null;
+    item: any | null;
+    reason: string;
+    saving: boolean;
+  }>({ isOpen: false, order: null, item: null, reason: '', saving: false });
 
   const [historyModal, setHistoryModal] = useState<{ order: any | null; entries: PurchaseOrderHistoryEntry[]; loading: boolean }>({
     order: null,
@@ -65,7 +73,7 @@ const Purchases: React.FC = () => {
   }, []);
 
   const deriveQuotationStatus = (statuses: string[], fallback?: string | null, hasReleasedItems = false) => {
-    if (statuses.length === 0) return fallback || 'Aguardando Aprovação';
+    if (statuses.length === 0) return fallback || 'Compra Autorizada';
     const allReversed = statuses.every(status => status === 'Cancelada' || status === 'Devolvida');
     const hasPendingApproval = statuses.some(status => status === 'Gerada');
     const allReceived = statuses.every(status => status === 'Recebida');
@@ -76,7 +84,7 @@ const Purchases: React.FC = () => {
     if (hasPendingApproval) return 'Aguardando Aprovação';
     if (allReceived) return 'Compra Realizada';
     if (allApprovedOrReceived) return 'Compra Autorizada';
-    return fallback || 'Aguardando Aprovação';
+    return fallback || 'Compra Autorizada';
   };
 
   const loadOrders = async () => {
@@ -92,12 +100,16 @@ const Purchases: React.FC = () => {
                 email
             ),
             purchase_order_items (
+                id,
                 quotation_item_id,
                 name,
                 quantity,
                 unit,
                 unit_price,
-                total_price
+                total_price,
+                status,
+                cancellation_reason,
+                cancelled_at
             )
         `)
         .order('created_at', { ascending: false });
@@ -229,12 +241,16 @@ const Purchases: React.FC = () => {
             supplierId: o.supplier_id,
             supplierName: o.suppliers?.name || 'Fornecedor Desconhecido',
             items: o.purchase_order_items?.map((poi: any) => ({
+                id: poi.id,
                 quotation_item_id: poi.quotation_item_id,
                 name: poi.name,
                 quantity: poi.quantity,
                 unit: poi.unit,
                 price: poi.unit_price,
                 total: poi.total_price,
+                status: poi.status || 'Ativo',
+                cancellationReason: poi.cancellation_reason || null,
+                cancelledAt: poi.cancelled_at || null,
                 repurchaseRelease: releaseByQuoteItem.get(`${o.quotation_id}:${poi.quotation_item_id}`) || null,
                 comparisons: comparisonsByItemId.get(poi.quotation_item_id) || [],
             })) || [],
@@ -288,14 +304,12 @@ const Purchases: React.FC = () => {
           .eq('quotation_id', orderContext.quotationId);
 
         const statuses = (relatedOrders || []).map((row: any) => row.status);
-        let quotationStatus = 'Aguardando Aprovação';
+        let quotationStatus = 'Compra Autorizada';
         if (statuses.length > 0) {
           const allReversed = statuses.every((status: string) => status === 'Cancelada' || status === 'Devolvida');
-          const hasPendingApproval = statuses.some((status: string) => status === 'Gerada');
           const allReceived = statuses.every((status: string) => status === 'Recebida');
           const allApprovedOrReceived = statuses.every((status: string) => status === 'Aprovada' || status === 'Recebida');
           if (allReversed) quotationStatus = 'Cancelada';
-          else if (hasPendingApproval) quotationStatus = 'Aguardando Aprovação';
           else if (allReceived) quotationStatus = 'Compra Realizada';
           else if (allApprovedOrReceived) quotationStatus = 'Compra Autorizada';
         } else if (forcedOrderStatus === 'Cancelada' || forcedOrderStatus === 'Devolvida') {
@@ -305,14 +319,14 @@ const Purchases: React.FC = () => {
         await supabase.from('quotations').update({ status: quotationStatus }).eq('id', orderContext.quotationId);
         patchQuotationStatusLocally(orderContext.quotationId, quotationStatus);
         if (orderContext?.eventId) {
-          let eventStatus = 'Aguardando Aprovação';
+          let eventStatus = 'Aprovado';
           if (quotationStatus === 'Cancelada') eventStatus = 'Reprovado';
           else if (quotationStatus === 'Compra Realizada') eventStatus = 'Concluído';
           else if (quotationStatus === 'Compra Autorizada') eventStatus = 'Aprovado';
           await supabase.from('events').update({ status: eventStatus }).eq('id', orderContext.eventId);
         }
       } else if (orderContext?.eventId) {
-        const mapped = forcedOrderStatus === 'Aprovada' ? 'Aprovado' : forcedOrderStatus === 'Recebida' ? 'Concluído' : forcedOrderStatus === 'Cancelada' || forcedOrderStatus === 'Devolvida' ? 'Reprovado' : 'Aguardando Aprovação';
+        const mapped = forcedOrderStatus === 'Recebida' ? 'Concluído' : forcedOrderStatus === 'Cancelada' || forcedOrderStatus === 'Devolvida' ? 'Reprovado' : 'Aprovado';
         await supabase.from('events').update({ status: mapped }).eq('id', orderContext.eventId);
       }
     } catch (statusError) {
@@ -345,27 +359,51 @@ const Purchases: React.FC = () => {
     setOpenMenuId(null);
   };
 
-  const handleRequestApprove = (order: any) => {
-    setConfirmModal({
-      isOpen: true,
-      type: 'approve',
-      orderId: order.id,
-      orderCode: order.code,
-      amount: order.total,
-      approvalNote: ''
-    });
-    setOpenMenuId(null);
-  };
-
   const handleRequestCancel = (order: any) => {
     setConfirmModal({
       isOpen: true,
       type: 'cancel',
       orderId: order.id,
       orderCode: order.code,
-      amount: order.total
+      amount: order.total,
+      approvalNote: '',
     });
     setOpenMenuId(null);
+  };
+
+  const handleRequestItemCancel = (order: any, item: any) => {
+    setItemCancelModal({ isOpen: true, order, item, reason: '', saving: false });
+  };
+
+  const executeItemCancellation = async () => {
+    const reason = itemCancelModal.reason.trim();
+    if (!itemCancelModal.item?.id || !itemCancelModal.order?.id) return;
+    if (reason.length < 3) {
+      setToast({ show: true, title: 'Motivo obrigatório', message: 'Informe o motivo do cancelamento da peça ou serviço.', type: 'info' });
+      return;
+    }
+
+    setItemCancelModal((current) => ({ ...current, saving: true }));
+    try {
+      const result = await purchaseOrderService.cancelItem({
+        purchaseOrderItemId: itemCancelModal.item.id,
+        reason,
+      });
+      await loadOrders();
+      setViewOrder(null);
+      setItemCancelModal({ isOpen: false, order: null, item: null, reason: '', saving: false });
+      const reversedAmount = Number(result?.reversedAmount ?? result?.reversed_amount ?? itemCancelModal.item.total ?? 0);
+      setToast({
+        show: true,
+        title: 'Item cancelado e valor estornado',
+        message: `${itemCancelModal.item.name}: R$ ${reversedAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} retirados da compra. O item foi liberado para nova cotação.`,
+        type: 'success',
+      });
+    } catch (error: any) {
+      console.error('Erro ao cancelar item da ordem de compra:', error);
+      setItemCancelModal((current) => ({ ...current, saving: false }));
+      setToast({ show: true, title: 'Erro ao cancelar item', message: getUserFacingError(error, 'Não foi possível cancelar este item.'), type: 'info' });
+    }
   };
 
   const handleRequestReturn = (order: any) => {
@@ -411,23 +449,19 @@ const Purchases: React.FC = () => {
 
   const executeAction = async () => {
     if (confirmModal.orderId && confirmModal.type) {
-      if (confirmModal.type === 'approve') {
-        const order = orders.find(o => o.id === confirmModal.orderId);
-        const note = confirmModal.approvalNote?.trim();
-        const { data: { user } } = await supabase.auth.getUser();
-        await updateOrderStatus(confirmModal.orderId, 'Aprovada', order, {
-          approval_note: note || null,
-          approved_by: user?.id || null,
-          approved_at: new Date().toISOString()
-        });
-        setToast({ show: true, title: 'Sucesso', message: `Ordem ${confirmModal.orderCode} aprovada.`, type: 'success' });
-      } else if (confirmModal.type === 'cancel') {
+      if (confirmModal.type === 'cancel') {
         const cancellingOrder = orders.find((order) => order.id === confirmModal.orderId);
         const expectedReversal = Number(cancellingOrder?.total || confirmModal.amount || 0);
+        const reason = confirmModal.approvalNote?.trim() || '';
+        if (reason.length < 3) {
+          setToast({ show: true, title: 'Motivo obrigatório', message: 'Informe o motivo do cancelamento da compra.', type: 'info' });
+          return;
+        }
         setToast({ show: true, title: 'Cancelando e estornando OC', message: `Retirando R$ ${expectedReversal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} dos indicadores e liberando os itens.`, type: 'loading' });
         try {
           const result = await purchaseOrderService.cancelAndReleaseForRepurchase({
             purchaseOrderId: confirmModal.orderId,
+            reason,
           });
           await loadOrders();
           const reversedAmount = Number(result?.reversedAmount ?? result?.reversed_amount ?? expectedReversal);
@@ -546,8 +580,8 @@ const Purchases: React.FC = () => {
       const group = groups.get(key);
       group.orders.push(order);
       const isReversed = order.status === 'Cancelada' || order.status === 'Devolvida';
-      if (isReversed) group.reversedTotal += Number(order.reversedAmount || order.total || 0);
-      else group.total += Number(order.total || 0);
+      group.reversedTotal += Number(order.reversedAmount || 0);
+      if (!isReversed) group.total += Number(order.total || 0);
       group.itemCount += order.items?.length || 0;
       group.statuses.add(order.status);
       if (order.quotationCode) group.quotations.add(order.quotationCode);
@@ -559,13 +593,14 @@ const Purchases: React.FC = () => {
 
   const purchaseFinancialStats = useMemo(() => {
     const reversedOrders = orders.filter((order) => order.status === 'Cancelada' || order.status === 'Devolvida');
+    const ordersWithReversal = orders.filter((order) => Number(order.reversedAmount || 0) > 0);
     const activeOrders = orders.filter((order) => order.status !== 'Cancelada' && order.status !== 'Devolvida');
     return {
       activeValue: activeOrders.reduce((sum, order) => sum + Number(order.total || 0), 0),
       cancelledCount: orders.filter((order) => order.status === 'Cancelada').length,
       returnedCount: orders.filter((order) => order.status === 'Devolvida').length,
-      affectedQuotations: new Set(reversedOrders.map((order) => order.quotationId).filter(Boolean)).size,
-      reversedValue: reversedOrders.reduce((sum, order) => sum + Number(order.reversedAmount || order.total || 0), 0),
+      affectedQuotations: new Set(ordersWithReversal.map((order) => order.quotationId).filter(Boolean)).size,
+      reversedValue: orders.reduce((sum, order) => sum + Number(order.reversedAmount || 0), 0),
     };
   }, [orders]);
 
@@ -674,7 +709,7 @@ const Purchases: React.FC = () => {
         </div>
         <div className="space-y-4">
           {order.items?.map((item: any, index: number) => (
-            <article key={`${item.quotation_item_id || item.name}-${index}`} className="rounded-lg border border-slate-200 p-3">
+            <article key={`${item.quotation_item_id || item.name}-${index}`} className={`rounded-lg border p-3 ${item.status === 'Cancelado' ? 'border-red-200 bg-red-50/40 opacity-75' : 'border-slate-200'}`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-[9px] font-black uppercase text-blue-600">Item {index + 1}</p>
@@ -683,6 +718,14 @@ const Purchases: React.FC = () => {
                 </div>
                 <p className="whitespace-nowrap text-base font-black text-slate-900">R$ {Number(item.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
               </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {item.status === 'Cancelado' ? (
+                  <span className="rounded-md bg-red-100 px-2 py-1 text-[9px] font-black uppercase text-red-700">Cancelado</span>
+                ) : canCancelItem && !['Cancelada', 'Devolvida', 'Recebida'].includes(order.status) ? (
+                  <button type="button" onClick={() => handleRequestItemCancel(order, item)} className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-[9px] font-black uppercase text-red-700 hover:bg-red-50"><XCircle size={12}/> Cancelar item</button>
+                ) : null}
+              </div>
+              {item.cancellationReason && <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-800">Motivo: {item.cancellationReason}</p>}
               {renderItemComparison(item, order)}
             </article>
           ))}
@@ -690,9 +733,7 @@ const Purchases: React.FC = () => {
       </div>
       <div className="grid grid-cols-2 gap-2 border-t border-slate-200 bg-white px-5 py-4">
         <button type="button" onClick={() => handlePrintEnhanced(order)} className="app-btn-secondary flex items-center justify-center gap-2"><Printer size={15}/> Imprimir</button>
-        {order.status === 'Gerada' && canApprove ? (
-          <button type="button" onClick={() => handleRequestApprove(order)} className="app-btn-primary flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700"><ShieldCheck size={15}/> Aprovar</button>
-        ) : order.status === 'Recebida' && canCancel ? (
+        {order.status === 'Recebida' && canCancel ? (
           <button type="button" onClick={() => handleRequestReturn(order)} className="app-btn-primary flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700"><RotateCcw size={15}/> Devolver</button>
         ) : (
           <button type="button" onClick={() => openHistory(order)} className="app-btn-primary flex items-center justify-center gap-2"><History size={15}/> Histórico</button>
@@ -736,7 +777,7 @@ const Purchases: React.FC = () => {
           />
         </div>
         <div className="flex bg-slate-50 p-1 rounded-2xl border border-slate-100 overflow-x-auto">
-            {['Todos', 'Gerada', 'Aprovada', 'Recebida', 'Cancelada', 'Devolvida'].map(st => (
+            {['Todos', 'Aprovada', 'Recebida', 'Cancelada', 'Devolvida'].map(st => (
                 <button key={st} onClick={() => setFilterStatus(st)} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${filterStatus === st ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>{st}</button>
             ))}
         </div>
@@ -930,11 +971,6 @@ const Purchases: React.FC = () => {
                                             </div>
 
                                             <div className="flex gap-2 flex-shrink-0" onClick={event => event.stopPropagation()}>
-                                                {order.status === 'Gerada' && canApprove && (
-                                                    <button onClick={() => handleRequestApprove(order)} className="bg-green-600 text-white px-4 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-600/20 flex items-center gap-2" title="Aprovar por escrito">
-                                                        <ShieldCheck size={16}/> Aprovar
-                                                    </button>
-                                                )}
                                                 {order.deliveryStatus === 'Divergente' && (
                                                     <button onClick={() => handleResolveDivergence(order)} className="bg-red-600 text-white px-4 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-600/20 flex items-center gap-2" title="Tratar divergência">
                                                         <AlertTriangle size={16}/>
@@ -1016,7 +1052,7 @@ const Purchases: React.FC = () => {
 
                     <div className="divide-y divide-slate-200 border-y border-slate-200">
                       {viewOrder.items?.map((item: any, idx: number) => (
-                        <article key={`${item.quotation_item_id || item.name}-${idx}`} className="grid grid-cols-[36px_minmax(0,1fr)] gap-3 py-4">
+                        <article key={`${item.quotation_item_id || item.name}-${idx}`} className={`grid grid-cols-[36px_minmax(0,1fr)] gap-3 py-4 ${item.status === 'Cancelado' ? 'opacity-70' : ''}`}>
                           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-xs font-black text-blue-700">{idx + 1}</div>
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-start justify-between gap-2">
@@ -1029,7 +1065,14 @@ const Purchases: React.FC = () => {
                             <div className="mt-2 flex flex-wrap items-center gap-2">
                               <span className="rounded-md bg-slate-100 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-slate-600">Item {idx + 1} de {viewOrder.items.length}</span>
                               {item.repurchaseRelease && <span className="rounded-md bg-amber-100 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-amber-800">Recompra liberada</span>}
+                              {item.status === 'Cancelado' && <span className="rounded-md bg-red-100 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-red-700">Cancelado</span>}
+                              {canCancelItem && item.status !== 'Cancelado' && !['Cancelada', 'Devolvida', 'Recebida'].includes(viewOrder.status) && (
+                                <button type="button" onClick={() => handleRequestItemCancel(viewOrder, item)} className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2 py-1 text-[9px] font-black uppercase tracking-wider text-red-700 hover:bg-red-50">
+                                  <XCircle size={12}/> Cancelar item
+                                </button>
+                              )}
                             </div>
+                            {item.cancellationReason && <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-800">Motivo do cancelamento: {item.cancellationReason}</p>}
                             {item.repurchaseRelease?.reason && <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">Motivo: {item.repurchaseRelease.reason}</p>}
                             {renderItemComparison(item, viewOrder)}
                           </div>
@@ -1104,28 +1147,21 @@ const Purchases: React.FC = () => {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}></div>
           <div className="relative bg-white w-full max-w-md rounded-[32px] shadow-2xl p-8 animate-in zoom-in">
-            <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ${confirmModal.type === 'approve' ? 'bg-green-50 text-green-500' : confirmModal.type === 'return' ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-500'}`}>
-              {confirmModal.type === 'approve' ? <ShieldCheck size={40} /> : confirmModal.type === 'return' ? <RotateCcw size={40} /> : <AlertTriangle size={40} />}
+            <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ${confirmModal.type === 'return' ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-500'}`}>
+              {confirmModal.type === 'return' ? <RotateCcw size={40} /> : <AlertTriangle size={40} />}
             </div>
             <h3 className="text-xl font-black text-slate-800 mb-2">
-              {confirmModal.type === 'approve' ? 'Aprovar ordem de compra' : confirmModal.type === 'return' ? 'Registrar devolução total' : 'Confirmar ação?'}
+              {confirmModal.type === 'return' ? 'Registrar devolução total' : confirmModal.type === 'cancel' ? 'Cancelar ordem de compra' : 'Confirmar ação?'}
             </h3>
-            {confirmModal.type === 'approve' && (
-              <div className="mt-4 text-left">
-                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Observação da aprovação (opcional)</label>
-                <textarea
-                  className="w-full min-h-[110px] p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium text-slate-700 outline-none resize-none"
-                  placeholder="Registre uma observação para a auditoria, se necessário..."
-                  value={confirmModal.approvalNote || ''}
-                  onChange={(e) => setConfirmModal({ ...confirmModal, approvalNote: e.target.value })}
-                />
-              </div>
-            )}
             {confirmModal.type === 'cancel' && (
-              <div className="mt-4 p-4 rounded-2xl border border-amber-100 bg-amber-50 text-left">
-                <p className="text-xs font-bold text-amber-800 leading-relaxed">
-                  Ao cancelar, R$ {Number(confirmModal.amount || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} serão estornados dos indicadores. Os itens voltam para a matriz como liberados para nova compra, mantendo todo o histórico.
-                </p>
+              <div className="mt-4 text-left">
+                <div className="p-4 rounded-2xl border border-amber-100 bg-amber-50">
+                  <p className="text-xs font-bold text-amber-800 leading-relaxed">
+                   Ao cancelar, R$ {Number(confirmModal.amount || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} serão estornados dos indicadores. Os itens voltam para a matriz como liberados para nova compra, mantendo todo o histórico.
+                  </p>
+                </div>
+                <label className="mt-4 block text-[10px] font-black uppercase tracking-widest text-slate-500">Motivo do cancelamento *</label>
+                <textarea required className="mt-2 min-h-[92px] w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium text-slate-700 outline-none focus:border-red-400" placeholder="Informe por que esta compra está sendo cancelada..." value={confirmModal.approvalNote || ''} onChange={(event) => setConfirmModal({ ...confirmModal, approvalNote: event.target.value })} />
               </div>
             )}
             {confirmModal.type === 'return' && (
@@ -1146,7 +1182,26 @@ const Purchases: React.FC = () => {
             )}
             <div className="grid grid-cols-2 gap-4 mt-6">
               <button onClick={() => setConfirmModal({ ...confirmModal, isOpen: false, approvalNote: '' })} className="py-3 bg-slate-100 rounded-2xl font-black text-xs uppercase text-slate-500">Voltar</button>
-              <button onClick={executeAction} className={`py-3 text-white rounded-2xl font-black text-xs uppercase ${confirmModal.type === 'approve' ? 'bg-green-600' : confirmModal.type === 'return' ? 'bg-amber-600' : 'bg-red-500'}`}>{confirmModal.type === 'return' ? 'Registrar devolução' : 'Confirmar'}</button>
+               <button onClick={executeAction} className={`py-3 text-white rounded-2xl font-black text-xs uppercase ${confirmModal.type === 'return' ? 'bg-amber-600' : 'bg-red-500'}`}>{confirmModal.type === 'return' ? 'Registrar devolução' : 'Confirmar'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {itemCancelModal.isOpen && itemCancelModal.item && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => !itemCancelModal.saving && setItemCancelModal({ isOpen: false, order: null, item: null, reason: '', saving: false })} />
+          <div role="dialog" aria-modal="true" aria-labelledby="item-cancel-title" className="relative w-full max-w-md rounded-3xl bg-white p-7 shadow-2xl">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-600"><XCircle size={28}/></div>
+            <h3 id="item-cancel-title" className="mt-5 text-xl font-black text-slate-900">Cancelar peça ou serviço</h3>
+            <p className="mt-2 text-sm font-semibold text-slate-600">{itemCancelModal.item.name}</p>
+            <p className="mt-1 text-xs text-slate-500">O valor será retirado da OC e o item voltará para nova cotação.</p>
+            <label className="mt-5 block text-[10px] font-black uppercase tracking-widest text-slate-600">Motivo do cancelamento *</label>
+            <textarea autoFocus required maxLength={600} className="mt-2 min-h-[110px] w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium text-slate-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100" placeholder="Ex.: peça incompatível, indisponibilidade ou troca de fornecedor..." value={itemCancelModal.reason} onChange={(event) => setItemCancelModal((current) => ({ ...current, reason: event.target.value }))} />
+            <div className="mt-2 flex justify-between text-[10px] font-bold"><span className={itemCancelModal.reason.trim().length < 3 ? 'text-red-600' : 'text-emerald-600'}>{itemCancelModal.reason.trim().length < 3 ? 'Informe ao menos 3 caracteres.' : 'Motivo preenchido.'}</span><span className="text-slate-400">{itemCancelModal.reason.length}/600</span></div>
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              <button type="button" disabled={itemCancelModal.saving} onClick={() => setItemCancelModal({ isOpen: false, order: null, item: null, reason: '', saving: false })} className="app-btn-secondary">Voltar</button>
+              <button type="button" disabled={itemCancelModal.saving || itemCancelModal.reason.trim().length < 3} onClick={executeItemCancellation} className="app-btn-primary flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50">{itemCancelModal.saving ? <Loader2 size={16} className="animate-spin"/> : <XCircle size={16}/>} Confirmar</button>
             </div>
           </div>
         </div>

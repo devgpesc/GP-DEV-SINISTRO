@@ -97,7 +97,7 @@ const Dashboard: React.FC = () => {
       const ordersPromise = isExecutive
         ? supabase
             .from('purchase_orders')
-            .select('id, status, total, quotation_id, created_at')
+            .select('id, status, total, reversed_amount, quotation_id, created_at')
             .order('created_at', { ascending: false })
             .limit(200)
         : Promise.resolve({ data: [] as any[], error: null });
@@ -156,11 +156,12 @@ const Dashboard: React.FC = () => {
 
   const purchaseReversalStats = useMemo(() => {
     const reversedOrders = orders.filter((order) => order.status === 'Cancelada' || order.status === 'Devolvida');
+    const ordersWithReversal = orders.filter((order: any) => Number(order.reversed_amount || 0) > 0);
     return {
       cancelled: reversedOrders.filter((order) => order.status === 'Cancelada').length,
       returned: reversedOrders.filter((order) => order.status === 'Devolvida').length,
-      quotations: new Set(reversedOrders.map((order: any) => order.quotation_id).filter(Boolean)).size,
-      amount: reversedOrders.reduce((sum, order) => sum + Number(order.reversed_amount || order.total || 0), 0),
+      quotations: new Set(ordersWithReversal.map((order: any) => order.quotation_id).filter(Boolean)).size,
+      amount: orders.reduce((sum, order: any) => sum + Number(order.reversed_amount || 0), 0),
     };
   }, [orders]);
 

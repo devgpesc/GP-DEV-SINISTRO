@@ -9,7 +9,7 @@ export async function quickCreateAssociate(input: {
   const name = input.name.trim();
   if (!name) throw new Error('Informe o nome do associado.');
 
-  const docToUse = (input.document || '').replace(/\D/g, '') || '00000000000';
+  const docToUse = (input.document || '').replace(/\D/g, '');
   const type = input.type || (docToUse.length === 14 ? 'PJ' : 'PF');
 
   let resolvedName = name;
@@ -20,11 +20,9 @@ export async function quickCreateAssociate(input: {
     }
   }
 
-  const { data: existing } = await supabase
-    .from('associates')
-    .select('id')
-    .eq('document', docToUse)
-    .maybeSingle();
+  const { data: existing } = docToUse
+    ? await supabase.from('associates').select('id').eq('document', docToUse).maybeSingle()
+    : { data: null };
 
   if (existing?.id) {
     await supabase.from('associates').update({ name: resolvedName, type }).eq('id', existing.id);
@@ -52,28 +50,17 @@ export async function quickCreateVehicle(input: {
 
   const { data: existing } = await supabase
     .from('vehicles')
-    .select('id, brand, model')
+    .select('id, associate_id')
     .eq('plate', cleanPlate)
     .maybeSingle();
 
-  let brand = (input.brand || '').trim();
-  let model = (input.model || '').trim();
-
-  // Tenta enriquecer pela consulta de placa quando ainda estiver generico.
-  if (!brand || !model || /cadastro|definir/i.test(`${brand} ${model}`)) {
-    try {
-      const looked = await lookupService.fetchPlate(cleanPlate);
-      if (looked?.brand) brand = looked.brand;
-      if (looked?.model) model = looked.model;
-    } catch {
-      /* lookup opcional */
-    }
-  }
-
-  brand = brand || '';
-  model = model || '';
+  const brand = (input.brand || '').trim();
+  const model = (input.model || '').trim();
 
   if (existing?.id) {
+    if (existing.associate_id && existing.associate_id !== input.associateId) {
+      throw new Error(`A placa ${cleanPlate} já está vinculada a outro associado.`);
+    }
     const patch: Record<string, any> = { associate_id: input.associateId };
     if (brand) patch.brand = brand.toUpperCase();
     if (model) patch.model = model.toUpperCase();

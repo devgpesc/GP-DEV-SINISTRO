@@ -32,6 +32,12 @@ export const lookupService = {
 
       const data = await response.json();
 
+      const returnedPlate = String(data.plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (returnedPlate !== cleanPlate || data.provider === 'Mock/Fallback') {
+        console.warn('Consulta de placa descartada por divergência.', { requested: cleanPlate, returned: returnedPlate });
+        return null;
+      }
+
       // Mapeamento para o formato Vehicle do Frontend (Já normalizado pelo Backend, mas garantindo tipagem)
       return {
         plate: data.plate,

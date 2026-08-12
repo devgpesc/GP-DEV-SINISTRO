@@ -3,7 +3,7 @@ import * as ReactRouterDOM from 'react-router-dom';
 const { Link, useLocation } = ReactRouterDOM as any;
 import { 
   LayoutDashboard, FileText, ShoppingCart, Users, Truck, 
-  BarChart3, Package, Car, Bell, Search, UserCircle, X, ShoppingBag, Clock, Trash2, CheckCheck,
+  BarChart3, Package, Car, Bell, Search, UserCircle, X, Clock, Trash2, CheckCheck,
   Globe, ShieldCheck, Wifi, WifiOff, AlertTriangle, CheckCircle2, UserCheck, Mail, Phone, MapPin, Key,
   Camera, Save, Loader2, Edit3, AlertCircle, LogOut, ChevronDown, Zap, Sparkles, Info, Menu, Hexagon, Wrench,
   Download, PanelLeftClose, PanelLeftOpen, Type, Check
@@ -133,7 +133,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     canAccessVehicles,
     canAccessCatalog,
     canAccessNotifications,
-    canApprovePurchases,
     canViewReports,
     canManageSettings,
   } = access;
@@ -215,25 +214,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       const dismissedSys = JSON.parse(sessionStorage.getItem('dismissedSysNotifs') || '[]');
 
       try {
-          if (canApprovePurchases && !dismissedSys.includes('sys-po-pending')) {
-              const { count } = await supabase.from('purchase_orders')
-                  .select('*', { count: 'exact', head: true })
-                  .eq('status', 'Gerada');
-              
-              if (count && count > 0) {
-                  newNotifications.push({
-                      id: 'sys-po-pending',
-                      title: 'Aprovações Pendentes',
-                      desc: `Existem ${count} ordens de compra aguardando aprovação financeira.`,
-                      time: 'Agora',
-                      icon: ShoppingBag,
-                      color: 'blue',
-                      read: false,
-                      link: '/compras'
-                  });
-              }
-          }
-
           const twoDaysAgo = new Date();
           twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
           

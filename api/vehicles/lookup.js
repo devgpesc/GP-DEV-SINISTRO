@@ -1,4 +1,4 @@
-import { fetchAPIBrasil, fetchDetran, fetchMock } from '../_vehicle.js';
+import { fetchAPIBrasil, fetchDetran } from '../_vehicle.js';
 import { applyCors } from '../_lib/http.js';
 
 const cache = new Map();
@@ -44,13 +44,18 @@ export default async function handler(req, res) {
           result = await fetchDetran(cleanPlate);
         } catch (fallbackError) {
           errors.push(`Detran: ${fallbackError.message}`);
-          result = await fetchMock(cleanPlate);
+          result = null;
         }
       }
     }
 
     if (!result) {
-      return res.status(404).json({ error: 'Veiculo nao encontrado em nenhuma base.' });
+      return res.status(404).json({ error: 'Veiculo nao encontrado em nenhuma base confiavel.', details: errors });
+    }
+
+    const returnedPlate = String(result.plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!returnedPlate || returnedPlate !== cleanPlate || result.provider === 'Mock/Fallback') {
+      return res.status(422).json({ error: 'A consulta retornou dados que nao correspondem a placa informada.' });
     }
 
     if (!customToken) cache.set(cleanPlate, { data: result, timestamp: Date.now() });

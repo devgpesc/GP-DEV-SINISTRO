@@ -78,8 +78,8 @@ export const resolveAccessProfile = (
 
   return {
     canUseOperations: hasTenantAccess,
-    canApprovePurchases: isTenantManager || !!permissions.approve_purchases,
-    canCancelPurchases: isTenantManager || !!permissions.approve_purchases,
+    canApprovePurchases: false,
+    canCancelPurchases: isTenantManager,
     canDeleteRecords: isTenantManager || !!permissions.delete_records,
     canViewFinancial: isTenantManager || !!permissions.financial_view,
     canViewReports:

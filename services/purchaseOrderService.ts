@@ -15,7 +15,7 @@ export type PurchaseOrderHistoryEntry = {
 
 const actionLabels: Record<string, string> = {
   created: 'OC criada',
-  approved: 'Aprovada por escrito',
+  approved: 'Compra autorizada',
   cancelled: 'Cancelada',
   repurchase_released: 'Itens liberados para recompra',
   received: 'Recebida / entregue',
@@ -23,6 +23,7 @@ const actionLabels: Record<string, string> = {
   deleted: 'Excluída',
   divergence: 'Divergência tratada',
   returned: 'Devolução registrada',
+  item_cancelled: 'Item cancelado',
 };
 
 export const getActionLabel = (action: string) => actionLabels[action] || 'Movimentação registrada';
@@ -119,6 +120,19 @@ export const purchaseOrderService = {
     const { data, error } = await supabase.rpc('register_purchase_order_return', {
       p_purchase_order_id: input.purchaseOrderId,
       p_reason: input.reason?.trim() || null,
+    });
+
+    if (error) throw error;
+    return data;
+  },
+
+  async cancelItem(input: { purchaseOrderItemId: string; reason: string }) {
+    const reason = input.reason.trim();
+    if (reason.length < 3) throw new Error('Informe o motivo do cancelamento do item.');
+
+    const { data, error } = await supabase.rpc('cancel_purchase_order_item', {
+      p_purchase_order_item_id: input.purchaseOrderItemId,
+      p_reason: reason,
     });
 
     if (error) throw error;

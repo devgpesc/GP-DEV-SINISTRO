@@ -37,16 +37,7 @@ export function normalizeVehicleData(source, provider) {
     };
   }
 
-  return {
-    plate: source.plate,
-    brand: source.brand,
-    model: source.model,
-    yearFab: source.yearFab,
-    yearModel: source.yearModel,
-    color: source.color,
-    fuel: source.fuel,
-    provider: 'Mock/Fallback',
-  };
+  throw new Error(`Provedor veicular nao suportado: ${provider}`);
 }
 
 export async function fetchAPIBrasil(plate, customToken) {
@@ -72,35 +63,7 @@ export async function fetchAPIBrasil(plate, customToken) {
   return normalizeVehicleData(data, 'apibrasil');
 }
 
-export async function fetchMock(plate) {
-  if (plate === 'AAA0000') return null;
-
-  return normalizeVehicleData({
-    plate,
-    brand: 'TOYOTA',
-    model: 'COROLLA XEI',
-    yearFab: '2023',
-    yearModel: '2024',
-    color: 'PRATA',
-    fuel: 'FLEX',
-  }, 'mock');
-}
-
 export async function fetchDetran(plate) {
-  if (!process.env.DETRAN_API_KEY) throw new Error('Credenciais Detran nao configuradas');
-
-  return normalizeVehicleData({
-    plate,
-    brand_name: 'HONDA',
-    model_name: 'CIVIC TOURING',
-    manufacturing_year: '2023',
-    model_year: '2023',
-    color_name: 'BRANCA',
-    fuel_type: 'GASOLINA',
-    vin: '93H...........',
-    renavam_code: '123456789',
-    state: 'SP',
-    city: 'SANTOS',
-    status: 'EM CIRCULACAO',
-  }, 'detran');
+  void plate;
+  throw new Error('Consulta ao Detran ainda nao configurada.');
 }
