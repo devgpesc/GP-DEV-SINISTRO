@@ -14,6 +14,7 @@ import { formatDateTimeBr, formatVehicleLabel, formatVehicleModelShort } from '.
 import { quotationService } from '../services/quotationService';
 import ViewModeSwitch, { ViewMode } from '../components/ViewModeSwitch';
 import { getUserFacingError } from '../utils/userFacingError';
+import { quickCreateAssociate, quickCreateVehicle } from '../services/quickRegisterService';
 
 const Quotations: React.FC = () => {
   const { addToast } = useToast();
@@ -184,6 +185,32 @@ const Quotations: React.FC = () => {
       setWizardStep(1);
   };
 
+  const handleQuotationEventSelection = async (eventId: string) => {
+      if (!eventId) {
+          setNewQuote((current) => ({ ...current, eventId: '', eventProtocol: '' }));
+          return;
+      }
+
+      const existingQuote = quotes.find((quote) => quote.eventId === eventId);
+      if (existingQuote) {
+          await handleEditQuote(existingQuote);
+          addToast(
+            'info',
+            'Cotação já existente',
+            `${existingQuote.code} foi aberta para você adicionar peças, serviços ou fornecedores sem duplicar o sinistro.`,
+          );
+          return;
+      }
+
+      const evt = realEvents.find((event) => event.id === eventId);
+      setNewQuote((current) => ({
+        ...current,
+        eventId,
+        eventProtocol: evt?.protocol || '',
+        participationQuota: evt?.participation_quota != null ? String(evt.participation_quota) : current.participationQuota,
+      }));
+  };
+
   const handleDeleteQuote = async () => {
       if (!quoteToDelete) return;
       try {
@@ -205,28 +232,63 @@ const Quotations: React.FC = () => {
     try {
         const selectedEvent = realEvents.find(e => e.id === newQuote.eventId);
         let quoteId = editingQuoteId;
+        let updatingExisting = Boolean(editingQuoteId);
+        let itemsToSave = newQuote.items;
+        let supplierIdsToSave = newQuote.selectedSuppliers;
+        if (!quoteId) {
+            const { data: existingRows, error: existingError } = await supabase
+                .from('quotations')
+                .select('id, code')
+                .eq('eventId', newQuote.eventId)
+                .order('created_at', { ascending: true })
+                .limit(1);
+            if (existingError) throw existingError;
+            if (existingRows?.[0]) {
+                quoteId = existingRows[0].id;
+                updatingExisting = true;
+                setEditingQuoteId(quoteId);
+                const [{ data: existingItems }, { data: existingSuppliers }] = await Promise.all([
+                    supabase.from('quotation_items').select('*').eq('quotation_id', quoteId),
+                    supabase.from('quotation_suppliers').select('supplier_id').eq('quotation_id', quoteId),
+                ]);
+                const itemKeys = new Set(newQuote.items.map((item) => `${item.item_type || 'Peça'}:${item.name.trim().toLowerCase()}`));
+                itemsToSave = [
+                    ...(existingItems || []).filter((item: any) => !itemKeys.has(`${item.item_type || 'Peça'}:${item.name.trim().toLowerCase()}`)),
+                    ...newQuote.items,
+                ];
+                supplierIdsToSave = [...new Set([
+                    ...(existingSuppliers || []).map((item: any) => item.supplier_id),
+                    ...newQuote.selectedSuppliers,
+                ])];
+            }
+        }
 
         const quotaValue = newQuote.participationQuota ? Number(newQuote.participationQuota) : null;
 
-        if (editingQuoteId) {
+        if (quoteId) {
             const { error: updateError } = await supabase.from('quotations').update({
-                suppliers: newQuote.selectedSuppliers.length,
-                "itemCount": newQuote.items.length,
+                suppliers: supplierIdsToSave.length,
+                "itemCount": itemsToSave.length,
                 participation_quota: quotaValue,
                 attachments: newQuote.attachments,
                 updated_at: new Date().toISOString()
-            }).eq('id', editingQuoteId);
+            }).eq('id', quoteId);
 
             if (updateError) throw updateError;
         } else {
-            const code = `COT-${new Date().getFullYear()}-${String(quotes.length + 1).padStart(4, '0')}`;
+            const currentYear = new Date().getFullYear();
+            const lastSequence = quotes.reduce((highest, quote) => {
+                const match = String(quote.code || '').match(new RegExp(`^COT-${currentYear}-(\\d+)$`));
+                return match ? Math.max(highest, Number(match[1])) : highest;
+            }, 0);
+            const code = `COT-${currentYear}-${String(lastSequence + 1).padStart(4, '0')}`;
             const { data: quoteData, error: quoteError } = await supabase.from('quotations').insert([{
                 code: code,
                 eventRef: selectedEvent ? selectedEvent.protocol : 'N/A',
                 status: 'Em Aberto',
                 date: new Date().toLocaleDateString('pt-BR'),
-                suppliers: newQuote.selectedSuppliers.length,
-                "itemCount": newQuote.items.length,
+                suppliers: supplierIdsToSave.length,
+                "itemCount": itemsToSave.length,
                 "eventId": newQuote.eventId,
                 participation_quota: quotaValue,
                 attachments: newQuote.attachments,
@@ -239,39 +301,12 @@ const Quotations: React.FC = () => {
 
         if (!quoteId) throw new Error("ID da cotação inválido");
 
-        if (editingQuoteId) {
-            await quotationService.syncQuotationItems(quoteId, newQuote.items);
-            await quotationService.syncQuotationSuppliers(quoteId, newQuote.selectedSuppliers);
-        } else {
-            if (newQuote.items.length > 0) {
-                const itemsPayload = newQuote.items.map(item => ({
-                    quotation_id: quoteId,
-                    name: item.name,
-                    quantity: item.quantity,
-                    unit: item.unit || (item.item_type === 'Serviço' ? 'HL' : 'UN'),
-                    category: item.category,
-                    item_type: item.item_type || 'Peça',
-                    catalog_item_id: item.catalog_item_id || null,
-                    status: 'Pendente'
-                }));
-                const { error: itemsError } = await supabase.from('quotation_items').insert(itemsPayload);
-                if (itemsError) throw itemsError;
-            }
-
-            if (newQuote.selectedSuppliers.length > 0) {
-                const suppliersPayload = newQuote.selectedSuppliers.map(supId => ({
-                    quotation_id: quoteId,
-                    supplier_id: supId,
-                    status: 'Aguardando'
-                }));
-                const { error: suppliersError } = await supabase.from('quotation_suppliers').insert(suppliersPayload);
-                if (suppliersError) throw suppliersError;
-            }
-        }
+        await quotationService.syncQuotationItems(quoteId, itemsToSave);
+        await quotationService.syncQuotationSuppliers(quoteId, supplierIdsToSave);
         
         await supabase.from('events').update({ status: 'Em Cotação' }).eq('id', newQuote.eventId);
         
-        addToast('success', editingQuoteId ? 'Cotação atualizada' : 'Cotação criada', 'Cotação pronta. Acesse a matriz.');
+        addToast('success', updatingExisting ? 'Cotação atualizada' : 'Cotação criada', 'Cotação pronta. Acesse a matriz.');
         await loadData();
         setActiveQuoteId(quoteId);
         setActiveEventId(newQuote.eventId);
@@ -423,74 +458,12 @@ const Quotations: React.FC = () => {
 
     setIsQuickSaving(true);
     try {
-      let associateId = '';
-      const docToUse = cleanDocument || `RAP${Date.now().toString().slice(-8)}`;
-
-      const { data: existingAssociate } = await supabase
-        .from('associates')
-        .select('id')
-        .eq('document', docToUse)
-        .maybeSingle();
-
-      if (existingAssociate?.id) {
-        associateId = existingAssociate.id;
-        await supabase.from('associates').update({ name: clientName }).eq('id', associateId);
-      } else {
-        const { data: newAssociate, error: associateError } = await supabase
-          .from('associates')
-          .insert([{
-            name: clientName,
-            document: docToUse,
-            type: 'PF',
-            created_at: new Date().toISOString(),
-          }])
-          .select('id')
-          .single();
-        if (associateError) throw associateError;
-        associateId = newAssociate.id;
-      }
-
-      let vehicleId = '';
-      const { data: existingVehicle } = await supabase
-        .from('vehicles')
-        .select('id, associate_id')
-        .eq('plate', cleanPlate)
-        .maybeSingle();
-
-      if (existingVehicle?.id) {
-        vehicleId = existingVehicle.id;
-        await supabase.from('vehicles').update({ associate_id: associateId }).eq('id', vehicleId);
-      } else {
-        let brand = '';
-        let model = '';
-        try {
-          const looked = await lookupService.fetchPlate(cleanPlate);
-          brand = looked?.brand || '';
-          model = looked?.model || '';
-        } catch {
-          /* opcional */
-        }
-        const currentYear = new Date().getFullYear().toString();
-        const { data: newVehicle, error: vehicleError } = await supabase
-          .from('vehicles')
-          .insert([{
-            plate: cleanPlate,
-            associate_id: associateId,
-            status: 'Ativo',
-            brand: (brand || '—').toUpperCase(),
-            model: (model || cleanPlate).toUpperCase(),
-            color: 'BRANCA',
-            fuel: 'FLEX',
-            type: 'Automovel',
-            year_fab: currentYear,
-            year_model: currentYear,
-            created_at: new Date().toISOString(),
-          }])
-          .select('id')
-          .single();
-        if (vehicleError) throw vehicleError;
-        vehicleId = newVehicle.id;
-      }
+      const associateId = await quickCreateAssociate({
+        name: clientName,
+        document: cleanDocument,
+        type: cleanDocument.length === 14 ? 'PJ' : 'PF',
+      });
+      const vehicleId = await quickCreateVehicle({ plate: cleanPlate, associateId });
 
       const protocol = `EVT-${new Date().getFullYear()}-${String(realEvents.length + 1).padStart(4, '0')}`;
       const createdEvent = await eventService.createEvent({
@@ -671,18 +644,10 @@ const Quotations: React.FC = () => {
                <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2"><Package size={20} className="text-blue-600"/> 1. Selecione o Sinistro</h3>
                <div className="space-y-4">
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Eventos Disponíveis</label>
-                  <select className="w-full p-3 bg-white border border-slate-200 rounded-md outline-none focus:ring-4 focus:ring-blue-500/5 font-bold text-slate-800 disabled:opacity-50" value={newQuote.eventId} onChange={(e) => {
-                      const evt = realEvents.find(ev => ev.id === e.target.value);
-                      setNewQuote({
-                        ...newQuote,
-                        eventId: e.target.value,
-                        eventProtocol: evt?.protocol || '',
-                        participationQuota: evt?.participation_quota != null ? String(evt.participation_quota) : newQuote.participationQuota,
-                      });
-                  }} disabled={!!editingQuoteId}>
+                  <select className="w-full p-3 bg-white border border-slate-200 rounded-md outline-none focus:ring-4 focus:ring-blue-500/5 font-bold text-slate-800 disabled:opacity-50" value={newQuote.eventId} onChange={(e) => handleQuotationEventSelection(e.target.value)} disabled={!!editingQuoteId}>
                     <option value="">Selecione...</option>
                     {realEvents.map(e => (
-                      <option key={e.id} value={e.id}>{describeEventOption(e)}</option>
+                      <option key={e.id} value={e.id}>{describeEventOption(e)}{quotes.some((quote) => quote.eventId === e.id) ? ' · editar cotação existente' : ''}</option>
                     ))}
                   </select>
 

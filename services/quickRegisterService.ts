@@ -1,6 +1,40 @@
 import { supabase } from './supabaseClient';
 import { lookupService } from './lookupService';
 
+const hasRepeatedDigits = (value: string) => /^(\d)\1+$/.test(value);
+
+const isValidCpf = (value: string) => {
+  if (value.length !== 11 || hasRepeatedDigits(value)) return false;
+  const calculateDigit = (length: number) => {
+    let sum = 0;
+    for (let index = 0; index < length; index += 1) sum += Number(value[index]) * (length + 1 - index);
+    const remainder = (sum * 10) % 11;
+    return remainder === 10 ? 0 : remainder;
+  };
+  return calculateDigit(9) === Number(value[9]) && calculateDigit(10) === Number(value[10]);
+};
+
+const isValidCnpj = (value: string) => {
+  if (value.length !== 14 || hasRepeatedDigits(value)) return false;
+  const calculateDigit = (base: string, weights: number[]) => {
+    const sum = base.split('').reduce((total, digit, index) => total + Number(digit) * weights[index], 0);
+    const remainder = sum % 11;
+    return remainder < 2 ? 0 : 11 - remainder;
+  };
+  const first = calculateDigit(value.slice(0, 12), [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+  const second = calculateDigit(`${value.slice(0, 12)}${first}`, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+  return first === Number(value[12]) && second === Number(value[13]);
+};
+
+export const normalizeOptionalDocument = (document?: string) => {
+  const digits = (document || '').replace(/\D/g, '');
+  if (!digits) return null;
+  if (!isValidCpf(digits) && !isValidCnpj(digits)) {
+    throw new Error('Informe um CPF ou CNPJ válido, ou deixe o campo em branco.');
+  }
+  return digits;
+};
+
 export async function quickCreateAssociate(input: {
   name: string;
   document?: string;
@@ -9,11 +43,11 @@ export async function quickCreateAssociate(input: {
   const name = input.name.trim();
   if (!name) throw new Error('Informe o nome do associado.');
 
-  const docToUse = (input.document || '').replace(/\D/g, '');
-  const type = input.type || (docToUse.length === 14 ? 'PJ' : 'PF');
+  const docToUse = normalizeOptionalDocument(input.document);
+  const type = input.type || (docToUse?.length === 14 ? 'PJ' : 'PF');
 
   let resolvedName = name;
-  if (type === 'PJ' && docToUse.length === 14) {
+  if (type === 'PJ' && docToUse?.length === 14) {
     const cnpjData = await lookupService.fetchCNPJ(docToUse);
     if (cnpjData?.name || cnpjData?.fantasy) {
       resolvedName = cnpjData.fantasy || cnpjData.name || name;
@@ -25,7 +59,6 @@ export async function quickCreateAssociate(input: {
     : { data: null };
 
   if (existing?.id) {
-    await supabase.from('associates').update({ name: resolvedName, type }).eq('id', existing.id);
     return existing.id;
   }
 
@@ -68,20 +101,22 @@ export async function quickCreateVehicle(input: {
     return existing.id;
   }
 
-  const currentYear = new Date().getFullYear().toString();
+  let lookedUp: { brand?: string; model?: string } | null = null;
+  if (!brand || !model) {
+    try {
+      lookedUp = await lookupService.fetchPlate(cleanPlate);
+    } catch {
+      lookedUp = null;
+    }
+  }
   const { data, error } = await supabase
     .from('vehicles')
     .insert([{
       plate: cleanPlate,
       associate_id: input.associateId,
       status: 'Ativo',
-      brand: (brand || '—').toUpperCase(),
-      model: (model || cleanPlate).toUpperCase(),
-      color: 'BRANCA',
-      fuel: 'FLEX',
-      type: 'Automovel',
-      year_fab: currentYear,
-      year_model: currentYear,
+      brand: (brand || lookedUp?.brand || '').toUpperCase() || null,
+      model: (model || lookedUp?.model || '').toUpperCase() || null,
       created_at: new Date().toISOString(),
     }])
     .select('id')

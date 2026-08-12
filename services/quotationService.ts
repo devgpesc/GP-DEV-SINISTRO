@@ -465,26 +465,42 @@ export const quotationService = {
 
     const createdOrders = await Promise.all(Object.entries(ordersBySupplier).map(async ([supplierId, cartItems]) => {
       const totalOrder = cartItems.reduce((sum, item) => sum + item.total_price, 0);
-      const code = `OC-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
-
-      const { data: order, error: orderError } = await supabase
+      const { data: existingOrders, error: existingOrderError } = await supabase
         .from('purchase_orders')
-        .insert([{
-          code,
-          event_id: eventId || null,
-          supplier_id: supplierId,
-          quotation_id: quotationId,
-          total: totalOrder,
-          status: 'Aprovada',
-          created_at: new Date().toISOString(),
-          created_by: user.id,
-          approved_by: user.id,
-          approved_at: new Date().toISOString(),
-        }])
-        .select()
-        .single();
+        .select('*')
+        .eq('quotation_id', quotationId)
+        .eq('supplier_id', supplierId)
+        .in('status', ['Gerada', 'Aprovada'])
+        .order('created_at', { ascending: true })
+        .limit(1);
 
-      if (orderError) throw new Error(`Erro ao criar OC: ${orderError.message}`);
+      if (existingOrderError) throw new Error(`Erro ao localizar a OC existente: ${existingOrderError.message}`);
+
+      let order = existingOrders?.[0] || null;
+      let orderWasCreated = false;
+      if (!order) {
+        const code = `OC-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
+        const { data: createdOrder, error: orderError } = await supabase
+          .from('purchase_orders')
+          .insert([{
+            code,
+            event_id: eventId || null,
+            supplier_id: supplierId,
+            quotation_id: quotationId,
+            total: totalOrder,
+            status: 'Aprovada',
+            created_at: new Date().toISOString(),
+            created_by: user.id,
+            approved_by: user.id,
+            approved_at: new Date().toISOString(),
+          }])
+          .select()
+          .single();
+
+        if (orderError) throw new Error(`Erro ao criar OC: ${orderError.message}`);
+        order = createdOrder;
+        orderWasCreated = true;
+      }
 
       const { error: itemsError } = await supabase.from('purchase_order_items').insert(
         cartItems.map((item) => ({
@@ -500,11 +516,20 @@ export const quotationService = {
       );
 
       if (itemsError) {
-        await supabase.from('purchase_orders').delete().eq('id', order.id);
+        if (orderWasCreated) await supabase.from('purchase_orders').delete().eq('id', order.id);
         throw new Error(`Erro ao salvar itens da OC: ${itemsError.message}`);
       }
 
-      return { ...order, itemsCount: cartItems.length };
+      if (!orderWasCreated) {
+        const { error: totalError } = await supabase
+          .from('purchase_orders')
+          .update({ total: Number(order.total || 0) + totalOrder })
+          .eq('id', order.id);
+        if (totalError) throw new Error(`Itens incluídos, mas o total da OC não foi atualizado: ${totalError.message}`);
+        order = { ...order, total: Number(order.total || 0) + totalOrder };
+      }
+
+      return { ...order, itemsCount: cartItems.length, reused: !orderWasCreated };
     }));
 
     await supabase

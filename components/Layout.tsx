@@ -138,7 +138,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   } = access;
 
   const hasFlowModules =
-    canAccessQuotations || canAccessPurchases || canAccessDeliveries;
+    canAccessQuotations || canAccessPurchases || canAccessDeliveries || canAccessEvents;
   const hasRegistryModules =
     canAccessAssociates || canAccessSuppliers || canAccessVehicles || canAccessCatalog;
 
@@ -458,10 +458,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             {canAccessEvents && (
               <NavItem to="/eventos" icon={FileText} label="Sinistros" active={location.pathname === '/eventos'} onClick={closeMobileMenu} collapsed={isSidebarCollapsed} />
             )}
-            {canAccessEvents && (
-              <NavItem to="/posicionamento" icon={Wrench} label="Posicionamento" active={location.pathname.startsWith('/posicionamento')} onClick={closeMobileMenu} collapsed={isSidebarCollapsed} />
-            )}
-
             {hasFlowModules && (
               <>
                 <p className={`px-3 pb-2 pt-4 text-[10px] font-bold uppercase tracking-[0.22em] text-[#738098] ${isSidebarCollapsed ? 'lg:hidden' : ''}`}>Fluxo</p>
@@ -473,6 +469,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 )}
                 {canAccessDeliveries && (
                   <NavItem to="/entregas" icon={Truck} label="Entregas" active={location.pathname === '/entregas'} onClick={closeMobileMenu} collapsed={isSidebarCollapsed} />
+                )}
+                {canAccessEvents && (
+                  <NavItem to="/posicionamento" icon={Wrench} label="Posicionamento" active={location.pathname.startsWith('/posicionamento')} onClick={closeMobileMenu} collapsed={isSidebarCollapsed} />
                 )}
               </>
             )}

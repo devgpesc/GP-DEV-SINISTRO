@@ -18,6 +18,7 @@ import { quickCreateAssociate, quickCreateVehicle } from '../services/quickRegis
 import { lookupService } from '../services/lookupService';
 import FileViewerModal from '../components/FileViewerModal';
 import { formatDateTimeBr, formatVehicleModelShort } from '../utils/vehicleLabel';
+import SearchableSelect from '../components/SearchableSelect';
 import {
   classifyPriorityScore,
   getDeadlineInfo,
@@ -166,6 +167,22 @@ const Events: React.FC = () => {
     if (!formData.associateId) return [];
     return vehicles.filter(v => v.associate_id === formData.associateId);
   }, [vehicles, formData.associateId]);
+
+  const associateOptions = useMemo(() => associates.map((associate) => ({
+    value: associate.id,
+    label: associate.name,
+    secondary: associate.document && !/^(0+)$/.test(associate.document)
+      ? associate.document
+      : 'Documento não informado',
+    keywords: `${associate.name} ${associate.document || ''}`,
+  })), [associates]);
+
+  const vehicleOptions = useMemo(() => availableVehicles.map((vehicle) => ({
+    value: vehicle.id,
+    label: vehicle.plate,
+    secondary: [vehicle.brand, vehicle.model].filter(Boolean).join(' ') || 'Veículo sem descrição',
+    keywords: `${vehicle.plate} ${vehicle.brand || ''} ${vehicle.model || ''}`,
+  })), [availableVehicles]);
 
   const isFormLocked = !formData.associateId || !formData.vehicleId;
 
@@ -952,17 +969,16 @@ const Events: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <FieldLabel required>Associado / Terceiro</FieldLabel>
-                <select
-                  className={fieldClassName}
+                <SearchableSelect
                   value={formData.associateId}
-                  onChange={(e) => setFormData({ ...formData, associateId: e.target.value, vehicleId: '' })}
+                  onChange={(associateId) => setFormData({ ...formData, associateId, vehicleId: '' })}
+                  options={associateOptions}
+                  placeholder="Selecione o associado..."
+                  searchPlaceholder="Pesquisar por nome ou documento..."
+                  emptyMessage="Nenhum associado encontrado."
                   disabled={!!eventToEdit}
-                >
-                  <option value="">Selecione o associado...</option>
-                  {associates.map((a) => (
-                    <option key={a.id} value={a.id}>{a.name} ({a.document})</option>
-                  ))}
-                </select>
+                  required
+                />
                 {!eventToEdit && (
                   <button
                     type="button"
@@ -988,23 +1004,20 @@ const Events: React.FC = () => {
               </div>
               <div>
                 <FieldLabel required>Veículo envolvido</FieldLabel>
-                <select
-                  className={fieldClassName}
+                <SearchableSelect
                   value={formData.vehicleId}
-                  onChange={(e) => setFormData({ ...formData, vehicleId: e.target.value })}
+                  onChange={(vehicleId) => setFormData({ ...formData, vehicleId })}
+                  options={vehicleOptions}
+                  placeholder={!formData.associateId
+                    ? 'Selecione o associado primeiro'
+                    : availableVehicles.length > 0
+                      ? 'Selecione o veículo...'
+                      : 'Nenhum veículo vinculado'}
+                  searchPlaceholder="Pesquisar por placa, marca ou modelo..."
+                  emptyMessage="Nenhum veículo vinculado a este associado."
                   disabled={!formData.associateId || !!eventToEdit}
-                >
-                  <option value="">
-                    {!formData.associateId
-                      ? 'Selecione o associado primeiro'
-                      : availableVehicles.length > 0
-                        ? 'Selecione o veículo...'
-                        : 'Nenhum veículo cadastrado'}
-                  </option>
-                  {availableVehicles.map((v) => (
-                    <option key={v.id} value={v.id}>{v.plate} — {v.model}</option>
-                  ))}
-                </select>
+                  required
+                />
                 {!eventToEdit && formData.associateId && (
                   <button
                     type="button"

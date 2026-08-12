@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight,
   CalendarDays,
@@ -41,6 +41,7 @@ import {
   resolvePositioningAttachmentUrls,
   uploadPositioningAttachments,
 } from '../services/positioningAttachmentService';
+import SearchableSelect from '../components/SearchableSelect';
 
 const SERVICES = [
   'Desmontagem',
@@ -65,6 +66,8 @@ type PositioningForm = {
   event_id: string;
   vehicle_id: string;
   workshop_name: string;
+  workshop_supplier_id: string;
+  workshop_selection_mode: 'automatic' | 'manual';
   party_name: string;
   useEventAssociate: boolean;
   current_stage: string;
@@ -81,6 +84,8 @@ const emptyForm = (): PositioningForm => ({
   event_id: '',
   vehicle_id: '',
   workshop_name: '',
+  workshop_supplier_id: '',
+  workshop_selection_mode: 'automatic',
   party_name: '',
   useEventAssociate: true,
   current_stage: STAGES[0],
@@ -172,6 +177,7 @@ type DetailsProps = {
   onFiles: (row: any, files: FileList | null) => Promise<void>;
   onOpenAttachment: (attachment: PositioningAttachment) => Promise<void>;
   onDeleteAttachment: (attachment: PositioningAttachment) => Promise<void>;
+  workshops: any[];
 };
 
 type StatusChangeDraft = {
@@ -193,12 +199,39 @@ const PositioningDetails: React.FC<DetailsProps> = ({
   onFiles,
   onOpenAttachment,
   onDeleteAttachment,
+  workshops,
 }) => {
   const services = [...(row.vehicle_positioning_services || [])].sort((a, b) => a.service_order - b.service_order);
   const attachments: PositioningAttachment[] = row.vehicle_positioning_attachments || [];
   const [statusChange, setStatusChange] = useState<StatusChangeDraft | null>(null);
   const [statusObservation, setStatusObservation] = useState('');
   const [submittingStatusChange, setSubmittingStatusChange] = useState(false);
+  const [observationDraft, setObservationDraft] = useState(row.observation || '');
+  const [observationSaveState, setObservationSaveState] = useState<'idle' | 'pending' | 'saving' | 'saved' | 'error'>('idle');
+  const lastSavedObservation = useRef(row.observation || '');
+
+  useEffect(() => {
+    const nextObservation = row.observation || '';
+    lastSavedObservation.current = nextObservation;
+    setObservationDraft(nextObservation);
+    setObservationSaveState('idle');
+  }, [row.id, row.observation]);
+
+  useEffect(() => {
+    if (observationDraft === lastSavedObservation.current) return;
+    setObservationSaveState('pending');
+    const timer = window.setTimeout(async () => {
+      setObservationSaveState('saving');
+      const saved = await onUpdatePosition(row.id, { observation: observationDraft.trim() || null });
+      if (saved) {
+        lastSavedObservation.current = observationDraft;
+        setObservationSaveState('saved');
+      } else {
+        setObservationSaveState('error');
+      }
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [observationDraft, row.id]);
 
   const requestPositioningStatusChange = (
     field: 'current_stage' | 'stage_status',
@@ -260,7 +293,21 @@ const PositioningDetails: React.FC<DetailsProps> = ({
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <label className="text-xs font-bold text-slate-600">
+          Oficina / prestador
+          <select
+            className={`${inputClass} mt-1`}
+            value={row.workshop_supplier_id || ''}
+            onChange={(event) => {
+              const supplier = workshops.find((item) => item.id === event.target.value);
+              if (supplier) onUpdatePosition(row.id, { workshop_supplier_id: supplier.id, workshop_name: supplier.name, workshop_selection_mode: 'manual' });
+            }}
+          >
+            <option value="">Selecione a oficina...</option>
+            {workshops.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}{supplier.city ? ` · ${supplier.city}` : ''}</option>)}
+          </select>
+        </label>
         <label className="text-xs font-bold text-slate-600">
           Posicionamento
           <select className={`${inputClass} mt-1`} value={row.current_stage} onChange={(event) => requestPositioningStatusChange('current_stage', event.target.value, 'Posicionamento')}>
@@ -350,7 +397,23 @@ const PositioningDetails: React.FC<DetailsProps> = ({
             <div><dt className="font-semibold text-slate-500">Entrada</dt><dd className="mt-1 font-bold text-slate-800">{dateBR(row.entry_at)}</dd></div>
             <div><dt className="font-semibold text-slate-500">Previsão</dt><dd className="mt-1 font-bold text-slate-800">{dateBR(row.expected_delivery_at)}</dd></div>
           </dl>
-          <textarea className={`${inputClass} mt-4 min-h-28 resize-y`} placeholder="Observação do acompanhamento..." defaultValue={row.observation || ''} onBlur={(event) => onUpdatePosition(row.id, { observation: event.target.value })} />
+          <textarea
+            className={`${inputClass} mt-4 min-h-28 resize-y`}
+            placeholder="Registre o motivo, impedimento ou avanço desta etapa..."
+            value={observationDraft}
+            maxLength={1000}
+            onChange={(event) => setObservationDraft(event.target.value)}
+          />
+          <div className="mt-2 flex items-center justify-between gap-3 text-xs font-semibold">
+            <span className={observationSaveState === 'error' ? 'text-red-600' : observationSaveState === 'saved' ? 'text-emerald-700' : 'text-slate-400'}>
+              {observationSaveState === 'pending' && 'Alterações pendentes...'}
+              {observationSaveState === 'saving' && 'Salvando observação...'}
+              {observationSaveState === 'saved' && 'Salvo no histórico'}
+              {observationSaveState === 'error' && 'Não foi possível salvar'}
+              {observationSaveState === 'idle' && 'Salvamento automático ativado'}
+            </span>
+            <span className="text-slate-400">{observationDraft.length}/1000</span>
+          </div>
         </section>
       </div>
 
@@ -435,6 +498,8 @@ const VehiclePositioning: React.FC = () => {
   const { addToast } = useToast();
   const [rows, setRows] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
+  const [workshops, setWorkshops] = useState<any[]>([]);
+  const [serviceOrderLinks, setServiceOrderLinks] = useState<Array<{ eventId: string; supplierId: string }>>([]);
   const [timeline, setTimeline] = useState<Record<string, any[]>>({});
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
@@ -454,7 +519,7 @@ const VehiclePositioning: React.FC = () => {
 
   const load = async (showSpinner = true) => {
     if (showSpinner) setLoading(true);
-    const [positionings, eventRows, associateRows, vehicleRows] = await Promise.all([
+    const [positionings, eventRows, associateRows, vehicleRows, supplierRows, serviceItemRows] = await Promise.all([
       supabase
         .from('vehicle_positionings')
         .select('*, vehicle_positioning_services(*), vehicle_positioning_attachments(*)')
@@ -462,6 +527,11 @@ const VehiclePositioning: React.FC = () => {
       supabase.from('events').select('id, protocol, description, vehicleId, associateId').order('created_at', { ascending: false }),
       supabase.from('associates').select('id, name, document, type'),
       supabase.from('vehicles').select('id, plate, brand, model, associate_id'),
+      supabase.from('suppliers').select('id, name, city, segment, status').eq('status', 'Ativo').order('name'),
+      supabase
+        .from('purchase_order_items')
+        .select('quotation_items!inner(item_type), purchase_orders!inner(event_id, supplier_id, status)')
+        .eq('quotation_items.item_type', 'Serviço'),
     ]);
 
     if (positionings.error) {
@@ -491,6 +561,12 @@ const VehiclePositioning: React.FC = () => {
 
     setEvents(enrichedEvents);
     setRows(enrichedRows);
+    setWorkshops(supplierRows.data || []);
+    setServiceOrderLinks((serviceItemRows.data || []).flatMap((item: any) => {
+      const order = Array.isArray(item.purchase_orders) ? item.purchase_orders[0] : item.purchase_orders;
+      if (!order?.event_id || !order?.supplier_id || ['Cancelada', 'Devolvida'].includes(order.status)) return [];
+      return [{ eventId: order.event_id, supplierId: order.supplier_id }];
+    }));
 
     if (enrichedRows.length) {
       const { data: history } = await supabase
@@ -530,15 +606,23 @@ const VehiclePositioning: React.FC = () => {
     localStorage.setItem('vehicle-positioning-view', mode);
   };
 
+  const automaticWorkshopForEvent = (eventId: string) => {
+    const supplierId = serviceOrderLinks.find((item) => item.eventId === eventId)?.supplierId;
+    return workshops.find((item) => item.id === supplierId) || null;
+  };
+
   const selectEvent = (eventId: string) => {
     const linkedEvent = events.find((item) => item.id === eventId);
     const associateName = linkedEvent?.associate?.name || '';
+    const automaticWorkshop = automaticWorkshopForEvent(eventId);
     setForm((current) => ({
       ...current,
       event_id: eventId,
       vehicle_id: linkedEvent?.vehicleId || '',
       party_name: associateName,
       useEventAssociate: Boolean(associateName),
+      workshop_supplier_id: current.workshop_selection_mode === 'automatic' ? automaticWorkshop?.id || '' : current.workshop_supplier_id,
+      workshop_name: current.workshop_selection_mode === 'automatic' ? automaticWorkshop?.name || '' : current.workshop_name,
     }));
   };
 
@@ -591,7 +675,7 @@ const VehiclePositioning: React.FC = () => {
 
   const create = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!form.event_id || !form.workshop_name.trim() || !form.party_name.trim()) {
+    if (!form.event_id || !form.workshop_supplier_id || !form.workshop_name.trim() || !form.party_name.trim()) {
       addToast('info', 'Campos obrigatórios', 'Informe o sinistro, a oficina e o segurado/cliente.');
       return;
     }
@@ -600,6 +684,8 @@ const VehiclePositioning: React.FC = () => {
       event_id: form.event_id,
       vehicle_id: form.vehicle_id || null,
       workshop_name: form.workshop_name.trim(),
+      workshop_supplier_id: form.workshop_supplier_id,
+      workshop_selection_mode: form.workshop_selection_mode,
       insured_name: form.party_name.trim(),
       client_name: form.party_name.trim(),
       current_stage: form.current_stage,
@@ -700,6 +786,7 @@ const VehiclePositioning: React.FC = () => {
     onFiles: addFilesToPositioning,
     onOpenAttachment: openAttachment,
     onDeleteAttachment: removeAttachment,
+    workshops,
   });
 
   const renderList = () => (
@@ -830,7 +917,57 @@ const VehiclePositioning: React.FC = () => {
             <div><h3 className="text-sm font-bold text-slate-900">Vínculo do caso</h3><p className="mt-1 text-xs text-slate-500">O associado e o veículo são carregados do cadastro do sinistro.</p></div>
             <div className="grid gap-4 md:grid-cols-2">
               <div><FieldLabel required>Sinistro</FieldLabel><select required className={inputClass} value={form.event_id} onChange={(event) => selectEvent(event.target.value)}><option value="">Selecione o sinistro...</option>{events.map((item) => <option key={item.id} value={item.id}>{item.protocol} · {item.associate?.name || 'Sem associado'} · {item.vehicle?.plate || 'Sem veículo'}</option>)}</select></div>
-              <div><FieldLabel required>Oficina responsável</FieldLabel><input required className={inputClass} value={form.workshop_name} onChange={(event) => setForm({ ...form, workshop_name: event.target.value })} placeholder="Nome da oficina" /></div>
+              <div className="space-y-2">
+                <FieldLabel required>Oficina responsável</FieldLabel>
+                <div className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const supplier = automaticWorkshopForEvent(form.event_id);
+                      setForm({
+                        ...form,
+                        workshop_selection_mode: 'automatic',
+                        workshop_supplier_id: supplier?.id || '',
+                        workshop_name: supplier?.name || '',
+                      });
+                    }}
+                    className={`rounded-md px-3 py-2 text-xs font-bold ${form.workshop_selection_mode === 'automatic' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500'}`}
+                  >
+                    Automática pela OC
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, workshop_selection_mode: 'manual', workshop_supplier_id: '', workshop_name: '' })}
+                    className={`rounded-md px-3 py-2 text-xs font-bold ${form.workshop_selection_mode === 'manual' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500'}`}
+                  >
+                    Seleção manual
+                  </button>
+                </div>
+                <SearchableSelect
+                  value={form.workshop_supplier_id}
+                  options={(form.workshop_selection_mode === 'automatic'
+                    ? workshops.filter((supplier) => serviceOrderLinks.some((link) => link.eventId === form.event_id && link.supplierId === supplier.id))
+                    : workshops
+                  ).map((supplier) => ({
+                    value: supplier.id,
+                    label: supplier.name,
+                    secondary: [supplier.city, supplier.segment].filter(Boolean).join(' · ') || 'Prestador cadastrado',
+                  }))}
+                  onChange={(supplierId) => {
+                    const supplier = workshops.find((item) => item.id === supplierId);
+                    setForm({ ...form, workshop_supplier_id: supplierId, workshop_name: supplier?.name || '' });
+                  }}
+                  placeholder={form.workshop_selection_mode === 'automatic'
+                    ? (form.event_id ? 'Nenhuma oficina encontrada nas OCs de serviço' : 'Selecione o sinistro primeiro')
+                    : 'Pesquisar oficina ou prestador...'}
+                  searchPlaceholder="Pesquisar oficina por nome ou cidade..."
+                  emptyMessage={form.workshop_selection_mode === 'automatic'
+                    ? 'Não há uma OC de serviço ativa para este sinistro. Use a seleção manual.'
+                    : 'Nenhum prestador ativo encontrado.'}
+                  disabled={!form.event_id || (form.workshop_selection_mode === 'automatic' && !automaticWorkshopForEvent(form.event_id))}
+                  required
+                />
+              </div>
             </div>
             {selectedEvent && (
               <div className="grid gap-3 rounded-lg border border-blue-100 bg-blue-50 p-4 md:grid-cols-2">
