@@ -30,10 +30,10 @@ export default async function handler(req, res) {
 
   const cleanPlate = String(plate).toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (!/^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(cleanPlate)) {
-    return res.status(400).json({ error: 'Informe uma placa brasileira valida.' });
+    return res.status(400).json({ error: 'Informe uma placa brasileira válida.' });
   }
   if (!['auto', 'apibrasil', 'detran'].includes(String(provider))) {
-    return res.status(400).json({ error: 'Provedor de consulta invalido.' });
+    return res.status(400).json({ error: 'Provedor de consulta inválido.' });
   }
   const cached = cache.get(cleanPlate);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
@@ -97,14 +97,14 @@ export default async function handler(req, res) {
     const messages = {
       400: 'A API de consulta recusou os dados informados.',
       401: 'A credencial da consulta veicular expirou e precisa ser renovada.',
-      402: 'A conta APIBrasil esta sem saldo. Faca uma recarga para consultar placas.',
-      403: 'A conta APIBrasil nao possui permissao para esta consulta. Confira a liberacao cadastral.',
+      402: 'A conta APIBrasil está sem saldo. Faça uma recarga para consultar placas.',
+      403: 'A conta APIBrasil não possui permissão para esta consulta. Confira a liberação cadastral.',
       410: 'A rota de consulta veicular foi descontinuada e precisa ser atualizada.',
-      422: 'A API de consulta nao reconheceu os dados enviados.',
+      422: 'A API de consulta não reconheceu os dados enviados.',
       429: 'O limite de consultas foi atingido. Aguarde alguns instantes e tente novamente.',
     };
     return res.status(status).json({
-      error: messages[status] || 'Nao foi possivel consultar o veiculo no provedor.',
+      error: messages[status] || 'Não foi possível consultar o veículo no provedor.',
     });
   }
 }
