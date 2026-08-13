@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowRight,
   CalendarDays,
@@ -174,6 +174,7 @@ type DetailsProps = {
   uploading: string | null;
   onUpdatePosition: (id: string, patch: Record<string, unknown>) => Promise<boolean>;
   onUpdateService: (positioningId: string, service: any, patch: Record<string, unknown>) => Promise<boolean>;
+  onAddComment: (positioningId: string, comment: string) => Promise<boolean>;
   onFiles: (row: any, files: FileList | null) => Promise<void>;
   onOpenAttachment: (attachment: PositioningAttachment) => Promise<void>;
   onDeleteAttachment: (attachment: PositioningAttachment) => Promise<void>;
@@ -196,6 +197,7 @@ const PositioningDetails: React.FC<DetailsProps> = ({
   uploading,
   onUpdatePosition,
   onUpdateService,
+  onAddComment,
   onFiles,
   onOpenAttachment,
   onDeleteAttachment,
@@ -206,32 +208,22 @@ const PositioningDetails: React.FC<DetailsProps> = ({
   const [statusChange, setStatusChange] = useState<StatusChangeDraft | null>(null);
   const [statusObservation, setStatusObservation] = useState('');
   const [submittingStatusChange, setSubmittingStatusChange] = useState(false);
-  const [observationDraft, setObservationDraft] = useState(row.observation || '');
-  const [observationSaveState, setObservationSaveState] = useState<'idle' | 'pending' | 'saving' | 'saved' | 'error'>('idle');
-  const lastSavedObservation = useRef(row.observation || '');
+  const [commentDraft, setCommentDraft] = useState('');
+  const [submittingComment, setSubmittingComment] = useState(false);
 
   useEffect(() => {
-    const nextObservation = row.observation || '';
-    lastSavedObservation.current = nextObservation;
-    setObservationDraft(nextObservation);
-    setObservationSaveState('idle');
-  }, [row.id, row.observation]);
+    setCommentDraft('');
+    setSubmittingComment(false);
+  }, [row.id]);
 
-  useEffect(() => {
-    if (observationDraft === lastSavedObservation.current) return;
-    setObservationSaveState('pending');
-    const timer = window.setTimeout(async () => {
-      setObservationSaveState('saving');
-      const saved = await onUpdatePosition(row.id, { observation: observationDraft.trim() || null });
-      if (saved) {
-        lastSavedObservation.current = observationDraft;
-        setObservationSaveState('saved');
-      } else {
-        setObservationSaveState('error');
-      }
-    }, 1000);
-    return () => window.clearTimeout(timer);
-  }, [observationDraft, row.id]);
+  const publishComment = async () => {
+    const comment = commentDraft.trim();
+    if (!comment || submittingComment) return;
+    setSubmittingComment(true);
+    const published = await onAddComment(row.id, comment);
+    setSubmittingComment(false);
+    if (published) setCommentDraft('');
+  };
 
   const requestPositioningStatusChange = (
     field: 'current_stage' | 'stage_status',
@@ -390,7 +382,7 @@ const PositioningDetails: React.FC<DetailsProps> = ({
         </section>
 
         <section>
-          <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-800"><CalendarDays size={17} className="text-blue-600" /> Datas e observações</h3>
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-800"><CalendarDays size={17} className="text-blue-600" /> Datas e comentários</h3>
           <dl className="grid grid-cols-2 gap-4 border-y border-slate-200 py-4 text-xs">
             <div><dt className="font-semibold text-slate-500">Orçamento enviado</dt><dd className="mt-1 font-bold text-slate-800">{dateBR(row.budget_sent_at)}</dd></div>
             <div><dt className="font-semibold text-slate-500">Autorização</dt><dd className="mt-1 font-bold text-slate-800">{dateBR(row.authorization_at)}</dd></div>
@@ -399,20 +391,28 @@ const PositioningDetails: React.FC<DetailsProps> = ({
           </dl>
           <textarea
             className={`${inputClass} mt-4 min-h-28 resize-y`}
-            placeholder="Registre o motivo, impedimento ou avanço desta etapa..."
-            value={observationDraft}
+            placeholder="Escreva uma atualização, impedimento ou próximo passo..."
+            value={commentDraft}
             maxLength={1000}
-            onChange={(event) => setObservationDraft(event.target.value)}
+            onChange={(event) => setCommentDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                event.preventDefault();
+                publishComment();
+              }
+            }}
           />
-          <div className="mt-2 flex items-center justify-between gap-3 text-xs font-semibold">
-            <span className={observationSaveState === 'error' ? 'text-red-600' : observationSaveState === 'saved' ? 'text-emerald-700' : 'text-slate-400'}>
-              {observationSaveState === 'pending' && 'Alterações pendentes...'}
-              {observationSaveState === 'saving' && 'Salvando observação...'}
-              {observationSaveState === 'saved' && 'Salvo no histórico'}
-              {observationSaveState === 'error' && 'Não foi possível salvar'}
-              {observationSaveState === 'idle' && 'Salvamento automático ativado'}
-            </span>
-            <span className="text-slate-400">{observationDraft.length}/1000</span>
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <span className="text-xs font-semibold text-slate-400">{commentDraft.length}/1000</span>
+            <button
+              type="button"
+              onClick={publishComment}
+              disabled={!commentDraft.trim() || submittingComment}
+              className="app-btn-primary min-h-10 px-4"
+            >
+              {submittingComment ? <Loader2 size={16} className="animate-spin" /> : <MessageSquareText size={16} />}
+              {submittingComment ? 'Publicando...' : 'Publicar comentário'}
+            </button>
           </div>
         </section>
       </div>
@@ -460,7 +460,7 @@ const PositioningDetails: React.FC<DetailsProps> = ({
             <button type="button" onClick={closeStatusChange} disabled={submittingStatusChange} className="app-btn-secondary min-h-10 px-5">Cancelar</button>
             <button type="button" onClick={confirmStatusChange} disabled={submittingStatusChange} className="app-btn-primary min-h-10 px-5">
               {submittingStatusChange ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-              Salvar alteração
+              Salvar e registrar
             </button>
           </div>
         )}
@@ -476,7 +476,7 @@ const PositioningDetails: React.FC<DetailsProps> = ({
               </div>
             </div>
             <div>
-              <FieldLabel>Observação da alteração (opcional)</FieldLabel>
+              <FieldLabel>Comentário da alteração (opcional)</FieldLabel>
               <textarea
                 autoFocus
                 maxLength={600}
@@ -485,6 +485,7 @@ const PositioningDetails: React.FC<DetailsProps> = ({
                 onChange={(event) => setStatusObservation(event.target.value)}
                 placeholder="Ex.: serviço iniciado, peça em falta ou veículo aguardando autorização"
               />
+              <p className="mt-1 text-xs font-semibold text-slate-400">O comentário será publicado junto da mudança na linha do tempo.</p>
               <p className="mt-1 text-right text-xs font-semibold text-slate-400">{statusObservation.length}/600</p>
             </div>
           </div>
@@ -675,6 +676,23 @@ const VehiclePositioning: React.FC = () => {
     return true;
   };
 
+  const addComment = async (positioningId: string, comment: string) => {
+    setSaving(positioningId);
+    const { error } = await supabase.rpc('add_vehicle_positioning_comment', {
+      p_positioning_id: positioningId,
+      p_comment: comment,
+    });
+    if (error) {
+      addToast('error', 'Comentário não publicado', getUserFacingError(error));
+      setSaving(null);
+      return false;
+    }
+    await load(false);
+    addToast('success', 'Comentário publicado', 'A atualização foi adicionada à linha do tempo.');
+    setSaving(null);
+    return true;
+  };
+
   const create = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!form.event_id || !form.workshop_supplier_id || !form.workshop_name.trim() || !form.party_name.trim()) {
@@ -785,6 +803,7 @@ const VehiclePositioning: React.FC = () => {
     uploading,
     onUpdatePosition: updatePosition,
     onUpdateService: updateService,
+    onAddComment: addComment,
     onFiles: addFilesToPositioning,
     onOpenAttachment: openAttachment,
     onDeleteAttachment: removeAttachment,
