@@ -1,4 +1,4 @@
-import { fetchAPIBrasil, fetchDetran } from '../_vehicle.js';
+import { fetchAPIBrasil, fetchDetran, VehicleProviderError } from '../_vehicle.js';
 import { applyCors } from '../_lib/http.js';
 import { getSupabaseAdmin } from '../_lib/supabase.js';
 
@@ -29,6 +29,12 @@ export default async function handler(req, res) {
   }
 
   const cleanPlate = String(plate).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!/^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(cleanPlate)) {
+    return res.status(400).json({ error: 'Informe uma placa brasileira valida.' });
+  }
+  if (!['auto', 'apibrasil', 'detran'].includes(String(provider))) {
+    return res.status(400).json({ error: 'Provedor de consulta invalido.' });
+  }
   const cached = cache.get(cleanPlate);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
     return res.json({ ...cached.data, cached: true });
@@ -46,6 +52,7 @@ export default async function handler(req, res) {
       try {
         result = await fetchAPIBrasil(cleanPlate);
       } catch (error) {
+        if (error instanceof VehicleProviderError && error.status !== 404) throw error;
         errors.push(`APIBrasil: ${error.message}`);
         try {
           result = await fetchDetran(cleanPlate);
@@ -81,8 +88,23 @@ export default async function handler(req, res) {
     cache.set(cleanPlate, { data: result, timestamp: Date.now() });
     return res.json(result);
   } catch (error) {
-    console.error('[vehicle-lookup]', error);
-    const status = error.message?.includes('invalido') ? 401 : 500;
-    return res.status(status).json({ error: status === 401 ? 'Credencial de consulta invalida.' : 'Nao foi possivel consultar o veiculo.' });
+    console.error('[vehicle-lookup]', {
+      provider: error?.provider || 'desconhecido',
+      status: error?.status || 500,
+      message: error?.message || String(error),
+    });
+    const status = Number(error?.status) || (error.message?.includes('invalido') ? 401 : 500);
+    const messages = {
+      400: 'A API de consulta recusou os dados informados.',
+      401: 'A credencial da consulta veicular expirou e precisa ser renovada.',
+      402: 'A conta APIBrasil esta sem saldo. Faca uma recarga para consultar placas.',
+      403: 'A conta APIBrasil nao possui permissao para esta consulta. Confira a liberacao cadastral.',
+      410: 'A rota de consulta veicular foi descontinuada e precisa ser atualizada.',
+      422: 'A API de consulta nao reconheceu os dados enviados.',
+      429: 'O limite de consultas foi atingido. Aguarde alguns instantes e tente novamente.',
+    };
+    return res.status(status).json({
+      error: messages[status] || 'Nao foi possivel consultar o veiculo no provedor.',
+    });
   }
 }
