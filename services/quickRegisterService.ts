@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
-import { lookupService } from './lookupService';
+import { isValidVehiclePlate, lookupService, normalizeVehiclePlate } from './lookupService';
+import { Vehicle } from '../types';
 
 const hasRepeatedDigits = (value: string) => /^(\d)\1+$/.test(value);
 
@@ -75,53 +76,67 @@ export async function quickCreateAssociate(input: {
 export async function quickCreateVehicle(input: {
   plate: string;
   associateId: string;
-  brand?: string;
-  model?: string;
+  vehicleData?: Partial<Vehicle>;
 }) {
-  const cleanPlate = input.plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (cleanPlate.length < 7) throw new Error('Informe uma placa válida.');
+  const cleanPlate = normalizeVehiclePlate(input.plate);
+  if (!isValidVehiclePlate(cleanPlate)) throw new Error('Informe uma placa brasileira válida.');
 
   const { data: existing } = await supabase
     .from('vehicles')
-    .select('id, associate_id')
+    .select('*')
     .eq('plate', cleanPlate)
     .maybeSingle();
-
-  const brand = (input.brand || '').trim();
-  const model = (input.model || '').trim();
 
   if (existing?.id) {
     if (existing.associate_id && existing.associate_id !== input.associateId) {
       throw new Error(`A placa ${cleanPlate} já está vinculada a outro associado.`);
     }
-    const patch: Record<string, any> = { associate_id: input.associateId };
-    if (brand) patch.brand = brand.toUpperCase();
-    if (model) patch.model = model.toUpperCase();
-    await supabase.from('vehicles').update(patch).eq('id', existing.id);
+    if (!existing.brand || !existing.model) {
+      const suppliedPlate = normalizeVehiclePlate(String(input.vehicleData?.plate || ''));
+      const lookedUp = suppliedPlate === cleanPlate
+        ? input.vehicleData as Partial<Vehicle>
+        : await lookupService.fetchPlate(cleanPlate);
+      await supabase.from('vehicles').update(vehicleLookupPayload(lookedUp, cleanPlate, input.associateId)).eq('id', existing.id);
+    } else if (!existing.associate_id) {
+      await supabase.from('vehicles').update({ associate_id: input.associateId }).eq('id', existing.id);
+    }
     return existing.id;
   }
 
-  let lookedUp: { brand?: string; model?: string } | null = null;
-  if (!brand || !model) {
-    try {
-      lookedUp = await lookupService.fetchPlate(cleanPlate);
-    } catch {
-      lookedUp = null;
-    }
-  }
+  const suppliedPlate = normalizeVehiclePlate(String(input.vehicleData?.plate || ''));
+  const lookedUp = suppliedPlate === cleanPlate
+    ? input.vehicleData as Partial<Vehicle>
+    : await lookupService.fetchPlate(cleanPlate);
   const { data, error } = await supabase
     .from('vehicles')
-    .insert([{
-      plate: cleanPlate,
-      associate_id: input.associateId,
-      status: 'Ativo',
-      brand: (brand || lookedUp?.brand || '').toUpperCase() || null,
-      model: (model || lookedUp?.model || '').toUpperCase() || null,
-      created_at: new Date().toISOString(),
-    }])
+    .insert([{ ...vehicleLookupPayload(lookedUp, cleanPlate, input.associateId), created_at: new Date().toISOString() }])
     .select('id')
     .single();
 
   if (error) throw error;
   return data.id as string;
+}
+
+function vehicleLookupPayload(vehicle: Partial<Vehicle>, plate: string, associateId: string) {
+  const returnedPlate = normalizeVehiclePlate(String(vehicle.plate || ''));
+  if (returnedPlate !== plate || !vehicle.brand || !vehicle.model) {
+    throw new Error('A consulta não retornou dados confiáveis para a placa informada.');
+  }
+  return {
+    plate,
+    associate_id: associateId,
+    status: 'Ativo',
+    brand: String(vehicle.brand).trim().toUpperCase(),
+    model: String(vehicle.model).trim().toUpperCase(),
+    version: String(vehicle.version || '').trim().toUpperCase() || null,
+    year_fab: String(vehicle.year_fab || '').trim() || null,
+    year_model: String(vehicle.year_model || '').trim() || null,
+    color: String(vehicle.color || '').trim().toUpperCase() || null,
+    fuel: String(vehicle.fuel || '').trim() || null,
+    type: String(vehicle.type || '').trim() || null,
+    chassi: String(vehicle.chassi || '').trim().toUpperCase() || null,
+    renavam: String(vehicle.renavam || '').trim() || null,
+    uf: String(vehicle.uf || '').trim().toUpperCase() || null,
+    city: String(vehicle.city || '').trim().toUpperCase() || null,
+  };
 }

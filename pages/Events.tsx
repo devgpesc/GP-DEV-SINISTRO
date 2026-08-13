@@ -15,7 +15,7 @@ import { useEventTypes } from '../hooks/useEventTypes';
 import { ATTACHMENT_ACCEPT } from '../utils/defaults';
 import { getAttachmentKind, MAX_EVENT_ATTACHMENTS, validateEventAttachmentFile } from '../services/attachmentService';
 import { quickCreateAssociate, quickCreateVehicle } from '../services/quickRegisterService';
-import { lookupService } from '../services/lookupService';
+import { isValidVehiclePlate, lookupService, normalizeVehiclePlate } from '../services/lookupService';
 import FileViewerModal from '../components/FileViewerModal';
 import { formatDateTimeBr, formatVehicleModelShort } from '../utils/vehicleLabel';
 import SearchableSelect from '../components/SearchableSelect';
@@ -144,10 +144,42 @@ const Events: React.FC = () => {
   const [quickAssociate, setQuickAssociate] = useState({ name: '', document: '', type: 'PF' as 'PF' | 'PJ' });
   const [quickVehicle, setQuickVehicle] = useState({ plate: '' });
   const [isQuickSaving, setIsQuickSaving] = useState(false);
+  const [isQuickVehicleLookup, setIsQuickVehicleLookup] = useState(false);
+  const [quickVehicleData, setQuickVehicleData] = useState<Partial<Vehicle> | null>(null);
+  const [quickVehicleLookupError, setQuickVehicleLookupError] = useState<string | null>(null);
+  const quickVehicleLookupSequenceRef = useRef(0);
 
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (!showQuickVehicle || !formData.associateId || eventToEdit) return;
+    const plate = normalizeVehiclePlate(quickVehicle.plate);
+    setQuickVehicleData(null);
+    setQuickVehicleLookupError(null);
+    if (!isValidVehiclePlate(plate)) {
+      setIsQuickVehicleLookup(false);
+      return;
+    }
+
+    const requestSequence = ++quickVehicleLookupSequenceRef.current;
+    const timer = window.setTimeout(async () => {
+      setIsQuickVehicleLookup(true);
+      try {
+        const data = await lookupService.fetchPlate(plate);
+        if (requestSequence !== quickVehicleLookupSequenceRef.current) return;
+        setQuickVehicleData(data);
+      } catch (error: any) {
+        if (requestSequence !== quickVehicleLookupSequenceRef.current) return;
+        setQuickVehicleLookupError(error?.message || 'Não foi possível consultar esta placa.');
+      } finally {
+        if (requestSequence === quickVehicleLookupSequenceRef.current) setIsQuickVehicleLookup(false);
+      }
+    }, 450);
+
+    return () => window.clearTimeout(timer);
+  }, [quickVehicle.plate, showQuickVehicle, formData.associateId, eventToEdit]);
 
   const loadData = async () => {
     try {
@@ -284,6 +316,10 @@ const Events: React.FC = () => {
         participationQuota: '',
         attachments: []
     });
+    setShowQuickVehicle(false);
+    setQuickVehicle({ plate: '' });
+    setQuickVehicleData(null);
+    setQuickVehicleLookupError(null);
     setIsModalOpen(true);
   };
 
@@ -381,14 +417,22 @@ const Events: React.FC = () => {
     }
     setIsQuickSaving(true);
     try {
-      const id = await quickCreateVehicle({ plate: quickVehicle.plate, associateId: formData.associateId });
+      const plate = normalizeVehiclePlate(quickVehicle.plate);
+      if (!isValidVehiclePlate(plate)) throw new Error('Informe uma placa brasileira válida.');
+      const vehicleData = quickVehicleData && normalizeVehiclePlate(String(quickVehicleData.plate || '')) === plate
+        ? quickVehicleData
+        : await lookupService.fetchPlate(plate);
+      const id = await quickCreateVehicle({ plate, associateId: formData.associateId, vehicleData });
       const { data: vs } = await supabase.from('vehicles').select('*');
       setVehicles(vs || []);
       setFormData(prev => ({ ...prev, vehicleId: id }));
       setShowQuickVehicle(false);
       setQuickVehicle({ plate: '' });
+      setQuickVehicleData(null);
+      setQuickVehicleLookupError(null);
       addToast('success', 'Veículo criado', 'Veículo vinculado ao sinistro.');
     } catch (error: any) {
+      setQuickVehicleLookupError(error?.message || 'Falha na consulta da placa.');
       addToast('error', 'Erro', error.message || 'Falha no cadastro rápido.');
     } finally {
       setIsQuickSaving(false);
@@ -1044,7 +1088,13 @@ const Events: React.FC = () => {
                 {!eventToEdit && formData.associateId && (
                   <button
                     type="button"
-                    onClick={() => { setShowQuickVehicle(v => !v); setShowQuickAssociate(false); }}
+                    onClick={() => {
+                      setShowQuickVehicle(v => !v);
+                      setShowQuickAssociate(false);
+                      setQuickVehicle({ plate: '' });
+                      setQuickVehicleData(null);
+                      setQuickVehicleLookupError(null);
+                    }}
                     className="mt-2 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-700"
                   >
                     <UserPlus size={12} /> {showQuickVehicle ? 'Fechar cadastro rápido' : 'Cadastro rápido de veículo'}
@@ -1052,9 +1102,37 @@ const Events: React.FC = () => {
                 )}
                 {showQuickVehicle && formData.associateId && !eventToEdit && (
                   <div className="mt-3 p-4 rounded-2xl border border-blue-100 bg-blue-50/40 space-y-3">
-                    <input className={`${fieldClassName} uppercase`} placeholder="Placa *" value={quickVehicle.plate} onChange={e => setQuickVehicle({ plate: e.target.value })} maxLength={8} />
-                    <button type="button" disabled={isQuickSaving} onClick={handleQuickVehicleSave} className="w-full py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase disabled:opacity-50">
-                      {isQuickSaving ? 'Salvando...' : 'Criar e vincular'}
+                    <div className="relative">
+                      <input
+                        className={`${fieldClassName} uppercase pr-11`}
+                        placeholder="Digite somente a placa *"
+                        value={quickVehicle.plate}
+                        onChange={e => {
+                          quickVehicleLookupSequenceRef.current += 1;
+                          setQuickVehicle({ plate: normalizeVehiclePlate(e.target.value).slice(0, 7) });
+                        }}
+                        maxLength={7}
+                      />
+                      {isQuickVehicleLookup && <Loader2 size={17} className="absolute right-4 top-1/2 -translate-y-1/2 animate-spin text-blue-600" />}
+                    </div>
+                    {quickVehicleLookupError && (
+                      <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-700">
+                        <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                        <span>{quickVehicleLookupError}</span>
+                      </div>
+                    )}
+                    {quickVehicleData && (
+                      <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                        <CheckCircle2 size={17} className="mt-0.5 shrink-0 text-emerald-600" />
+                        <div>
+                          <p className="text-[10px] font-black uppercase text-emerald-700">Veículo confirmado</p>
+                          <p className="text-sm font-black text-slate-900">{quickVehicleData.brand} {quickVehicleData.model}</p>
+                          <p className="text-xs text-slate-600">{[quickVehicleData.year_model || quickVehicleData.year_fab, quickVehicleData.color].filter(Boolean).join(' · ')}</p>
+                        </div>
+                      </div>
+                    )}
+                    <button type="button" disabled={isQuickSaving || isQuickVehicleLookup || !quickVehicleData} onClick={handleQuickVehicleSave} className="w-full py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase disabled:cursor-not-allowed disabled:opacity-50">
+                      {isQuickSaving ? 'Salvando...' : isQuickVehicleLookup ? 'Consultando placa...' : 'Criar e vincular'}
                     </button>
                   </div>
                 )}

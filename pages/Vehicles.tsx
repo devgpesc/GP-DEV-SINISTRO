@@ -5,7 +5,7 @@ import {
   Edit, Save, AlertCircle, X, CloudLightning, Keyboard, Calendar, Palette, RefreshCw,
   Trash2, CheckSquare, Square, Check
 } from 'lucide-react';
-import { lookupService } from '../services/lookupService';
+import { isValidVehiclePlate, lookupService, normalizeVehiclePlate } from '../services/lookupService';
 import { supabase } from '../services/supabaseClient';
 import { useToast } from '../context/ToastContext';
 import { Vehicle } from '../types';
@@ -35,9 +35,11 @@ const Vehicles: React.FC = () => {
   const [isSearchingPlate, setIsSearchingPlate] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [inputMode, setInputMode] = useState<'auto' | 'manual'>('auto');
+  const [verifiedPlate, setVerifiedPlate] = useState<string | null>(null);
   
   // Ref para timeout de segurança
   const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const plateLookupSequenceRef = useRef(0);
 
   // Inicialização completa do formulário
   const initialFormState = {
@@ -55,6 +57,15 @@ const Vehicles: React.FC = () => {
         if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isModalOpen || editId || inputMode !== 'auto') return;
+    const plate = normalizeVehiclePlate(String(formData.plate || ''));
+    if (!isValidVehiclePlate(plate)) return;
+
+    const timer = window.setTimeout(() => void handlePlateLookup(plate), 450);
+    return () => window.clearTimeout(timer);
+  }, [formData.plate, inputMode, editId, isModalOpen]);
 
   const loadData = async () => {
     setLoading(true);
@@ -176,6 +187,9 @@ const Vehicles: React.FC = () => {
   // --- END DELETE LOGIC ---
 
   const handleOpenModal = (vehicleToEdit?: Vehicle) => {
+    plateLookupSequenceRef.current += 1;
+    setLookupError(null);
+    setVerifiedPlate(null);
     if (vehicleToEdit) {
       setEditId(vehicleToEdit.id);
       setFormData(vehicleToEdit);
@@ -188,38 +202,26 @@ const Vehicles: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handlePlateLookup = async () => {
-    if (!formData.plate || formData.plate.length < 7) return;
+  const handlePlateLookup = async (plateValue = String(formData.plate || '')): Promise<Partial<Vehicle> | null> => {
+    const requestPlate = normalizeVehiclePlate(plateValue);
+    if (!isValidVehiclePlate(requestPlate)) return null;
+    const requestSequence = ++plateLookupSequenceRef.current;
     setIsSearchingPlate(true);
     setLookupError(null);
-    const requestPlate = (formData.plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
     
     try {
       const data = await lookupService.fetchPlate(requestPlate);
-      const currentPlate = (formData.plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-
-      // Evita condição de corrida: se o usuário alterou a placa antes da resposta,
-      // ignoramos o resultado antigo para não preencher veículo incorreto.
-      if (currentPlate !== requestPlate) return;
-
-      if (data) {
-        const returnedPlate = (data.plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-        if (returnedPlate && returnedPlate !== requestPlate) {
-          setLookupError('A API retornou dados de outra placa. Confira e tente novamente.');
-          return;
-        }
-        setFormData(prev => ({ 
-            ...prev, 
-            ...data
-        }));
-        addToast('success', 'Placa Encontrada', 'Dados do veículo carregados.');
-      } else {
-        setLookupError('Placa não encontrada. Preencha manualmente.');
-      }
-    } catch (e) {
-      setLookupError('Erro de conexão.');
+      if (requestSequence !== plateLookupSequenceRef.current) return null;
+      setFormData(prev => ({ ...prev, ...data, plate: requestPlate }));
+      setVerifiedPlate(requestPlate);
+      return data;
+    } catch (e: any) {
+      if (requestSequence !== plateLookupSequenceRef.current) return null;
+      setVerifiedPlate(null);
+      setLookupError(e?.message || 'Não foi possível consultar esta placa.');
+      return null;
     } finally {
-      setIsSearchingPlate(false);
+      if (requestSequence === plateLookupSequenceRef.current) setIsSearchingPlate(false);
     }
   };
 
@@ -241,30 +243,45 @@ const Vehicles: React.FC = () => {
 
     setIsSubmitting(true);
     try {
+        const cleanPlate = normalizeVehiclePlate(String(formData.plate || ''));
+        if (!isValidVehiclePlate(cleanPlate)) throw new Error('Informe uma placa brasileira válida.');
+
+        let resolvedForm = { ...formData, plate: cleanPlate };
+        if (!editId && inputMode === 'auto' && (verifiedPlate !== cleanPlate || !formData.brand || !formData.model)) {
+            const vehicleData = await lookupService.fetchPlate(cleanPlate);
+            resolvedForm = { ...resolvedForm, ...vehicleData, plate: cleanPlate };
+            setFormData(resolvedForm);
+            setVerifiedPlate(cleanPlate);
+            setLookupError(null);
+        }
+        if (!resolvedForm.brand || !resolvedForm.model) {
+            throw new Error('Informe marca e modelo ou utilize a consulta automática pela placa.');
+        }
+
         const cleanAssociateId = formData.associate_id === '' ? null : formData.associate_id;
 
         // 1. Payload Completo com Defaults para evitar erros de NOT NULL
         const payload: any = { 
-            plate: formData.plate ? formData.plate.toUpperCase().trim() : '',
+            plate: cleanPlate,
             associate_id: cleanAssociateId,
-            km: Number(formData.km) || 0,
-            status: formData.status || 'Ativo',
-            brand: formData.brand ? formData.brand.toUpperCase() : '',
-            model: formData.model ? formData.model.toUpperCase() : '',
-            color: formData.color ? formData.color.toUpperCase() : '',
+            km: Number(resolvedForm.km) || 0,
+            status: resolvedForm.status || 'Ativo',
+            brand: resolvedForm.brand ? resolvedForm.brand.toUpperCase() : '',
+            model: resolvedForm.model ? resolvedForm.model.toUpperCase() : '',
+            color: resolvedForm.color ? resolvedForm.color.toUpperCase() : '',
             
             // Campos Opcionais com Default Seguro
-            renavam: formData.renavam ? formData.renavam.trim() : null, 
-            chassi: formData.chassi ? formData.chassi.trim().toUpperCase() : null,
-            type: formData.type || 'Automóvel', // Default seguro
-            fuel: formData.fuel || 'Flex',      // Default seguro
-            version: formData.version || '',
-            uf: formData.uf || '',
-            city: formData.city || '',
-            notes: formData.notes || '',
+            renavam: resolvedForm.renavam ? resolvedForm.renavam.trim() : null,
+            chassi: resolvedForm.chassi ? resolvedForm.chassi.trim().toUpperCase() : null,
+            type: resolvedForm.type || 'Automóvel', // Default seguro
+            fuel: resolvedForm.fuel || 'Flex',      // Default seguro
+            version: resolvedForm.version || '',
+            uf: resolvedForm.uf || '',
+            city: resolvedForm.city || '',
+            notes: resolvedForm.notes || '',
             
-            year_fab: formData.year_fab || '',
-            year_model: formData.year_model || '',
+            year_fab: resolvedForm.year_fab || '',
+            year_model: resolvedForm.year_model || '',
             created_at: editId ? undefined : new Date().toISOString() 
         };
         
@@ -458,11 +475,11 @@ const Vehicles: React.FC = () => {
                 <form onSubmit={handleSave} className="p-8 space-y-8">
                     {!editId && (
                         <div className="flex bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
-                            <button type="button" onClick={() => setInputMode('auto')} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all flex items-center justify-center gap-2 ${inputMode === 'auto' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>
-                                <CloudLightning size={16}/> Busca Automática (API)
+                            <button type="button" onClick={() => { setInputMode('auto'); setVerifiedPlate(null); setLookupError(null); }} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all flex items-center justify-center gap-2 ${inputMode === 'auto' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>
+                                <CloudLightning size={16}/> Somente placa
                             </button>
                             <button type="button" onClick={() => setInputMode('manual')} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all flex items-center justify-center gap-2 ${inputMode === 'manual' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>
-                                <Keyboard size={16}/> Cadastro Manual
+                                <Keyboard size={16}/> Preenchimento manual
                             </button>
                         </div>
                     )}
@@ -481,7 +498,17 @@ const Vehicles: React.FC = () => {
                                 <label className="block text-xs font-bold text-slate-600 mb-1">Placa *</label>
                                 <input className="w-full p-4 bg-slate-50 border rounded-2xl font-black text-xl uppercase outline-none tracking-widest transition-all"
                                     placeholder="ABC1D23" maxLength={7} value={formData.plate}
-                                    onChange={e => setFormData({...formData, plate: e.target.value.toUpperCase()})}
+                                    onChange={e => {
+                                        const plate = normalizeVehiclePlate(e.target.value).slice(0, 7);
+                                        plateLookupSequenceRef.current += 1;
+                                        setVerifiedPlate(null);
+                                        setLookupError(null);
+                                        setFormData({
+                                            ...formData,
+                                            plate,
+                                            ...(inputMode === 'auto' ? { brand: '', model: '', version: '', year_fab: '', year_model: '', color: '', fuel: '', type: '', chassi: '', renavam: '', uf: '', city: '' } : {}),
+                                        });
+                                    }}
                                     onBlur={() => inputMode === 'auto' && handlePlateLookup()} />
                                 <div className="absolute right-4 top-9 text-blue-600">
                                     {isSearchingPlate ? <Loader2 className="animate-spin"/> : (inputMode === 'auto' && <CloudLightning size={20}/>)}
@@ -498,12 +525,12 @@ const Vehicles: React.FC = () => {
 
                             {/* RENAVAM E CHASSI OCULTOS e com default */}
 
-                            <div>
+                            {(inputMode === 'manual' || !!editId) && <div>
                                 <label className="block text-xs font-bold text-slate-600 mb-1">KM Atual</label>
                                 <input type="number" className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none" 
                                     value={formData.km} onChange={e => setFormData({...formData, km: Number(e.target.value)})} />
-                            </div>
-                            <div>
+                            </div>}
+                            {(inputMode === 'manual' || !!editId) && <div>
                                 <label className="block text-xs font-bold text-slate-600 mb-1">Status</label>
                                 <select className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none"
                                     value={formData.status} onChange={e => setFormData({...formData, status: e.target.value as any})}>
@@ -511,12 +538,12 @@ const Vehicles: React.FC = () => {
                                     <option>Inativo</option>
                                     <option>Manutenção</option>
                                 </select>
-                            </div>
+                            </div>}
                         </div>
                     </section>
 
                     {/* SECTION 2: Características do Veículo */}
-                    <section className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                    {(inputMode === 'manual' || !!editId) ? <section className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
                         <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
                            <Car size={14}/> 2. Características do Veículo
                         </h4>
@@ -549,11 +576,34 @@ const Vehicles: React.FC = () => {
                                </div>
                            </div>
                         </div>
-                    </section>
+                    </section> : (
+                        <section className={`border p-5 rounded-2xl ${verifiedPlate ? 'border-emerald-200 bg-emerald-50/60' : 'border-slate-200 bg-slate-50'}`}>
+                            {isSearchingPlate ? (
+                                <div className="flex items-center gap-3 text-slate-700">
+                                    <Loader2 size={20} className="animate-spin text-blue-600" />
+                                    <div><p className="text-sm font-bold">Consultando a placa</p><p className="text-xs text-slate-500">Aguarde a confirmação dos dados reais do veículo.</p></div>
+                                </div>
+                            ) : verifiedPlate ? (
+                                <div className="flex items-start gap-3">
+                                    <Check className="mt-0.5 text-emerald-600" size={20} />
+                                    <div className="min-w-0">
+                                        <p className="text-[10px] font-black uppercase text-emerald-700">Veículo confirmado</p>
+                                        <p className="mt-1 text-base font-black text-slate-900">{formData.brand} {formData.model}</p>
+                                        <p className="mt-1 text-xs text-slate-600">{[formData.year_model || formData.year_fab, formData.color, formData.city && formData.uf ? `${formData.city}/${formData.uf}` : formData.uf].filter(Boolean).join(' · ')}</p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="flex items-start gap-3 text-slate-600">
+                                    <CloudLightning size={20} className="mt-0.5 text-blue-600" />
+                                    <div><p className="text-sm font-bold">Digite somente a placa</p><p className="text-xs text-slate-500">Marca, modelo, ano e demais dados serão preenchidos automaticamente.</p></div>
+                                </div>
+                            )}
+                        </section>
+                    )}
                     
                     <div className="flex justify-end pt-4">
-                        <button type="submit" disabled={isSubmitting} className="px-10 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl flex items-center gap-2 hover:bg-blue-700 transition-all">
-                            {isSubmitting ? <Loader2 className="animate-spin"/> : <><Save size={18}/> Salvar Veículo</>}
+                        <button type="submit" disabled={isSubmitting || isSearchingPlate} className="px-10 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl flex items-center gap-2 hover:bg-blue-700 transition-all disabled:cursor-not-allowed disabled:opacity-50">
+                            {isSubmitting ? <Loader2 className="animate-spin"/> : <><Save size={18}/> {inputMode === 'auto' && !editId ? 'Confirmar cadastro' : 'Salvar veículo'}</>}
                         </button>
                     </div>
                 </form>

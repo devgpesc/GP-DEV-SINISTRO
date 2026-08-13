@@ -1,6 +1,7 @@
 
 
 import { Vehicle } from '../types';
+import { supabase } from './supabaseClient';
 
 /**
  * Serviço de Lookup Veicular
@@ -12,30 +13,39 @@ import { Vehicle } from '../types';
 // URL Base do Backend (Vite Proxy ou URL direta)
 const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || '/api';
 
+export const normalizeVehiclePlate = (plate: string) => plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
+export const isValidVehiclePlate = (plate: string) => /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(normalizeVehiclePlate(plate));
+
 export const lookupService = {
   /**
    * Consulta placa no backend seguro.
    * Suporta strategy 'auto' (padrão), 'apibrasil', ou 'detran'.
    */
-  async fetchPlate(plate: string, provider: 'auto' | 'apibrasil' | 'detran' = 'auto'): Promise<Partial<Vehicle> | null> {
-    const cleanPlate = plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (cleanPlate.length !== 7) return null;
+  async fetchPlate(plate: string, provider: 'auto' | 'apibrasil' | 'detran' = 'auto'): Promise<Partial<Vehicle>> {
+    const cleanPlate = normalizeVehiclePlate(plate);
+    if (!isValidVehiclePlate(cleanPlate)) throw new Error('Informe uma placa brasileira válida.');
 
     try {
-      // Chamada ao Backend (Não chama API externa direto)
-      const response = await fetch(`${API_BASE}/vehicles/lookup?plate=${cleanPlate}&provider=${provider}`);
-      
-      if (!response.ok) {
-        if (response.status === 404) console.warn('Veículo não encontrado.');
-        return null;
-      }
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) throw new Error('Faça login para consultar uma placa.');
 
+      // Chamada ao Backend (Não chama API externa direto)
+      const response = await fetch(`${API_BASE}/vehicles/lookup?plate=${cleanPlate}&provider=${provider}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      
       const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || 'Não foi possível consultar a placa.');
+      }
 
       const returnedPlate = String(data.plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
       if (returnedPlate !== cleanPlate || data.provider === 'Mock/Fallback') {
-        console.warn('Consulta de placa descartada por divergência.', { requested: cleanPlate, returned: returnedPlate });
-        return null;
+        throw new Error('A consulta retornou dados de outra placa e foi descartada.');
+      }
+      if (!String(data.brand || '').trim() || !String(data.model || '').trim()) {
+        throw new Error('A consulta não retornou marca e modelo confiáveis.');
       }
 
       // Mapeamento para o formato Vehicle do Frontend (Já normalizado pelo Backend, mas garantindo tipagem)
@@ -55,9 +65,9 @@ export const lookupService = {
         city: data.city,
       };
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro de conexão com serviço de placas:", error);
-      return null;
+      throw new Error(error?.message || 'Não foi possível consultar a placa.');
     }
   },
 
